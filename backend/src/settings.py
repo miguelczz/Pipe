@@ -49,11 +49,15 @@ class Settings(BaseSettings):
     def sqlalchemy_url(self) -> str:
         # Usar DATABASE_URL si está disponible, sino construir desde variables individuales
         if self.database_url:
-            return self.database_url
+            # Convertir postgres:// a postgresql:// para compatibilidad con SQLAlchemy 1.4+
+            url = self.database_url
+            if url.startswith("postgres://"):
+                url = url.replace("postgres://", "postgresql://", 1)
+            return url
         
         # Validar que todas las variables individuales estén presentes
         if not all([self.postgres_user, self.postgres_password, self.postgres_db, 
-                   self.postgres_host, self.postgres_port]):
+                self.postgres_host, self.postgres_port]):
             raise ValueError(
                 "Debe proporcionar DATABASE_URL o todas las variables individuales de PostgreSQL "
                 "(POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, POSTGRES_HOST, POSTGRES_PORT)"
