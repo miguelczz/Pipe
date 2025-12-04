@@ -61,7 +61,7 @@ export function ChatPage() {
         </div>
 
         {/* Chat Container con padding bottom para el input fijo */}
-        <div className="flex-1 overflow-hidden min-h-0 overflow-x-hidden pb-20 sm:pb-24">
+        <div className="flex-1 overflow-hidden min-h-0 overflow-x-hidden" style={{ paddingBottom: '80px' }}>
           <ChatContainer messages={messages} isLoading={isLoading} />
         </div>
       </div>

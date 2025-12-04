@@ -77,20 +77,18 @@ export function FilesPage() {
   }
 
   return (
-    <div className="container-app py-4 sm:py-6 px-3 sm:px-4">
+    <div className="container-app py-4 sm:py-8">
       <div className="max-w-4xl mx-auto">
-        <div className="flex flex-col gap-4 sm:gap-6 mb-6 sm:mb-8">
-          {/* Título y descripción */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 sm:mb-8 gap-4 sm:gap-6">
           <div className="flex-1 min-w-0">
-            <h1 className="text-lg sm:text-2xl font-medium text-dark-text-primary mb-1 sm:mb-2 tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-medium text-dark-text-primary mb-1 sm:mb-2 tracking-tight">
               Gestión de Archivos
             </h1>
-            <p className="text-dark-text-secondary text-xs sm:text-[15px] leading-relaxed">
+            <p className="text-dark-text-secondary text-sm sm:text-[15px] leading-relaxed">
               Sube y gestiona los documentos PDF que el agente utilizará para responder consultas
             </p>
           </div>
 
-          {/* Botón de subir */}
           <div className="flex-shrink-0">
             <input
               ref={fileInputRef}
@@ -109,12 +107,14 @@ export function FilesPage() {
               {uploading ? (
                 <>
                   <Loading size="sm" className="sm:mr-2" />
-                  <span>Subiendo...</span>
+                  <span className="hidden sm:inline">Subiendo...</span>
+                  <span className="sm:hidden">Subiendo...</span>
                 </>
               ) : (
                 <>
                   <Upload className="w-4 h-4 sm:mr-2" />
-                  <span>Subir PDF</span>
+                  <span className="hidden sm:inline">Subir PDF</span>
+                  <span className="sm:hidden">Subir PDF</span>
                 </>
               )}
             </Button>
@@ -147,23 +147,23 @@ export function FilesPage() {
             {files.map((file) => (
               <div
                 key={file.document_id}
-                className="card-gemini p-3 sm:p-4 flex items-center justify-between group gap-2 sm:gap-4"
+                className="card-gemini p-3 sm:p-4 flex items-center justify-between group gap-3 sm:gap-4"
               >
-                <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
-                  <div className="flex-shrink-0 w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-dark-accent-primary/15 flex items-center justify-center border border-dark-accent-primary/20">
+                <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+                  <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-dark-accent-primary/15 flex items-center justify-center border border-dark-accent-primary/20">
                     <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-dark-accent-primary" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-medium text-dark-text-primary truncate text-xs sm:text-[15px] leading-tight">
+                    <h3 className="font-medium text-dark-text-primary truncate text-sm sm:text-[15px]">
                       {file.filename}
                     </h3>
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-4 mt-1 sm:mt-1.5 text-[10px] sm:text-sm text-dark-text-muted">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" />
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 mt-1 sm:mt-1.5 text-xs sm:text-sm text-dark-text-muted">
+                      <span className="flex items-center gap-1.5">
+                        <Calendar className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                         {formatDate(file.uploaded_at)}
                       </span>
                       {file.chunk_count && (
-                        <span className="hidden sm:inline text-xs">{file.chunk_count} fragmentos</span>
+                        <span className="hidden sm:inline">{file.chunk_count} fragmentos</span>
                       )}
                     </div>
                   </div>
@@ -172,10 +172,9 @@ export function FilesPage() {
                   variant="ghost"
                   size="sm"
                   onClick={() => handleDelete(file.document_id)}
-                  className="text-dark-status-error hover:bg-dark-status-error/10 ml-1 sm:ml-4 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity rounded-xl flex-shrink-0 p-1.5 sm:p-2"
-                  aria-label="Eliminar archivo"
+                  className="text-dark-status-error hover:bg-dark-status-error/10 ml-2 sm:ml-4 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity rounded-xl flex-shrink-0"
                 >
-                  <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <Trash2 className="w-4 h-4" />
                 </Button>
               </div>
             ))}

@@ -21,7 +21,7 @@ export function Layout({ children }) {
 
   return (
     <div className="min-h-screen bg-dark-bg-primary flex flex-col overflow-x-hidden w-full">
-      {/* Header moderno inspirado en los mejores diseños de IA - FIJO */}
+      {/* Header moderno inspirado en los mejores diseños de IA - Fijo en móvil */}
       <header className="border-b border-dark-border-primary/30 bg-dark-bg-primary/95 backdrop-blur-xl fixed top-0 left-0 right-0 z-50 shadow-gemini-sm overflow-x-hidden">
         <div className="container-app">
           <div className="flex items-center justify-between h-14 sm:h-16">
@@ -43,10 +43,10 @@ export function Layout({ children }) {
                   variant="ghost"
                   size="sm"
                   onClick={clearChatAction}
-                  className="text-dark-text-muted hover:text-dark-status-error hover:bg-dark-status-error/10 rounded-xl transition-all duration-200 px-2 sm:px-3"
+                  className="text-dark-text-muted hover:text-dark-status-error hover:bg-dark-status-error/10 rounded-xl transition-all duration-200 p-1.5 sm:p-2"
                 >
-                  <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
-                  <span className="hidden sm:inline">Limpiar</span>
+                  <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline ml-1.5">Limpiar</span>
                 </Button>
               )}
               {navItems.map((item) => {
@@ -75,7 +75,7 @@ export function Layout({ children }) {
         </div>
       </header>
 
-      {/* Main Content con padding-top para compensar el header fijo */}
+      {/* Main Content con padding top para compensar el header fijo */}
       <main className="flex-1 flex flex-col overflow-hidden min-h-0 overflow-x-hidden w-full pt-14 sm:pt-16">
         {children}
       </main>

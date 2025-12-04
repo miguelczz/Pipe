@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import { agentService } from '../services/api'
-import { getOrCreateSessionId, setStorageItem } from '../utils/storage'
+import { getOrCreateSessionId, setStorageItem, getStorageItem } from '../utils/storage'
 import { SESSION_CONFIG } from '../config/constants'
 
 /**
@@ -11,22 +12,46 @@ export function useChat() {
   const [messages, setMessages] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
+  const location = useLocation()
   const [sessionId] = useState(() => 
     getOrCreateSessionId(SESSION_CONFIG.STORAGE_KEY)
   )
   const abortControllerRef = useRef(null)
   const [isLoadingHistory, setIsLoadingHistory] = useState(true)
+  const hasLoadedRef = useRef(false)
 
   // Guardar sessionId en localStorage cuando cambia
   useEffect(() => {
     setStorageItem(SESSION_CONFIG.STORAGE_KEY, sessionId)
   }, [sessionId])
 
-  // Cargar historial de sesión al montar el componente
+  // Guardar mensajes en localStorage como respaldo
   useEffect(() => {
+    if (messages.length > 0) {
+      const messagesKey = `${SESSION_CONFIG.STORAGE_KEY}_messages`
+      setStorageItem(messagesKey, messages)
+    }
+  }, [messages])
+
+  // Cargar historial de sesión al montar el componente o cuando se vuelve a la página de chat
+  useEffect(() => {
+    // Solo cargar si estamos en la página de chat
+    if (location.pathname !== '/') {
+      return
+    }
+
     const loadSessionHistory = async () => {
       try {
         setIsLoadingHistory(true)
+        
+        // Primero intentar cargar desde localStorage como respaldo rápido
+        const messagesKey = `${SESSION_CONFIG.STORAGE_KEY}_messages`
+        const cachedMessages = getStorageItem(messagesKey, [])
+        if (cachedMessages.length > 0) {
+          setMessages(cachedMessages)
+        }
+        
+        // Luego cargar desde el backend (más actualizado)
         const history = await agentService.getSessionHistory(sessionId)
         
         if (history.messages && history.messages.length > 0) {
@@ -38,17 +63,27 @@ export function useChat() {
             timestamp: new Date().toISOString(),
           }))
           setMessages(formattedMessages)
+        } else if (cachedMessages.length === 0) {
+          // Si no hay mensajes en backend ni en cache, limpiar
+          setMessages([])
         }
       } catch (err) {
         console.error('Error al cargar historial de sesión:', err)
-        // Continuar sin historial si hay error
+        // Si falla el backend, usar cache de localStorage si existe
+        const messagesKey = `${SESSION_CONFIG.STORAGE_KEY}_messages`
+        const cachedMessages = getStorageItem(messagesKey, [])
+        if (cachedMessages.length > 0) {
+          setMessages(cachedMessages)
+        }
       } finally {
         setIsLoadingHistory(false)
+        hasLoadedRef.current = true
       }
     }
 
+    // Recargar cada vez que se monta el componente o se vuelve a la página
     loadSessionHistory()
-  }, [sessionId])
+  }, [sessionId, location.pathname])
 
   /**
    * Envía un mensaje al agente
@@ -149,6 +184,15 @@ export function useChat() {
     // Limpiar mensajes del frontend
     setMessages([])
     setError(null)
+    
+    // Limpiar cache de localStorage
+    const messagesKey = `${SESSION_CONFIG.STORAGE_KEY}_messages`
+    try {
+      localStorage.removeItem(messagesKey)
+    } catch (err) {
+      console.error('Error al limpiar cache de mensajes:', err)
+    }
+    
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
     }
