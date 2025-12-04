@@ -6,6 +6,10 @@ set -e
 
 echo "🔨 Iniciando build para Heroku..."
 
+# Copiar requirements.txt del backend a la raíz (necesario para Heroku Python buildpack)
+echo "📋 Copiando requirements.txt del backend a la raíz..."
+cp backend/requirements.txt requirements.txt
+
 # Navegar al directorio del frontend
 cd frontend
 
