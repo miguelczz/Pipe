@@ -76,9 +76,7 @@ Context (last 5 messages):
 
 RELEVANCE RULES (STEP 1):
 - ONLY mark as relevant if the question is CLEARLY and DIRECTLY related to networks, network protocols, telecommunications, or network technologies
-- CRITICAL: If the question references previous network operations mentioned in context (ping, traceroute, DNS, IP analysis, comparison, etc.), it is RELEVANT even if it doesn't explicitly mention networks or the operation type
-- If the context shows a previous network operation (e.g., "compare github.com and facebook.com"), and the user asks about another domain/host in a similar way (e.g., "y el de github con el de instagram?"), it is RELEVANT because it's a continuation of the same network operation
-- Questions that continue or extend previous network operations are RELEVANT, even if they use pronouns, references, or implicit language (e.g., "y el de X?", "hazlo", "intenta uno", "compara con Y")
+- If the question references previous network operations mentioned in context (ping, traceroute, DNS, IP analysis, etc.), it is RELEVANT even if it doesn't explicitly mention networks
 - Questions about general physics, mathematics, history, literature, medicine, cooking, sports, etc. are NOT RELEVANT (unless they directly reference previous network operations)
 - Only relevant: network protocols (TCP/IP, HTTP, DNS, etc.), network devices (routers, switches, etc.), network technologies (WiFi, Ethernet, etc.), network operations (ping, traceroute, etc.), network configuration, network security, etc.
 

@@ -38,6 +38,8 @@ export function useChat() {
     if (location.pathname !== '/' && messages.length > 0) {
       const messagesKey = `${SESSION_CONFIG.STORAGE_KEY}_messages`
       setStorageItem(messagesKey, messages)
+      // Resetear el flag cuando salimos de la página
+      hasLoadedRef.current = false
     }
   }, [location.pathname, messages])
 
@@ -45,62 +47,45 @@ export function useChat() {
   useEffect(() => {
     // Solo cargar si estamos en la página de chat
     if (location.pathname !== '/') {
-      // Si salimos de la página, resetear el flag para que se recargue cuando volvamos
-      hasLoadedRef.current = false
       return
     }
 
     const loadSessionHistory = async () => {
-      // Evitar cargar múltiples veces simultáneamente
+      // Evitar cargar múltiples veces en la misma sesión de página
       if (hasLoadedRef.current) {
         return
       }
 
       try {
         setIsLoadingHistory(true)
-        hasLoadedRef.current = true  // Marcar como cargando inmediatamente
         
-        // SIEMPRE cargar primero desde localStorage (fuente de verdad principal)
+        // Primero intentar cargar desde localStorage como respaldo rápido
         const messagesKey = `${SESSION_CONFIG.STORAGE_KEY}_messages`
         const cachedMessages = getStorageItem(messagesKey, [])
-        
-        // Mostrar mensajes del cache inmediatamente
         if (cachedMessages.length > 0) {
           setMessages(cachedMessages)
         }
         
-        // Luego intentar cargar desde el backend (solo para actualizar si hay mensajes más recientes)
-        try {
-          const history = await agentService.getSessionHistory(sessionId)
-          
-          if (history.messages && history.messages.length > 0) {
-            // Convertir mensajes del backend al formato del frontend
-            const formattedMessages = history.messages.map((msg, idx) => ({
-              id: `msg-${sessionId}-${idx}-${msg.role}`,
-              role: msg.role === 'assistant' ? 'assistant' : 'user',
-              content: msg.content,
-              timestamp: new Date().toISOString(),
-            }))
-            
-            // Solo actualizar si el backend tiene más mensajes que el cache
-            // O si el cache está vacío pero el backend tiene mensajes
-            if (formattedMessages.length > cachedMessages.length || cachedMessages.length === 0) {
-              setMessages(formattedMessages)
-              // Actualizar también el cache con los mensajes del backend
-              setStorageItem(messagesKey, formattedMessages)
-            }
-          } else if (cachedMessages.length === 0) {
-            // Si no hay mensajes en backend ni en cache, asegurar que esté vacío
-            setMessages([])
-          }
-          // Si el backend no tiene mensajes pero el cache sí, mantener los del cache
-        } catch (backendError) {
-          // Si el backend falla, mantener los mensajes del cache (ya cargados arriba)
-          console.warn('No se pudo cargar historial del backend, usando cache local:', backendError)
+        // Luego cargar desde el backend (más actualizado)
+        const history = await agentService.getSessionHistory(sessionId)
+        
+        if (history.messages && history.messages.length > 0) {
+          // Convertir mensajes del backend al formato del frontend
+          const formattedMessages = history.messages.map((msg, idx) => ({
+            id: `msg-${sessionId}-${idx}-${msg.role}`,
+            role: msg.role === 'assistant' ? 'assistant' : 'user',
+            content: msg.content,
+            timestamp: new Date().toISOString(),
+          }))
+          // Actualizar con los mensajes del backend (más actualizados)
+          setMessages(formattedMessages)
+        } else if (cachedMessages.length === 0) {
+          // Si no hay mensajes en backend ni en cache, limpiar
+          setMessages([])
         }
       } catch (err) {
         console.error('Error al cargar historial de sesión:', err)
-        // Si todo falla, intentar cargar desde cache como último recurso
+        // Si falla el backend, usar cache de localStorage si existe
         const messagesKey = `${SESSION_CONFIG.STORAGE_KEY}_messages`
         const cachedMessages = getStorageItem(messagesKey, [])
         if (cachedMessages.length > 0) {
@@ -108,6 +93,7 @@ export function useChat() {
         }
       } finally {
         setIsLoadingHistory(false)
+        hasLoadedRef.current = true
       }
     }
 
