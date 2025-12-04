@@ -26,32 +26,33 @@ export function ChatContainer({ messages, isLoading }) {
     <div
       ref={containerRef}
       className={cn(
-        'flex-1 overflow-y-auto overflow-x-hidden',
-        'scrollbar-thin scrollbar-thumb-dark-border-primary scrollbar-track-dark-bg-primary',
-        messages.length === 0 && 'flex items-center justify-center'
+        'flex-1 overflow-x-hidden',
+        messages.length === 0 
+          ? 'overflow-hidden flex items-center justify-center' 
+          : 'overflow-y-auto scrollbar-thin scrollbar-thumb-dark-border-primary scrollbar-track-dark-bg-primary'
       )}
     >
       {messages.length === 0 ? (
-        <div className="w-full px-4 py-32">
+        <div className="w-full px-4 py-8 sm:py-12">
           <div className="text-center max-w-2xl mx-auto">
-            <div className="flex justify-center mb-6">
+            <div className="flex justify-center mb-4 sm:mb-6">
               <Logo size="lg" />
             </div>
-            <h2 className="text-2xl font-medium text-dark-text-primary mb-3 tracking-tight">
+            <h2 className="text-xl sm:text-2xl font-medium text-dark-text-primary mb-2 sm:mb-3 tracking-tight px-2">
               Bienvenido a NetMind
             </h2>
-            <p className="text-dark-text-secondary text-[15px] leading-relaxed max-w-lg mx-auto">
+            <p className="text-dark-text-secondary text-sm sm:text-[15px] leading-relaxed max-w-lg mx-auto px-2">
               Asistente inteligente especializado en redes y telecomunicaciones.
               Soporte técnico en conceptos de red, consultas DNS, análisis de direcciones IP y gestión de documentación técnica.
             </p>
-            <div className="mt-8 flex flex-wrap gap-2 justify-center">
-              <span className="px-4 py-2 bg-dark-surface-primary border border-dark-border-primary/30 rounded-full text-sm text-dark-text-secondary">
+            <div className="mt-6 sm:mt-8 flex flex-wrap gap-2 justify-center px-2">
+              <span className="px-3 sm:px-4 py-1.5 sm:py-2 bg-dark-surface-primary border border-dark-border-primary/30 rounded-full text-xs sm:text-sm text-dark-text-secondary">
                 Consultas DNS
               </span>
-              <span className="px-4 py-2 bg-dark-surface-primary border border-dark-border-primary/30 rounded-full text-sm text-dark-text-secondary">
+              <span className="px-3 sm:px-4 py-1.5 sm:py-2 bg-dark-surface-primary border border-dark-border-primary/30 rounded-full text-xs sm:text-sm text-dark-text-secondary">
                 Operaciones de Red
               </span>
-              <span className="px-4 py-2 bg-dark-surface-primary border border-dark-border-primary/30 rounded-full text-sm text-dark-text-secondary">
+              <span className="px-3 sm:px-4 py-1.5 sm:py-2 bg-dark-surface-primary border border-dark-border-primary/30 rounded-full text-xs sm:text-sm text-dark-text-secondary">
                 Documentación RAG
               </span>
             </div>

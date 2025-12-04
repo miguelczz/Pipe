@@ -246,10 +246,15 @@ Genera una respuesta clara, natural y adaptada a la complejidad de la pregunta u
             # Ejecutar embedding y búsqueda en thread separado (operaciones síncronas)
             def _sync_dense_search():
                 query_vector = embedding_for_text(query_text)
-                return self.qdrant_repo.search(
+                # Aumentar top_k a mínimo 10 para tener mejor cobertura
+                search_top_k = max(top_k, 10)
+                logger.debug(f"[RAG] Búsqueda densa con top_k={search_top_k} para: '{query_text[:50]}...'")
+                results = self.qdrant_repo.search(
                     query_vector=query_vector,
-                    top_k=max(top_k, 8)
+                    top_k=search_top_k
                 )
+                logger.debug(f"[RAG] Búsqueda densa retornó {len(results)} resultados")
+                return results
             
             # Usar asyncio.to_thread para ejecutar operación síncrona sin bloquear
             hits = await asyncio.to_thread(_sync_dense_search)
@@ -379,7 +384,24 @@ Genera una respuesta clara, natural y adaptada a la complejidad de la pregunta u
                 hits = keyword_hits[:2] + hits
 
             if not hits:
-                # Verificar si la pregunta es sobre la temática antes de decir que no hay información
+                # Verificar si hay documentos en la colección
+                try:
+                    collection_info = self.qdrant_repo.get_collection_info()
+                    points_count = collection_info.get('points_count', 0) if isinstance(collection_info, dict) else 0
+                    if points_count == 0:
+                        logger.error(f"[RAG] ❌ No hay documentos indexados en Qdrant (0 puntos en la colección)")
+                        return {
+                            "answer": "No hay documentos disponibles en la base de datos. Por favor, sube documentos PDF relacionados con redes y telecomunicaciones para que pueda responder tus preguntas.",
+                            "hits": 0,
+                            "contexts": [],
+                            "source": "no_documents"
+                        }
+                    else:
+                        logger.warning(f"[RAG] ⚠️ Hay {points_count} puntos en Qdrant pero la búsqueda no encontró resultados para: '{query_text[:50]}...'")
+                        logger.warning(f"[RAG] ⚠️ Esto puede indicar que la consulta no coincide con el contenido de los documentos")
+                except Exception as e:
+                    logger.error(f"[RAG] Error al verificar colección: {e}")
+                
                 return {
                     "answer": "No encontré información específica sobre tu pregunta en los documentos disponibles. Por favor, asegúrate de que tu pregunta esté relacionada con redes, telecomunicaciones o protocolos de red.",
                     "hits": 0,
@@ -512,20 +534,39 @@ Responde SOLO con una palabra: "relevante" o "no_relevante".
                 "source": "out_of_topic"
             }
         
-        # Filtrar y concatenar SOLO los chunks más relevantes (score > 0.5)
-        # Esto evita incluir información poco relevante en el contexto
-        relevant_hits = [h for h in hits if h.get('score', 0) > 0.5]
-        if not relevant_hits:
-            # Si no hay hits con score > 0.5, usar solo el más relevante
-            relevant_hits = hits[:1] if hits else []
-        else:
-            # Limitar a máximo 2 chunks más relevantes para evitar contexto excesivo
-            relevant_hits = relevant_hits[:2]
+        # Filtrar y concatenar los chunks más relevantes
+        # IMPORTANTE: Usar un umbral más bajo (0.3) para incluir más resultados relevantes
+        # En búsquedas vectoriales, scores de 0.3-0.5 pueden ser aún relevantes
+        relevant_hits = [h for h in hits if h.get('score', 0) > 0.3]
         
-        # Concatenar SOLO los textos más relevantes
+        # Si no hay hits con score > 0.3, usar los top 3 resultados (incluso con scores bajos)
+        # Esto asegura que siempre tengamos contexto para generar una respuesta
+        if not relevant_hits:
+            logger.warning(f"[RAG] No hay hits con score > 0.3. Usando top {min(3, len(hits))} resultados disponibles (scores: {[h.get('score', 0) for h in hits[:3]]})")
+            relevant_hits = hits[:3] if hits else []
+        else:
+            # Limitar a máximo 3 chunks más relevantes para tener mejor cobertura
+            relevant_hits = relevant_hits[:3]
+        
+        # Concatenar los textos más relevantes
         context = "\n\n".join([h["payload"].get("text", "") for h in relevant_hits])
         
-        logger.info(f"[RAG] Usando {len(relevant_hits)} chunks más relevantes (de {len(hits)} totales) para generar respuesta")
+        # Logging detallado para debugging
+        if relevant_hits:
+            scores = [h.get('score', 0) for h in relevant_hits]
+            logger.info(f"[RAG] Usando {len(relevant_hits)} chunks más relevantes (de {len(hits)} totales) con scores: {scores}")
+        else:
+            logger.warning(f"[RAG] ⚠️ No hay chunks relevantes disponibles después del filtrado")
+        
+        # Si el contexto está vacío después del filtrado, retornar error
+        if not context or not context.strip():
+            logger.error(f"[RAG] ❌ Contexto vacío después del filtrado. Hits totales: {len(hits)}")
+            return {
+                "answer": "No encontré información específica sobre tu pregunta en los documentos disponibles. Por favor, asegúrate de que tu pregunta esté relacionada con redes, telecomunicaciones o protocolos de red.",
+                "hits": len(hits),
+                "contexts": [],
+                "source": "empty_context"
+            }
 
         # Construir el prompt con contexto de conversación si está disponible
         # El contexto de conversación puede contener acciones, resultados y eventos previos
@@ -555,16 +596,21 @@ EJEMPLOS DE SEGUIMIENTO:
 - Respuesta: Usar el contexto de conversación (google.com).
 """
 
-        # Logging para debugging: mostrar qué chunks se recuperaron
-        logger.info(f"[RAG] Chunks recuperados para consulta '{query_text[:50]}...': {len(hits)}")
+        # Logging detallado para debugging: mostrar qué chunks se recuperaron
+        logger.info(f"[RAG] Chunks recuperados para consulta '{query_text[:50]}...': {len(hits)} hits totales")
         if hits:
-            for i, hit in enumerate(hits[:3], 1):  # Mostrar solo los primeros 3
-                chunk_text = hit["payload"].get("text", "")[:200]  # Primeros 200 chars
+            logger.info(f"[RAG] Top 5 hits con sus scores:")
+            for i, hit in enumerate(hits[:5], 1):  # Mostrar los primeros 5
+                chunk_text = hit["payload"].get("text", "")[:150]  # Primeros 150 chars
                 score = hit.get('score', 0)
-                logger.info(f"[RAG] Chunk {i} (score: {score:.4f}): {chunk_text}...")
+                document_id = hit["payload"].get("document_id", "unknown")
+                logger.info(f"[RAG]   {i}. Score: {score:.4f} | Doc: {document_id[:8]}... | Texto: {chunk_text}...")
         else:
             logger.warning(f"[RAG] ⚠️ No se encontraron chunks para la consulta: '{query_text}'")
-            logger.warning(f"[RAG] ⚠️ Esto puede indicar que los documentos no están indexados o la búsqueda no encontró coincidencias")
+            logger.warning(f"[RAG] ⚠️ Esto puede indicar que:")
+            logger.warning(f"[RAG]     - Los documentos no están indexados en Qdrant")
+            logger.warning(f"[RAG]     - La búsqueda vectorial no encontró coincidencias semánticas")
+            logger.warning(f"[RAG]     - El embedding de la consulta no es similar a los embeddings de los documentos")
         
         # Determinar longitud objetivo según complejidad (ya obtenida en paralelo)
         # AUMENTADO: Límites más altos para asegurar respuestas completas, especialmente para listas

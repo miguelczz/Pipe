@@ -4,8 +4,15 @@ import ipaddress
 import platform
 import socket
 import time
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from ..core.cache import cache_result
+
+# Intentar importar ping3 como alternativa cuando subprocess no funciona
+try:
+    import ping3
+    PING3_AVAILABLE = True
+except ImportError:
+    PING3_AVAILABLE = False
 
 
 class IPTool:
@@ -51,9 +58,11 @@ class IPTool:
         """
         Mide la latencia (ping) a un host.
         Retorna información sobre el tiempo de respuesta.
+        Primero intenta usar subprocess, si falla usa ping3 como alternativa.
         """
         system = platform.system().lower()
         
+        # Intentar primero con subprocess (método nativo)
         try:
             if system == "windows":
                 cmd = ["ping", "-n", str(count), host]
@@ -107,23 +116,81 @@ class IPTool:
             return ping_info
             
         except subprocess.TimeoutExpired:
-            return {
-                "host": host,
-                "error": "Timeout al hacer ping",
-                "avg_time": None,
-                "success": False
-            }
+            # Si timeout, intentar con ping3
+            return self._ping_with_ping3(host, count)
         except FileNotFoundError:
+            # Si el comando no existe, usar ping3 como alternativa
+            return self._ping_with_ping3(host, count)
+        except Exception as e:
+            # Si hay otro error, intentar con ping3
+            return self._ping_with_ping3(host, count)
+    
+    def _ping_with_ping3(self, host: str, count: int = 4) -> Dict[str, Any]:
+        """
+        Método alternativo usando la biblioteca ping3 cuando subprocess no está disponible.
+        """
+        if not PING3_AVAILABLE:
             return {
                 "host": host,
-                "error": "Comando ping no encontrado",
+                "error": "Comando ping no disponible y biblioteca ping3 no instalada. Instala con: pip install ping3",
                 "avg_time": None,
                 "success": False
             }
+        
+        try:
+            times = []
+            successful_pings = 0
+            
+            # Resolver el host a IP si es necesario
+            resolved_ip = self.resolve_domain(host)
+            
+            # Realizar múltiples pings
+            for i in range(count):
+                try:
+                    # ping3.ping retorna el tiempo en segundos o None si falla
+                    delay = ping3.ping(resolved_ip, timeout=5)
+                    if delay is not None:
+                        # Convertir a milisegundos
+                        delay_ms = delay * 1000
+                        times.append(delay_ms)
+                        successful_pings += 1
+                    else:
+                        # Timeout o no respuesta
+                        pass
+                except Exception as e:
+                    # Error en un ping individual, continuar con los siguientes
+                    continue
+            
+            if times:
+                ping_info = {
+                    "host": host,
+                    "resolved_ip": resolved_ip if resolved_ip != host else None,
+                    "stdout": f"Ping a {host} ({resolved_ip}): {successful_pings}/{count} paquetes recibidos",
+                    "returncode": 0 if successful_pings > 0 else 1,
+                    "success": successful_pings > 0,
+                    "times": times,
+                    "min_time": min(times),
+                    "max_time": max(times),
+                    "avg_time": sum(times) / len(times),
+                    "packet_loss": ((count - successful_pings) / count) * 100
+                }
+                return ping_info
+            else:
+                return {
+                    "host": host,
+                    "resolved_ip": resolved_ip if resolved_ip != host else None,
+                    "stdout": f"Ping a {host} ({resolved_ip}): 0/{count} paquetes recibidos",
+                    "returncode": 1,
+                    "success": False,
+                    "error": "No se recibieron respuestas",
+                    "avg_time": None,
+                    "packet_loss": 100
+                }
+                
         except Exception as e:
             return {
                 "host": host,
-                "error": str(e),
+                "error": f"Error al hacer ping con ping3: {str(e)}",
                 "avg_time": None,
                 "success": False
             }
@@ -470,12 +537,25 @@ class IPTool:
             avg_time = result.get("avg_time")
             min_time = result.get("min_time")
             max_time = result.get("max_time")
+            resolved_ip = result.get("resolved_ip")
+            packet_loss = result.get("packet_loss")
             
-            parts = [f"Ping a {host}:\n{stdout}"]
+            parts = [f"Ping a {host}"]
+            if resolved_ip and resolved_ip != host:
+                parts.append(f" ({resolved_ip})")
+            parts.append(f":\n{stdout}")
+            
             if avg_time is not None:
                 parts.append(f"\n\nLatencia promedio: {avg_time:.2f}ms")
                 if min_time is not None and max_time is not None:
                     parts.append(f" (min: {min_time:.2f}ms, max: {max_time:.2f}ms)")
+                if packet_loss is not None and packet_loss > 0:
+                    parts.append(f"\nPérdida de paquetes: {packet_loss:.1f}%")
+            
+            # Si hay error pero no es crítico, mostrarlo
+            if "error" in result and result.get("success", False):
+                parts.append(f"\nNota: {result['error']}")
+            
             return "\n".join(parts)
         
         # Formatear múltiples pings
