@@ -66,13 +66,23 @@ def get_redis_client() -> Optional[Any]:
     if _redis_client is None:
         try:
             logger.info(f"Intentando conectar a Redis para cache: {_mask_redis_url(redis_connection_url)}")
-            # Para rediss://, Redis maneja SSL automáticamente
-            # No pasar parámetro ssl explícitamente
+            
+            # Configurar SSL si es rediss:// (Redis con SSL)
+            ssl_context = None
+            if redis_connection_url.startswith('rediss://'):
+                # Crear contexto SSL que no verifica certificados
+                # Necesario para servicios como Heroku Redis que usan certificados autofirmados
+                import ssl
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+            
             _redis_client = redis.from_url(
                 redis_connection_url,
                 decode_responses=True,
                 socket_connect_timeout=5,
-                socket_timeout=5
+                socket_timeout=5,
+                ssl=ssl_context if ssl_context else None
             )
             # Probar conexión
             _redis_client.ping()
@@ -112,8 +122,6 @@ def _build_redis_url(redis_url: Optional[str], redis_token: Optional[str]) -> Op
     # Si no se puede determinar el formato, retornar None
     logger.warning(f"Formato de REDIS_URL no reconocido: {redis_url[:50]}...")
     return None
-    
-    return _redis_client
 
 
 def _mask_redis_url(url: str) -> str:

@@ -45,13 +45,22 @@ class RedisSessionManager:
         try:
             # Intentar conectar a Redis
             logger.info(f"[RedisSessionManager] Intentando conectar a Redis: {self._mask_redis_url(redis_connection_url)}")
-            # Para rediss://, Redis maneja SSL automáticamente
-            # No pasar parámetro ssl explícitamente
+            
+            # Configurar SSL si es rediss:// (Redis con SSL)
+            ssl_context = None
+            if redis_connection_url.startswith('rediss://'):
+                # Crear contexto SSL que no verifica certificados
+                # Necesario para servicios como Heroku Redis que usan certificados autofirmados
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+            
             self.redis_client = redis.from_url(
                 redis_connection_url,
                 decode_responses=True,
                 socket_connect_timeout=5,
-                socket_timeout=5
+                socket_timeout=5,
+                ssl=ssl_context if ssl_context else None
             )
             # Probar conexión
             self.redis_client.ping()

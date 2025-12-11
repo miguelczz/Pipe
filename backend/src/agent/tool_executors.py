@@ -576,7 +576,20 @@ Respuesta (directa y compacta):
             logger.debug(f"[RAG] No se pudo obtener contexto de conversación: {e}")
     
     # SIEMPRE buscar en documentos - el contexto de conversación es solo complementario
-    result = rag_tool.query(prompt, conversation_context=conversation_context_for_rag)
+    try:
+        logger.info(f"[RAG] Llamando a rag_tool.query() con prompt: {prompt[:100]}...")
+        result = rag_tool.query(prompt, conversation_context=conversation_context_for_rag)
+        logger.info(f"[RAG] rag_tool.query() retornó: {type(result)}, claves: {list(result.keys()) if isinstance(result, dict) else 'N/A'}")
+    except Exception as e:
+        logger.error(f"[RAG] ❌ ERROR CRÍTICO al ejecutar rag_tool.query(): {e}", exc_info=True)
+        # Retornar un resultado con error pero con estructura válida para RAGAS
+        result = {
+            "answer": f"Error al buscar información en los documentos: {str(e)}",
+            "hits": 0,
+            "error": f"rag_execution_error: {str(e)}",
+            "contexts": [],
+            "source": "error"
+        }
     
     # Log para debugging: verificar si el resultado tiene contextos
     if isinstance(result, dict):
@@ -609,13 +622,18 @@ Respuesta (directa y compacta):
         elif contexts_count > 0:
             logger.info(f"[RAG] ✅ Contextos disponibles para RAGAS: {contexts_count} chunks")
     
-    # Si hay error de conexión, usar contexto como fallback
-    if result.get("error") == "qdrant_connection_error" and messages:
-        try:
-            context_text = get_conversation_context(messages, max_messages=10)
-            if context_text:
-                # Similar al código anterior pero sin cache para fallback
-                followup_prompt = f"""
+    # Si hay error (cualquier tipo), intentar usar contexto como fallback si es posible
+    if result.get("error") and messages:
+        error_type = result.get("error", "")
+        logger.warning(f"[RAG] ⚠️ Error detectado en resultado RAG: {error_type}")
+        
+        # Si es error de conexión a Qdrant, usar contexto como fallback
+        if error_type == "qdrant_connection_error":
+            try:
+                context_text = get_conversation_context(messages, max_messages=10)
+                if context_text:
+                    # Similar al código anterior pero sin cache para fallback
+                    followup_prompt = f"""
 Basándote en la siguiente conversación previa, responde la pregunta del usuario de forma DIRECTA, COMPACTA y enfocada en lo que realmente le interesa.
 
 Conversación previa:
@@ -625,17 +643,33 @@ Pregunta del usuario: {prompt}
 
 Respuesta (directa y compacta):
 """
-                answer = llm.generate(followup_prompt).strip()
-                # Para RAGAS: usar el contexto de conversación como contexto si no hay documentos
-                conversation_contexts = [context_text] if context_text else []
-                return {
-                    "answer": answer,
-                    "hits": 0,
-                    "source": "conversation_context_fallback",
-                    "contexts": conversation_contexts  # Usar contexto de conversación para RAGAS
-                }
-        except Exception as e:
-            logger.warning(f"Error al usar contexto como fallback: {e}")
+                    answer = llm.generate(followup_prompt).strip()
+                    # Para RAGAS: usar el contexto de conversación como contexto si no hay documentos
+                    conversation_contexts = [context_text] if context_text else []
+                    return {
+                        "answer": answer,
+                        "hits": 0,
+                        "source": "conversation_context_fallback",
+                        "contexts": conversation_contexts  # Usar contexto de conversación para RAGAS
+                    }
+            except Exception as e:
+                logger.warning(f"Error al usar contexto como fallback: {e}")
+    
+    # Asegurar que el resultado siempre tenga la estructura correcta
+    if not isinstance(result, dict):
+        logger.error(f"[RAG] ❌ Resultado no es un diccionario: {type(result)}")
+        result = {
+            "answer": "Error inesperado al procesar la consulta.",
+            "hits": 0,
+            "error": "invalid_result_type",
+            "contexts": []
+        }
+    elif "error" in result and "answer" not in result:
+        # Si solo hay error sin answer, agregar un mensaje de error como answer
+        logger.warning(f"[RAG] ⚠️ Resultado tiene error pero no tiene 'answer' - agregando mensaje de error")
+        result["answer"] = result.get("answer", f"Error al procesar la consulta: {result.get('error', 'error desconocido')}")
+        if "contexts" not in result:
+            result["contexts"] = []
     
     return result
 
