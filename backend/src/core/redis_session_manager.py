@@ -8,6 +8,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 from ..models.schemas import AgentState, Message
 import redis
+import ssl
 from ..settings import settings
 
 logger = logging.getLogger(__name__)
