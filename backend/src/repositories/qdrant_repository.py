@@ -221,11 +221,6 @@ class QdrantRepository:
                 logger.error("[QdrantRepository] Cliente Qdrant no está disponible")
                 return []
             
-            # Verificar que el método search existe
-            if not hasattr(self.client, 'search'):
-                logger.error(f"[QdrantRepository] Cliente Qdrant no tiene método 'search'. Métodos disponibles: {dir(self.client)}")
-                return []
-            
             filter_obj = None
             if filter_conditions:
                 # Construir filtro Qdrant desde condiciones
@@ -241,23 +236,68 @@ class QdrantRepository:
             
             logger.debug(f"[QdrantRepository] Buscando en colección '{self.collection_name}' con top_k={top_k}, vector_size={len(query_vector)}")
             
-            hits = self.client.search(
-                collection_name=self.collection_name,
-                query_vector=query_vector,
-                limit=top_k,
-                query_filter=filter_obj
-            )
+            # Usar query_points() que es el método correcto en versiones recientes de qdrant-client
+            # query_points() reemplaza a search() en versiones >= 1.7.0
+            if hasattr(self.client, 'query_points'):
+                # Método moderno: query_points()
+                try:
+                    # Formato más simple y compatible: pasar el vector directamente como NamedVector
+                    # Si la colección tiene un solo vector, name puede ser vacío o None
+                    query_result = self.client.query_points(
+                        collection_name=self.collection_name,
+                        query=qmodels.NamedVector(
+                            name="",  # Vector por defecto (vacío = vector principal)
+                            vector=query_vector
+                        ),
+                        limit=top_k,
+                        query_filter=filter_obj
+                    )
+                    hits = query_result.points if hasattr(query_result, 'points') else []
+                except Exception as e:
+                    logger.error(f"[QdrantRepository] Error en query_points: {e}", exc_info=True)
+                    # Intentar con formato alternativo usando Query wrapper
+                    try:
+                        query_result = self.client.query_points(
+                            collection_name=self.collection_name,
+                            query=qmodels.Query(
+                                vector=qmodels.NamedVector(
+                                    name="",
+                                    vector=query_vector
+                                )
+                            ),
+                            limit=top_k,
+                            query_filter=filter_obj
+                        )
+                        hits = query_result.points if hasattr(query_result, 'points') else []
+                    except Exception as e2:
+                        logger.error(f"[QdrantRepository] Ambos formatos de query_points fallaron: {e}, {e2}")
+                        return []
+            elif hasattr(self.client, 'search'):
+                # Método legacy: search() (versiones antiguas)
+                hits = self.client.search(
+                    collection_name=self.collection_name,
+                    query_vector=query_vector,
+                    limit=top_k,
+                    query_filter=filter_obj
+                )
+            else:
+                logger.error(f"[QdrantRepository] Cliente Qdrant no tiene métodos 'query_points' ni 'search'. Métodos disponibles: {[m for m in dir(self.client) if not m.startswith('_')]}")
+                return []
             
             logger.debug(f"[QdrantRepository] Búsqueda retornó {len(hits)} resultados")
             
-            return [
-                {
-                    "id": hit.id,
-                    "score": hit.score,
-                    "payload": hit.payload
-                }
-                for hit in hits
-            ]
+            # Procesar resultados según el tipo de respuesta
+            results = []
+            for hit in hits:
+                # query_points() retorna ScoredPoint, search() retorna ScoredPoint también
+                # Ambos tienen id, score y payload
+                results.append({
+                    "id": hit.id if hasattr(hit, 'id') else str(hit.id),
+                    "score": hit.score if hasattr(hit, 'score') else 0.0,
+                    "payload": hit.payload if hasattr(hit, 'payload') else {}
+                })
+            
+            return results
         except Exception as e:
             logger.error(f"[QdrantRepository] Error en búsqueda: {e}", exc_info=True)
             return []
@@ -335,13 +375,36 @@ class QdrantRepository:
                 return {"error": "Cliente no disponible"}
             
             info = self.client.get_collection(self.collection_name)
+            
+            # points_count siempre está disponible
+            points_count = info.points_count
+            
+            # vectors_count puede no estar disponible en versiones recientes
+            # En versiones nuevas, se usa points_count que incluye los vectores
+            vectors_count = getattr(info, 'vectors_count', points_count)
+            
+            # Obtener tamaño del vector desde la configuración
+            vector_size = None
+            distance = None
+            if hasattr(info, 'config') and hasattr(info.config, 'params'):
+                if hasattr(info.config.params, 'vectors'):
+                    vector_config = info.config.params.vectors
+                    if isinstance(vector_config, dict):
+                        # Configuración como diccionario
+                        vector_size = vector_config.get('size')
+                        distance = str(vector_config.get('distance', 'COSINE'))
+                    else:
+                        # Configuración como objeto
+                        vector_size = getattr(vector_config, 'size', None)
+                        distance = str(getattr(vector_config, 'distance', 'COSINE'))
+            
             result = {
                 "name": self.collection_name,
-                "points_count": info.points_count,
-                "vectors_count": info.vectors_count,
+                "points_count": points_count,
+                "vectors_count": vectors_count,
                 "config": {
-                    "size": info.config.params.vectors.size,
-                    "distance": str(info.config.params.vectors.distance)
+                    "size": vector_size,
+                    "distance": distance or "COSINE"
                 }
             }
             logger.info(f"[QdrantRepository] Información de colección: {result['points_count']} puntos, {result['vectors_count']} vectores, tamaño={result['config']['size']}")
