@@ -1,10 +1,12 @@
+import os
 from pydantic_settings import BaseSettings
 from typing import Optional
 
 class Settings(BaseSettings):
     # OpenAI & Qdrant
-    openai_api_key: str
-    qdrant_url: str
+    # En desarrollo pueden estar vacías, en producción son requeridas
+    openai_api_key: str = ""
+    qdrant_url: str = ""
     qdrant_api_key: Optional[str] = None  # API key para Qdrant Cloud (opcional)
     embedding_model: str = "text-embedding-3-large"
     llm_model: str = "gpt-4o-mini"
@@ -19,14 +21,14 @@ class Settings(BaseSettings):
     database_url: Optional[str] = None
 
     # App info
-    app_name: str = "Enrutador"
+    app_name: str = "NetMind"
     app_version: str = "1.0.0"
     app_port: int = 8000
     app_env: str = "development"
     secret_key: str = ""
 
     # Procesamiento
-    upload_dir: str = "./uploads"
+    upload_dir: str = "./databases/uploads"
     chunk_size: int = 500
     chunk_overlap: int = 50
 
@@ -44,10 +46,39 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        env_file_encoding = "utf-8"
+        case_sensitive = False
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Detectar entorno automáticamente si no está configurado
+        if not self.app_env or self.app_env == "development":
+            # En Heroku, DYNO está presente
+            if os.getenv("DYNO"):
+                self.app_env = "production"
+            # En Docker, podemos verificar otras variables
+            elif os.getenv("APP_ENV"):
+                self.app_env = os.getenv("APP_ENV")
+        
+        # Ajustar configuración según el entorno
+        if self.app_env == "production":
+            self.debug = False
+            # En producción, validar que las variables críticas estén configuradas
+            if not self.openai_api_key:
+                raise ValueError("OPENAI_API_KEY es requerida en producción")
+            if not self.qdrant_url:
+                raise ValueError("QDRANT_URL es requerida en producción")
+        else:
+            # En desarrollo, activar debug si está configurado
+            self.debug = os.getenv("DEBUG", "false").lower() == "true"
 
     @property
     def sqlalchemy_url(self) -> str:
-        # Usar DATABASE_URL si está disponible, sino construir desde variables individuales
+        """
+        Construye la URL de conexión a PostgreSQL.
+        Prioriza DATABASE_URL sobre variables individuales.
+        """
+        # Usar DATABASE_URL si está disponible (común en producción)
         if self.database_url:
             # Convertir postgres:// a postgresql:// para compatibilidad con SQLAlchemy 1.4+
             url = self.database_url
@@ -55,17 +86,38 @@ class Settings(BaseSettings):
                 url = url.replace("postgres://", "postgresql://", 1)
             return url
         
-        # Validar que todas las variables individuales estén presentes
-        if not all([self.postgres_user, self.postgres_password, self.postgres_db, 
-                self.postgres_host, self.postgres_port]):
-            raise ValueError(
-                "Debe proporcionar DATABASE_URL o todas las variables individuales de PostgreSQL "
-                "(POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, POSTGRES_HOST, POSTGRES_PORT)"
-            )
+        # Construir desde variables individuales (común en desarrollo)
+        # En desarrollo, algunas variables pueden ser None, así que usamos valores por defecto
+        user = self.postgres_user or "pguser"
+        password = self.postgres_password or "pgpass"
+        db = self.postgres_db or "appdb"
+        host = self.postgres_host or "localhost"
+        port = self.postgres_port or "5440"
         
-        return (
-            f"postgresql://{self.postgres_user}:{self.postgres_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
-        )
+        return f"postgresql://{user}:{password}@{host}:{port}/{db}"
 
+    @property
+    def is_production(self) -> bool:
+        """Verifica si estamos en producción"""
+        return self.app_env == "production"
+    
+    @property
+    def is_development(self) -> bool:
+        """Verifica si estamos en desarrollo"""
+        return self.app_env == "development"
+    
+    def validate_required(self):
+        """
+        Valida que las variables requeridas estén configuradas.
+        Útil para verificación sin fallar en tiempo de importación.
+        """
+        errors = []
+        if not self.openai_api_key:
+            errors.append("OPENAI_API_KEY no está configurada")
+        if not self.qdrant_url:
+            errors.append("QDRANT_URL no está configurada")
+        return errors
+
+# Crear instancia de settings
+# La validación estricta se hace en __init__ solo para producción
 settings = Settings()

@@ -249,9 +249,9 @@ source venv\scripts\activate
 pip install -r requirements.txt
 ```
 
-4. **Iniciar servicios con Docker Compose**
+4. **Iniciar servicios con Docker Compose (Desarrollo)**
 ```bash
-docker-compose up -d
+docker-compose -f docker-compose.dev.yml up -d
 ```
 
 Esto iniciará:
@@ -299,15 +299,25 @@ CHUNK_OVERLAP=50
 RAGAS_ENABLED=true
 ```
 
-6. **Iniciar la aplicación backend**
+6. **Verificar configuración (Opcional)**
 ```bash
 cd backend
-uvicorn main:app --reload
+python scripts/check_env.py
+```
+
+Este script verifica que todas las variables de entorno estén configuradas correctamente.
+
+7. **Iniciar la aplicación backend**
+```bash
+cd backend
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 La API estará disponible en `http://localhost:8000/docs#/`
 
-7. **Instalar y ejecutar frontend (Opcional)**
+**Nota**: En desarrollo, la aplicación continuará funcionando aunque la base de datos no esté disponible al inicio (con advertencias). Esto permite desarrollo sin necesidad de tener todos los servicios corriendo.
+
+8. **Instalar y ejecutar frontend (Opcional)**
 ```bash
 cd frontend
 npm install
@@ -316,22 +326,47 @@ npm run dev
 
 El frontend estará disponible en `http://localhost:5173`
 
+### Configuración de Producción
+
+Para producción, consulta la [Guía de Configuración de Entornos](docs/Configuracion_Entornos.md) que incluye:
+- Configuración con Docker Compose para producción
+- Configuración para Heroku
+- Variables de entorno específicas para producción
+- Solución de problemas comunes
+
 ## ⚙️ Configuración
+
+### Manejo de Entornos
+
+El proyecto está configurado para funcionar tanto en **desarrollo** como en **producción**:
+
+- **Desarrollo**: La aplicación es tolerante a fallos de conexión a la base de datos al inicio
+- **Producción**: La aplicación requiere que todos los servicios estén disponibles
+
+Configura el entorno con la variable `APP_ENV`:
+- `APP_ENV=development` (por defecto)
+- `APP_ENV=production`
 
 ### Variables de Entorno Principales
 
-| Variable | Descripción | Valor por Defecto |
-|----------|-------------|-------------------|
-| `OPENAI_API_KEY` | Clave API de OpenAI | Requerido |
-| `QDRANT_URL` | URL de Qdrant | `http://localhost:6444` |
-| `LLM_MODEL` | Modelo LLM a usar | `gpt-4o-mini` |
-| `EMBEDDING_MODEL` | Modelo de embeddings | `text-embedding-3-large` |
-| `DATABASE_URL` | URL de conexión PostgreSQL | Requerido |
-| `REDIS_URL` | URL de Redis | `redis://localhost:6379/0` |
-| `CACHE_ENABLED` | Habilitar caché | `true` |
-| `CHUNK_SIZE` | Tamaño de chunks para documentos | `500` |
-| `CHUNK_OVERLAP` | Solapamiento entre chunks | `50` |
-| `RAGAS_ENABLED` | Habilitar evaluación Ragas | `true` |
+| Variable | Descripción | Valor por Defecto | Requerido |
+|----------|-------------|-------------------|-----------|
+| `OPENAI_API_KEY` | Clave API de OpenAI | - | ✅ Sí |
+| `QDRANT_URL` | URL de Qdrant | `http://localhost:6444` | ✅ Sí |
+| `LLM_MODEL` | Modelo LLM a usar | `gpt-4o-mini` | No |
+| `EMBEDDING_MODEL` | Modelo de embeddings | `text-embedding-3-large` | No |
+| `DATABASE_URL` | URL completa de PostgreSQL | - | Opcional* |
+| `POSTGRES_*` | Variables individuales de PostgreSQL | - | Opcional* |
+| `REDIS_URL` | URL de Redis | `redis://localhost:6379/0` | No |
+| `CACHE_ENABLED` | Habilitar caché | `true` | No |
+| `APP_ENV` | Entorno de la aplicación | `development` | No |
+| `CHUNK_SIZE` | Tamaño de chunks para documentos | `500` | No |
+| `CHUNK_OVERLAP` | Solapamiento entre chunks | `50` | No |
+| `RAGAS_ENABLED` | Habilitar evaluación Ragas | `true` | No |
+
+*Puedes usar `DATABASE_URL` o las variables individuales (`POSTGRES_USER`, `POSTGRES_PASSWORD`, etc.)
+
+Para más detalles sobre configuración, consulta [Configuración de Entornos](docs/Configuracion_Entornos.md).
 
 ### Configuración de Chunks
 

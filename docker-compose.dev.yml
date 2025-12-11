@@ -10,6 +10,13 @@ services:
       - pgdata:/var/lib/postgresql/data
     ports:
       - "5440:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pguser"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - netmind-dev-network
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -17,6 +24,8 @@ services:
       - "6444:6333"
     volumes:
       - qdrant_storage:/qdrant/storage
+    networks:
+      - netmind-dev-network
 
   redis:
     image: redis:7-alpine
@@ -25,8 +34,19 @@ services:
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - netmind-dev-network
 
 volumes:
   pgdata:
   qdrant_storage:
   redis_data:
+
+networks:
+  netmind-dev-network:
+    driver: bridge

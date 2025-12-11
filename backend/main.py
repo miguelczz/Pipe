@@ -19,6 +19,9 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S"
 )
 
+# Crear instancia del logger
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="NetMind API")
 
 # Configurar CORS para permitir comunicación con el frontend
@@ -64,8 +67,40 @@ app.add_middleware(
 # Inicializar base de datos al arrancar
 @app.on_event("startup")
 async def startup_event():
-    """Inicializa las tablas de la base de datos al arrancar la aplicación"""
-    init_db()
+    """
+    Inicializa las tablas de la base de datos al arrancar la aplicación.
+    Maneja errores de conexión de forma diferente según el entorno.
+    """
+    import os
+    from src.settings import settings
+    
+    logger.info(f"Iniciando aplicación en modo: {settings.app_env}")
+    
+    try:
+        # Intentar inicializar la base de datos
+        init_db(max_retries=5, retry_delay=2)
+        logger.info("✓ Base de datos inicializada correctamente")
+    except Exception as e:
+        # En producción, es crítico que la base de datos esté disponible
+        if settings.is_production:
+            logger.error(f"ERROR CRÍTICO: No se pudo inicializar la base de datos: {e}")
+            logger.error("La aplicación no puede continuar sin la base de datos en producción.")
+            raise
+        else:
+            # En desarrollo, permitir que la aplicación continúe
+            logger.warning(f"ADVERTENCIA: No se pudo inicializar la base de datos: {e}")
+            logger.warning("La aplicación continuará, pero algunas funcionalidades pueden no estar disponibles.")
+            logger.info("Asegúrate de que PostgreSQL esté ejecutándose y las variables de entorno estén configuradas.")
+    
+    # Verificar otras dependencias
+    try:
+        from src.settings import settings
+        if not settings.openai_api_key:
+            logger.warning("ADVERTENCIA: OPENAI_API_KEY no está configurada")
+        if not settings.qdrant_url:
+            logger.warning("ADVERTENCIA: QDRANT_URL no está configurada")
+    except Exception as e:
+        logger.warning(f"Error al verificar configuración: {e}")
 
 # Incluir routers de la API (deben ir antes del catch-all del frontend)
 app.include_router(files.router)

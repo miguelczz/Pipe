@@ -44,20 +44,23 @@ class RedisSessionManager:
         try:
             # Intentar conectar a Redis
             logger.info(f"[RedisSessionManager] Intentando conectar a Redis: {self._mask_redis_url(redis_connection_url)}")
-            # Para rediss://, Redis maneja SSL automáticamente
-            # No pasar parámetro ssl explícitamente
+           
             self.redis_client = redis.from_url(
                 redis_connection_url,
                 decode_responses=True,
                 socket_connect_timeout=5,
-                socket_timeout=5
+                socket_timeout=5,
+                
+                ssl=True, 
+                ssl_cert_reqs=ssl.CERT_NONE 
             )
+            
             # Probar conexión
             self.redis_client.ping()
             self.redis_available = True
-            logger.info(f"[RedisSessionManager] ✅ Conectado exitosamente a Redis: {self._mask_redis_url(redis_connection_url)}")
+            logger.info(f"[RedisSessionManager] Conectado exitosamente a Redis: {self._mask_redis_url(redis_connection_url)}")
         except Exception as e:
-            logger.warning(f"[RedisSessionManager] ⚠️ No se pudo conectar a Redis: {e}. Usando fallback en memoria.")
+            logger.warning(f"[RedisSessionManager] No se pudo conectar a Redis: {e}. Usando fallback en memoria.")
             self.redis_available = False
             self.redis_client = None
             # Fallback: usar diccionario en memoria
