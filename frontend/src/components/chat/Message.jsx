@@ -149,7 +149,7 @@ export function Message({ message }) {
   return (
     <div
       className={cn(
-        'flex gap-2 sm:gap-3 px-2 sm:px-4 py-2 animate-fade-in group min-w-0',
+        'flex gap-2 sm:gap-3 px-2 sm:px-4 py-2 animate-fade-in group min-w-0 w-full max-w-full overflow-hidden',
         isUser ? 'justify-end' : 'justify-start'
       )}
     >
@@ -161,14 +161,14 @@ export function Message({ message }) {
 
       <div
         className={cn(
-          'flex flex-col gap-2 max-w-[85%] sm:max-w-[80%] md:max-w-[75%] min-w-0 w-full',
-          isUser ? 'items-end' : 'items-start'
+          'flex flex-col gap-2 min-w-0 flex-shrink-0',
+          isUser ? 'items-end max-w-[85%] sm:max-w-[80%] md:max-w-[75%]' : 'items-start max-w-[85%] sm:max-w-[80%] md:max-w-[75%]'
         )}
       >
         <div
           className={cn(
             'rounded-2xl px-4 py-3 sm:px-5 sm:py-4 break-words transition-all duration-300',
-            'leading-relaxed w-full overflow-hidden min-w-0',
+            'leading-relaxed overflow-hidden min-w-0 max-w-full',
             'word-break break-word overflow-wrap-anywhere',
             isUser
               ? 'bg-dark-accent-primary text-white shadow-gemini-sm'

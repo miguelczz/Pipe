@@ -53,7 +53,7 @@ export function ChatPage() {
     <>
       <div className="flex flex-col h-full max-w-4xl mx-auto w-full relative overflow-x-hidden min-w-0">
         {/* Notificación de error de conexión debajo del header */}
-        <div className="px-3 sm:px-4 pt-2 sm:pt-3 pb-2 sm:pb-3">
+        <div className="px-3 sm:px-4 pt-2 sm:pt-3 pb-2 sm:pb-3 w-full max-w-full min-w-0 overflow-hidden">
           <ConnectionStatus 
             isConnected={isConnected && !error} 
             message={error || 'No se pudo conectar con el servidor'}
@@ -61,7 +61,7 @@ export function ChatPage() {
         </div>
 
         {/* Chat Container con padding bottom para el input fijo */}
-        <div className="flex-1 overflow-hidden min-h-0 overflow-x-hidden" style={{ paddingBottom: '80px' }}>
+        <div className="flex-1 overflow-hidden min-h-0 overflow-x-hidden w-full max-w-full" style={{ paddingBottom: '80px' }}>
           <ChatContainer messages={messages} isLoading={isLoading} />
         </div>
       </div>
