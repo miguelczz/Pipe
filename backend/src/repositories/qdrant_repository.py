@@ -215,34 +215,52 @@ class QdrantRepository:
         Returns:
             Lista de resultados con score y payload
         """
-        filter_obj = None
-        if filter_conditions:
-            # Construir filtro Qdrant desde condiciones
-            must_conditions = []
-            for key, value in filter_conditions.items():
-                must_conditions.append(
-                    qmodels.FieldCondition(
-                        key=key,
-                        match=qmodels.MatchValue(value=value)
+        try:
+            # Verificar que el cliente esté disponible
+            if not self.client:
+                logger.error("[QdrantRepository] Cliente Qdrant no está disponible")
+                return []
+            
+            # Verificar que el método search existe
+            if not hasattr(self.client, 'search'):
+                logger.error(f"[QdrantRepository] Cliente Qdrant no tiene método 'search'. Métodos disponibles: {dir(self.client)}")
+                return []
+            
+            filter_obj = None
+            if filter_conditions:
+                # Construir filtro Qdrant desde condiciones
+                must_conditions = []
+                for key, value in filter_conditions.items():
+                    must_conditions.append(
+                        qmodels.FieldCondition(
+                            key=key,
+                            match=qmodels.MatchValue(value=value)
+                        )
                     )
-                )
-            filter_obj = qmodels.Filter(must=must_conditions)
-        
-        hits = self.client.search(
-            collection_name=self.collection_name,
-            query_vector=query_vector,
-            limit=top_k,
-            query_filter=filter_obj
-        )
-        
-        return [
-            {
-                "id": hit.id,
-                "score": hit.score,
-                "payload": hit.payload
-            }
-            for hit in hits
-        ]
+                filter_obj = qmodels.Filter(must=must_conditions)
+            
+            logger.debug(f"[QdrantRepository] Buscando en colección '{self.collection_name}' con top_k={top_k}, vector_size={len(query_vector)}")
+            
+            hits = self.client.search(
+                collection_name=self.collection_name,
+                query_vector=query_vector,
+                limit=top_k,
+                query_filter=filter_obj
+            )
+            
+            logger.debug(f"[QdrantRepository] Búsqueda retornó {len(hits)} resultados")
+            
+            return [
+                {
+                    "id": hit.id,
+                    "score": hit.score,
+                    "payload": hit.payload
+                }
+                for hit in hits
+            ]
+        except Exception as e:
+            logger.error(f"[QdrantRepository] Error en búsqueda: {e}", exc_info=True)
+            return []
     
     def delete_by_document_id(self, document_id: str) -> bool:
         """
@@ -312,8 +330,12 @@ class QdrantRepository:
     def get_collection_info(self) -> Dict:
         """Obtiene información sobre la colección"""
         try:
+            if not self.client:
+                logger.error("[QdrantRepository] Cliente Qdrant no está disponible")
+                return {"error": "Cliente no disponible"}
+            
             info = self.client.get_collection(self.collection_name)
-            return {
+            result = {
                 "name": self.collection_name,
                 "points_count": info.points_count,
                 "vectors_count": info.vectors_count,
@@ -322,6 +344,9 @@ class QdrantRepository:
                     "distance": str(info.config.params.vectors.distance)
                 }
             }
+            logger.info(f"[QdrantRepository] Información de colección: {result['points_count']} puntos, {result['vectors_count']} vectores, tamaño={result['config']['size']}")
+            return result
         except Exception as e:
+            logger.error(f"[QdrantRepository] Error al obtener información de colección: {e}", exc_info=True)
             return {"error": str(e)}
 

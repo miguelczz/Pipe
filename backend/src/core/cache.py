@@ -68,21 +68,22 @@ def get_redis_client() -> Optional[Any]:
             logger.info(f"Intentando conectar a Redis para cache: {_mask_redis_url(redis_connection_url)}")
             
             # Configurar SSL si es rediss:// (Redis con SSL)
-            ssl_context = None
+            # Para Heroku Redis y otros servicios con certificados autofirmados
+            import ssl
+            ssl_params = {}
             if redis_connection_url.startswith('rediss://'):
-                # Crear contexto SSL que no verifica certificados
-                # Necesario para servicios como Heroku Redis que usan certificados autofirmados
-                import ssl
-                ssl_context = ssl.create_default_context()
-                ssl_context.check_hostname = False
-                ssl_context.verify_mode = ssl.CERT_NONE
+                # Deshabilitar verificación de certificados para certificados autofirmados
+                ssl_params = {
+                    'ssl_cert_reqs': ssl.CERT_NONE,
+                    'ssl_check_hostname': False
+                }
             
             _redis_client = redis.from_url(
                 redis_connection_url,
                 decode_responses=True,
                 socket_connect_timeout=5,
                 socket_timeout=5,
-                ssl=ssl_context if ssl_context else None
+                **ssl_params
             )
             # Probar conexión
             _redis_client.ping()
