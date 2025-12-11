@@ -28,11 +28,39 @@
     -moz-osx-font-smoothing: grayscale;
     /* Prevenir selección accidental en móvil */
     -webkit-tap-highlight-color: transparent;
+    /* Prevenir zoom en iOS */
+    touch-action: manipulation;
   }
 
   /* Prevenir scroll horizontal en todos los elementos */
   * {
     max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Prevenir zoom automático en iOS al enfocar inputs */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
+  @media (min-width: 640px) {
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="search"],
+    input[type="tel"],
+    input[type="url"],
+    textarea,
+    select {
+      font-size: 15px !important;
+    }
   }
 
   /* Asegurar que imágenes y media no causen overflow */
@@ -132,6 +160,33 @@
 
   .prose-invert a:hover {
     @apply text-dark-accent-hover;
+  }
+
+  /* Estilos para listas ordenadas sin interlineado */
+  .prose ol {
+    list-style: none;
+    counter-reset: list-counter;
+    padding-left: 0;
+  }
+
+  .prose ol li {
+    counter-increment: list-counter;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding-left: 0;
+  }
+
+  .prose ol li::before {
+    content: counter(list-counter) ".";
+    font-weight: 500;
+    flex-shrink: 0;
+    min-width: 1.5em;
+  }
+
+  .prose ol li > * {
+    flex: 1;
+    min-width: 0;
   }
 }
 

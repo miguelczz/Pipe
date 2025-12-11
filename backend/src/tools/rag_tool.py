@@ -156,7 +156,7 @@ Genera una respuesta clara, natural y adaptada a la complejidad de la pregunta u
         # Usar el decorador de cache solo cuando no hay contexto
         return await self._execute_query_cached(query_text, top_k)
     
-    @cache_result("rag", ttl=3600)  # Cache por 1 hora
+    @cache_result("rag", ttl=7200)  # Cache por 2 horas (optimizado para mejor rendimiento)
     async def _execute_query_cached(self, query_text: str, top_k: int = 8):
         """
         Método interno cacheado que ejecuta la consulta RAG.
@@ -568,6 +568,13 @@ Responde SOLO con una palabra: "relevante" o "no_relevante".
         
         # Concatenar los textos más relevantes
         context = "\n\n".join([h["payload"].get("text", "") for h in relevant_hits])
+        
+        # OPTIMIZACIÓN: Limitar tamaño del contexto para evitar problemas de memoria
+        MAX_CONTEXT_LENGTH = 4000  # Máximo 4000 caracteres de contexto (balance entre funcionalidad y memoria)
+        if len(context) > MAX_CONTEXT_LENGTH:
+            # Truncar contexto manteniendo los primeros chunks más relevantes
+            context = context[:MAX_CONTEXT_LENGTH]
+            logger.debug(f"[RAG] Contexto truncado a {MAX_CONTEXT_LENGTH} caracteres para optimizar memoria")
         
         # Logging detallado para debugging
         if relevant_hits:

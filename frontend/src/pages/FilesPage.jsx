@@ -77,8 +77,8 @@ export function FilesPage() {
   }
 
   return (
-    <div className="container-app py-4 sm:py-8">
-      <div className="max-w-4xl mx-auto">
+    <div className="container-app py-4 sm:py-8 overflow-x-hidden min-w-0">
+      <div className="max-w-4xl mx-auto w-full min-w-0">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 sm:mb-8 gap-4 sm:gap-6">
           <div className="flex-1 min-w-0">
             <h1 className="text-xl sm:text-2xl font-medium text-dark-text-primary mb-1 sm:mb-2 tracking-tight">
@@ -143,27 +143,27 @@ export function FilesPage() {
             </p>
           </div>
         ) : (
-          <div className="space-y-2 sm:space-y-3">
+          <div className="space-y-2 sm:space-y-3 w-full min-w-0">
             {files.map((file) => (
               <div
                 key={file.document_id}
-                className="card-gemini p-3 sm:p-4 flex items-center justify-between group gap-3 sm:gap-4"
+                className="card-gemini p-3 sm:p-4 flex items-center justify-between group gap-3 sm:gap-4 w-full min-w-0 overflow-hidden"
               >
-                <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+                <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0 overflow-hidden">
                   <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-dark-accent-primary/15 flex items-center justify-center border border-dark-accent-primary/20">
                     <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-dark-accent-primary" />
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 overflow-hidden">
                     <h3 className="font-medium text-dark-text-primary truncate text-sm sm:text-[15px]">
                       {file.filename}
                     </h3>
                     <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 mt-1 sm:mt-1.5 text-xs sm:text-sm text-dark-text-muted">
-                      <span className="flex items-center gap-1.5">
-                        <Calendar className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                        {formatDate(file.uploaded_at)}
+                      <span className="flex items-center gap-1.5 truncate">
+                        <Calendar className="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0" />
+                        <span className="truncate">{formatDate(file.uploaded_at)}</span>
                       </span>
                       {file.chunk_count && (
-                        <span className="hidden sm:inline">{file.chunk_count} fragmentos</span>
+                        <span className="hidden sm:inline flex-shrink-0">{file.chunk_count} fragmentos</span>
                       )}
                     </div>
                   </div>

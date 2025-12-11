@@ -161,14 +161,14 @@ export function Message({ message }) {
 
       <div
         className={cn(
-          'flex flex-col gap-2 max-w-[85%] sm:max-w-[80%] md:max-w-[75%] min-w-0',
+          'flex flex-col gap-2 max-w-[85%] sm:max-w-[80%] md:max-w-[75%] min-w-0 w-full',
           isUser ? 'items-end' : 'items-start'
         )}
       >
         <div
           className={cn(
             'rounded-2xl px-4 py-3 sm:px-5 sm:py-4 break-words transition-all duration-300',
-            'leading-relaxed w-full overflow-hidden',
+            'leading-relaxed w-full overflow-hidden min-w-0',
             'word-break break-word overflow-wrap-anywhere',
             isUser
               ? 'bg-dark-accent-primary text-white shadow-gemini-sm'

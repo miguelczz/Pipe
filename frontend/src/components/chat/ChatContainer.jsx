@@ -59,7 +59,7 @@ export function ChatContainer({ messages, isLoading }) {
           </div>
         </div>
       ) : (
-        <div className="py-4 sm:py-6 overflow-x-hidden">
+        <div className="py-4 sm:py-6 overflow-x-hidden w-full min-w-0">
           {messages.map((message) => (
             <Message key={message.id} message={message} />
           ))}

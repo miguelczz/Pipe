@@ -28,7 +28,7 @@ export function MarkdownRenderer({ content, className }) {
           <ul className="list-disc list-inside mb-2 space-y-1 text-[15px] text-dark-text-primary" {...props} />
         ),
         ol: ({ ...props }) => (
-          <ol className="list-decimal list-inside mb-2 space-y-1 text-[15px] text-dark-text-primary" {...props} />
+          <ol className="mb-2 space-y-1 text-[15px] text-dark-text-primary" {...props} />
         ),
         li: ({ ...props }) => (
           <li className="text-[15px] text-dark-text-primary leading-relaxed" {...props} />

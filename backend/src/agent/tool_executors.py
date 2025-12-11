@@ -31,29 +31,54 @@ llm = LLMClient()
 def get_conversation_context(messages: List[AnyMessage], max_messages: int = 10) -> str:
     """
     Extrae el contexto de conversación de los mensajes.
+    OPTIMIZACIÓN: Limita el tamaño total del contexto para evitar problemas de memoria.
     
     Args:
         messages: Lista de mensajes
         max_messages: Número máximo de mensajes a incluir
     
     Returns:
-        Contexto formateado como string
+        Contexto formateado como string (limitado a 5000 caracteres para balance entre funcionalidad y memoria)
     """
     if not messages:
         return ""
     
     conversation_context = []
-    for msg in messages[-max_messages:]:
+    total_length = 0
+    MAX_CONTEXT_LENGTH = 5000  # Límite aumentado para mantener funcionalidad pero evitar problemas de memoria
+    
+    # Iterar desde los mensajes más recientes hacia atrás
+    for msg in reversed(messages[-max_messages:]):
         role = getattr(msg, "role", None) or getattr(msg, "type", "user")
         content = getattr(msg, "content", str(msg))
+        
         if role in ["user", "human", "assistant", "agent"]:
             if role in ["human", "user"]:
                 role = "user"
             elif role in ["assistant", "agent"]:
                 role = "assistant"
-            conversation_context.append(f"{role}: {content}")
+            
+            # Truncar contenido individual si es muy largo (mantener hasta 1000 chars por mensaje)
+            if len(content) > 1000:
+                content = content[:1000] + "..."
+            
+            msg_text = f"{role}: {content}"
+            
+            # Verificar si agregar este mensaje excedería el límite
+            if total_length + len(msg_text) + 1 > MAX_CONTEXT_LENGTH:  # +1 por el \n
+                break
+            
+            conversation_context.insert(0, msg_text)
+            total_length += len(msg_text) + 1  # +1 por el \n
     
-    return "\n".join(conversation_context)
+    result = "\n".join(conversation_context)
+    
+    # Si aún es muy largo, truncar (caso extremo)
+    if len(result) > MAX_CONTEXT_LENGTH:
+        result = result[:MAX_CONTEXT_LENGTH] + "..."
+        logger.debug(f"[ConversationContext] Contexto truncado a {MAX_CONTEXT_LENGTH} caracteres")
+    
+    return result
 
 
 def execute_ip_tool(step: str, prompt: str, messages: List[AnyMessage]) -> Dict[str, Any]:
@@ -500,12 +525,14 @@ Responde SOLO con una palabra: "seguimiento" o "nueva".
                               "documento" not in llm_response.lower())
                 
                 # Validación adicional: si la pregunta contiene palabras que indican búsqueda de información/conceptos, forzar RAG
-                info_seeking_keywords = ["explica", "qué es", "cuales son", "dime sobre", "podrías explicar", "hablame de", "información sobre"]
+                info_seeking_keywords = ["explica", "qué es", "cuales son", "dime sobre", "podrías explicar", "hablame de", "información sobre", "y las", "y los", "y el", "y la"]
                 if any(keyword in prompt.lower() for keyword in info_seeking_keywords):
                     # Si es una pregunta de información/concepto, forzar RAG incluso si el LLM dice "seguimiento"
-                    if not any(ref_word in prompt.lower() for ref_word in ["que hiciste", "que realizaste", "anterior", "previo", "antes", "resultado"]):
+                    # Solo permitir seguimiento si hay referencia EXPLÍCITA a acciones previas
+                    ref_words = ["que hiciste", "que realizaste", "anterior", "previo", "antes", "resultado", "el ping", "la consulta", "lo que", "que ejecutaste"]
+                    if not any(ref_word in prompt.lower() for ref_word in ref_words):
                         is_followup = False
-                        logger.info(f"[RAG] Pregunta contiene palabras de búsqueda de información - forzando RAG")
+                        logger.info(f"[RAG] Pregunta contiene palabras de búsqueda de información sin referencia a acciones - forzando RAG")
                 
                 logger.info(f"[RAG] Detección de seguimiento - LLM respuesta: '{llm_response}', es seguimiento: {is_followup}")
                 

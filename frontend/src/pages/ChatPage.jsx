@@ -51,7 +51,7 @@ export function ChatPage() {
 
   return (
     <>
-      <div className="flex flex-col h-full max-w-4xl mx-auto w-full relative overflow-x-hidden">
+      <div className="flex flex-col h-full max-w-4xl mx-auto w-full relative overflow-x-hidden min-w-0">
         {/* Notificación de error de conexión debajo del header */}
         <div className="px-3 sm:px-4 pt-2 sm:pt-3 pb-2 sm:pb-3">
           <ConnectionStatus 
@@ -67,8 +67,8 @@ export function ChatPage() {
       </div>
 
       {/* Chat Input fijo en la parte inferior de la ventana */}
-      <div className="fixed bottom-0 left-0 right-0 bg-dark-bg-primary/95 backdrop-blur-sm pt-3 sm:pt-4 pb-3 sm:pb-4 z-50 shadow-gemini-lg overflow-x-hidden">
-        <div className="max-w-4xl mx-auto px-3 sm:px-4">
+      <div className="fixed bottom-0 left-0 right-0 bg-dark-bg-primary/95 backdrop-blur-sm pt-3 sm:pt-4 pb-3 sm:pb-4 z-50 shadow-gemini-lg overflow-x-hidden w-full min-w-0">
+        <div className="max-w-4xl mx-auto px-3 sm:px-4 w-full min-w-0">
           <ChatInput
             onSend={sendMessage}
             isLoading={isLoading}

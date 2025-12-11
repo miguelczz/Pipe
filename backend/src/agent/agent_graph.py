@@ -658,6 +658,10 @@ Responde SOLO con una palabra: "fuera_tema" o "dentro_tema".
             "LLM detectó que la respuesta indica que está fuera de tema, pasando sin modificar",
             "info"
         )
+        # OPTIMIZACIÓN: Limpiar estado para evitar acumulación de memoria
+        if state.messages and len(state.messages) > 30:
+            state.cleanup_old_messages(max_messages=30)
+        
         return {
             "supervised_output": final_output,
             "quality_score": 0.8,  # Buena calidad porque manejó correctamente el caso fuera de tema
@@ -870,6 +874,13 @@ Respuesta ajustada (adaptada a la complejidad, natural y fiel a la información)
                     "success"
                 )
             
+            # OPTIMIZACIÓN: Limpiar estado para evitar acumulación de memoria (solo si hay mucho contenido)
+            if state.messages and len(state.messages) > 30:
+                state.cleanup_old_messages(max_messages=30)
+            
+            if state.results and len(state.results) > 10:
+                state.cleanup_large_results(max_results=10)
+            
             return {
                 "supervised_output": supervised_output,
                 "quality_score": quality_score,
@@ -884,6 +895,13 @@ Respuesta ajustada (adaptada a la complejidad, natural y fiel a la información)
             f"Error al validar respuesta: {str(e)}, usando respuesta original",
             "error"
         )
+        # OPTIMIZACIÓN: Limpiar estado para evitar acumulación de memoria (solo si hay mucho contenido)
+        if state.messages and len(state.messages) > 30:
+            state.cleanup_old_messages(max_messages=30)
+        
+        if state.results and len(state.results) > 10:
+            state.cleanup_large_results(max_results=10)
+        
         # Si falla la validación, usar la respuesta original
         return {
             "supervised_output": final_output,

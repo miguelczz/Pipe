@@ -22,8 +22,8 @@ export function Layout({ children }) {
   return (
     <div className="min-h-screen bg-dark-bg-primary flex flex-col overflow-x-hidden w-full">
       {/* Header moderno inspirado en los mejores diseños de IA - Fijo en móvil */}
-      <header className="border-b border-dark-border-primary/30 bg-dark-bg-primary/95 backdrop-blur-xl fixed top-0 left-0 right-0 z-50 shadow-gemini-sm overflow-x-hidden">
-        <div className="container-app">
+      <header className="border-b border-dark-border-primary/30 bg-dark-bg-primary/95 backdrop-blur-xl fixed top-0 left-0 right-0 z-50 shadow-gemini-sm overflow-x-hidden w-full min-w-0">
+        <div className="container-app w-full min-w-0">
           <div className="flex items-center justify-between h-14 sm:h-16">
             <div className="flex items-center gap-2 sm:gap-4">
               {/* Logo de telecomunicaciones */}
@@ -76,7 +76,7 @@ export function Layout({ children }) {
       </header>
 
       {/* Main Content con padding top para compensar el header fijo */}
-      <main className="flex-1 flex flex-col overflow-hidden min-h-0 overflow-x-hidden w-full pt-14 sm:pt-16">
+      <main className="flex-1 flex flex-col overflow-hidden min-h-0 overflow-x-hidden w-full min-w-0 pt-14 sm:pt-16">
         {children}
       </main>
 

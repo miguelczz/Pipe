@@ -107,7 +107,42 @@ class GraphState(BaseModel):
         }
         current_chain = self.thought_chain or []
         current_chain.append(thought)
+        
+        # OPTIMIZACIÓN: Limitar el tamaño de thought_chain para evitar problemas de memoria
+        MAX_THOUGHT_CHAIN = 50
+        if len(current_chain) > MAX_THOUGHT_CHAIN:
+            current_chain = current_chain[-MAX_THOUGHT_CHAIN:]
+            logger.debug(f"[GraphState] Limpiada thought_chain, manteniendo {MAX_THOUGHT_CHAIN} más recientes")
+        
         return current_chain
+    
+    def cleanup_old_messages(self, max_messages: int = 30):
+        """
+        Limpia mensajes antiguos para evitar acumulación excesiva de memoria.
+        Mantiene solo los últimos max_messages mensajes.
+        
+        IMPORTANTE: Solo limpia si hay más del doble del límite para evitar limpiezas frecuentes.
+        
+        Args:
+            max_messages: Número máximo de mensajes a mantener
+        """
+        if len(self.messages) > max_messages * 2:  # Solo limpiar si hay más del doble
+            # Mantener solo los últimos max_messages
+            self.messages = self.messages[-max_messages:]
+            logger.debug(f"[GraphState] Limpiados mensajes antiguos, manteniendo {max_messages} más recientes")
+    
+    def cleanup_large_results(self, max_results: int = 10):
+        """
+        Limpia resultados antiguos para evitar acumulación excesiva de memoria.
+        Solo limpia si hay más del doble del límite.
+        
+        Args:
+            max_results: Número máximo de resultados a mantener
+        """
+        if self.results and len(self.results) > max_results * 2:  # Solo limpiar si hay más del doble
+            # Mantener solo los últimos max_results
+            self.results = self.results[-max_results:]
+            logger.debug(f"[GraphState] Limpiados resultados antiguos, manteniendo {max_results} más recientes")
 
 
 class StateObserver:

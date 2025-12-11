@@ -41,8 +41,8 @@ export function ChatInput({ onSend, isLoading = false, disabled = false }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="w-full min-w-0">
-      <div className="flex gap-2 sm:gap-3 items-end px-2 pb-2 min-w-0">
+    <form onSubmit={handleSubmit} className="w-full min-w-0 max-w-full">
+      <div className="flex gap-2 sm:gap-3 items-end px-2 pb-2 min-w-0 max-w-full">
         <div className="flex-1 relative min-w-0">
           <div className="bg-dark-surface-primary border border-dark-border-primary/50 rounded-2xl shadow-gemini-sm focus-within:border-dark-border-focus focus-within:shadow-gemini transition-all duration-200">
             <Textarea
@@ -53,7 +53,7 @@ export function ChatInput({ onSend, isLoading = false, disabled = false }) {
               placeholder="Escribe tu mensaje..."
               disabled={false}
               rows={1}
-              className="min-h-[48px] sm:min-h-[52px] max-h-[200px] py-2.5 sm:py-3 px-3 sm:px-4 border-0 bg-transparent resize-none focus:ring-0 focus:outline-none text-[15px] leading-relaxed break-words overflow-wrap-anywhere"
+              className="min-h-[48px] sm:min-h-[52px] max-h-[200px] py-2.5 sm:py-3 px-3 sm:px-4 border-0 bg-transparent resize-none focus:ring-0 focus:outline-none text-base sm:text-[15px] leading-relaxed break-words overflow-wrap-anywhere"
               style={{ 
                 userSelect: 'text',
                 WebkitUserSelect: 'text',

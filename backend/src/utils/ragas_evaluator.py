@@ -117,6 +117,13 @@ class RAGASEvaluator:
         
         self.evaluation_data.append(eval_data)
         logger.info(f"[RAGAS] 💾 Evaluación capturada: {question[:50]}... (contextos: {len(contexts or [])})")
+        
+        # OPTIMIZACIÓN: Limitar el tamaño de evaluation_data para evitar problemas de memoria
+        MAX_EVALUATION_DATA = 50  # Mantener solo las últimas 50 evaluaciones
+        if len(self.evaluation_data) > MAX_EVALUATION_DATA:
+            # Eliminar las evaluaciones más antiguas
+            self.evaluation_data = self.evaluation_data[-MAX_EVALUATION_DATA:]
+            logger.debug(f"[RAGAS] Limpiadas evaluaciones antiguas, manteniendo {MAX_EVALUATION_DATA} más recientes")
     
     def evaluate_batch(
         self,
