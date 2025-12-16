@@ -668,6 +668,67 @@ Responde SOLO con una palabra: "fuera_tema" o "dentro_tema".
             "thought_chain": thought_chain
         }
     
+    # ---------------------------------------------------------
+    # FALLBACK: INFORMACIÓN NO ENCONTRADA EN DOCUMENTOS
+    # ---------------------------------------------------------
+    # Si el RAG no encontró información, intentar responder con conocimiento general
+    # para cumplir con la regla "debe dar una respuesta si no la tiene"
+    
+    rag_missed_info = False
+    
+    # 1. Verificar resultados de herramientas
+    if state.results:
+        for res in state.results:
+            if isinstance(res, dict) and res.get("source") in ["no_hits", "empty_context", "no_documents", "qdrant_connection_error"]:
+                rag_missed_info = True
+                break
+    
+    # 2. Verificar texto de la respuesta actual
+    if not rag_missed_info:
+        missing_info_keywords = [
+            "no encontré información", "no tengo información", 
+            "no se menciona en los documentos", "no aparece en el contexto",
+            "no dispongo de información", "no está en los documentos"
+        ]
+        if any(keyword in final_output.lower() for keyword in missing_info_keywords):
+            rag_missed_info = True
+
+    if rag_missed_info:
+        logger.info("[Supervisor] Detectada falta de información en documentos - Generando respuesta alternativa con conocimiento general")
+        
+        fallback_prompt = f"""
+El sistema RAG no encontró información en los documentos para la pregunta del usuario, pero el usuario requiere una respuesta.
+Genera una respuesta basada en tu CONOCIMIENTO GENERAL como experto en redes y telecomunicaciones.
+
+Pregunta del usuario: "{user_prompt}"
+
+INSTRUCCIONES CRÍTICAS:
+1. Comienza la respuesta EXACTAMENTE con esta frase: "⚠️ **Nota:** No encontré esta información específica en tus documentos, pero basado en conocimiento general de redes:"
+2. Proporciona una respuesta técnica, precisa, detallada y útil sobre el tema.
+3. Mantén un tono profesional y educativo.
+4. Si la pregunta solicita una lista (ej: protocolos, capas), enuméralos claramente.
+5. NO menciones que "no puedes responder", simplemente da la respuesta técnica con el disclaimer inicial.
+
+Genera la respuesta con el disclaimer y la información técnica completa:
+"""
+        try:
+            fallback_output = llm.generate(fallback_prompt)
+            thought_chain = add_thought(
+                thought_chain,
+                "Supervisor",
+                "Fallback: Conocimiento General",
+                "Información no encontrada en docs → Usando conocimiento general",
+                "warning"
+            )
+            return {
+                "supervised_output": fallback_output.strip(),
+                "quality_score": 0.9, # Asumimos buena calidad del fallback
+                "thought_chain": thought_chain
+            }
+        except Exception as e:
+            logger.error(f"[Supervisor] Error en fallback de conocimiento general: {e}")
+            # Si falla, continuar con flujo normal (probablemente mejorará la respuesta "no se" original)
+    
     # Validar calidad de la respuesta usando LLM
     quality_prompt = f"""
 Evalúa la siguiente respuesta generada para el usuario y determina:

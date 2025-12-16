@@ -267,62 +267,62 @@ class DNSTool:
         
         # Comparar cada tipo de registro
         all_record_types = ["A", "AAAA", "MX", "TXT", "NS", "CNAME"]
-        comparison_parts = [f"Comparación de registros DNS entre {domain1} y {domain2}:\n"]
+        comparison_parts = [f"### 🌐 Comparación DNS: {domain1} vs {domain2}\\n"]
         
         for record_type in all_record_types:
             records_d1 = records1.get("records", {}).get(record_type, [])
             records_d2 = records2.get("records", {}).get(record_type, [])
             
             if records_d1 or records_d2:
-                comparison_parts.append(f"\n{record_type}:")
+                comparison_parts.append(f"#### Registro **{record_type}**")
                 
                 # Comparar cantidad
                 count1 = len(records_d1)
                 count2 = len(records_d2)
-                comparison_parts.append(f"  • {domain1}: {count1} registro(s)")
-                comparison_parts.append(f"  • {domain2}: {count2} registro(s)")
                 
                 # Comparar valores según tipo
+                match_status = "❌ Diferentes"
+                details = []
+
                 if record_type == "A" or record_type == "AAAA":
-                    # Comparar IPs
-                    if records_d1 and records_d2:
-                        comparison_parts.append(f"  • IPs {domain1}: {', '.join(records_d1)}")
-                        comparison_parts.append(f"  • IPs {domain2}: {', '.join(records_d2)}")
-                        if set(records_d1) == set(records_d2):
-                            comparison_parts.append(f"  • Ambos dominios tienen las mismas IPs {record_type}")
-                        else:
-                            comparison_parts.append(f"  • Los dominios tienen IPs {record_type} diferentes")
+                    if set(records_d1) == set(records_d2) and count1 > 0:
+                        match_status = "✅ Iguales"
+                    details.append(f"- **{domain1}:** `{', '.join(records_d1) if records_d1 else 'Sin registros'}`")
+                    details.append(f"- **{domain2}:** `{', '.join(records_d2) if records_d2 else 'Sin registros'}`")
                 
                 elif record_type == "MX":
                     # Comparar servidores de correo
                     mx1 = [r.get('exchange', '') if isinstance(r, dict) else str(r) for r in records_d1]
                     mx2 = [r.get('exchange', '') if isinstance(r, dict) else str(r) for r in records_d2]
-                    comparison_parts.append(f"  • Servidores MX {domain1}: {', '.join(mx1)}")
-                    comparison_parts.append(f"  • Servidores MX {domain2}: {', '.join(mx2)}")
-                    if set(mx1) == set(mx2):
-                        comparison_parts.append(f"  • Ambos dominios usan los mismos servidores de correo")
-                    else:
-                        comparison_parts.append(f"  • Los dominios usan servidores de correo diferentes")
+                    if set(mx1) == set(mx2) and count1 > 0:
+                        match_status = "✅ Iguales"
+                    
+                    details.append(f"- **{domain1}:** `{', '.join(mx1) if mx1 else 'Sin registros'}`")
+                    details.append(f"- **{domain2}:** `{', '.join(mx2) if mx2 else 'Sin registros'}`")
                 
                 elif record_type == "NS":
                     # Comparar nameservers
-                    comparison_parts.append(f"  • Nameservers {domain1}: {', '.join(records_d1)}")
-                    comparison_parts.append(f"  • Nameservers {domain2}: {', '.join(records_d2)}")
-                    if set(records_d1) == set(records_d2):
-                        comparison_parts.append(f"  • Ambos dominios usan los mismos nameservers")
-                    else:
-                        comparison_parts.append(f"  • Los dominios usan nameservers diferentes")
+                    if set(records_d1) == set(records_d2) and count1 > 0:
+                        match_status = "✅ Iguales"
+                        
+                    details.append(f"- **{domain1}:** `{', '.join(records_d1) if records_d1 else 'Sin registros'}`")
+                    details.append(f"- **{domain2}:** `{', '.join(records_d2) if records_d2 else 'Sin registros'}`")
                 
                 elif record_type == "TXT":
-                    # Comparar cantidad de registros TXT (son muchos, solo contar y mencionar tipos)
-                    comparison_parts.append(f"  • {domain1} tiene {count1} registro(s) TXT")
-                    comparison_parts.append(f"  • {domain2} tiene {count2} registro(s) TXT")
-                    if count1 > count2:
-                        comparison_parts.append(f"  • {domain1} tiene más registros TXT (verificaciones, SPF, etc.)")
-                    elif count2 > count1:
-                        comparison_parts.append(f"  • {domain2} tiene más registros TXT (verificaciones, SPF, etc.)")
-                    else:
-                        comparison_parts.append(f"  • Ambos tienen la misma cantidad de registros TXT")
+                    if count1 == count2:
+                        match_status = "ℹ️ Cantidad igual"
+                    details.append(f"- **{domain1}:** {count1} registro(s)")
+                    details.append(f"- **{domain2}:** {count2} registro(s)")
+                
+                else:
+                    if set(records_d1) == set(records_d2) and count1 > 0:
+                         match_status = "✅ Iguales"
+                    details.append(f"- **{domain1}:** {count1} registro(s)")
+                    details.append(f"- **{domain2}:** {count2} registro(s)")
+
+                comparison_parts.append(f"**Estado:** {match_status}")
+                comparison_parts.extend(details)
+                comparison_parts.append("")
         
         comparison["comparison"] = "\n".join(comparison_parts)
         comparison["summary_text"] = "\n".join(comparison_parts)
@@ -597,55 +597,45 @@ class DNSTool:
             record_type = result.get("type", "A")
             records = result["records"]
             
-            if record_type == "MX":
-                lines = [f"Registros MX (Mail Exchange) para {domain}:"]
-                lines.append("Los registros MX definen los servidores de correo que reciben emails para este dominio.")
-                for record in records:
-                    if isinstance(record, dict):
-                        lines.append(f"  • Prioridad {record.get('priority', 'N/A')}: {record.get('exchange', 'N/A')}")
-                    else:
-                        lines.append(f"  • {record}")
-                return "\n".join(lines)
-            elif record_type == "TXT":
-                lines = [f"Registros TXT (Text) para {domain}:"]
-                lines.append("Los registros TXT contienen información de texto del dominio, como:")
-                lines.append("  - Verificación de dominio (Google, Facebook, Apple, etc.)")
-                lines.append("  - Configuración SPF para email (v=spf1)")
-                lines.append("  - Verificación de servicios (DocuSign, Cisco, etc.)")
-                lines.append("  - Información de seguridad y autenticación")
-                lines.append("")
-                for record in records:
-                    lines.append(f"  • {record}")
-                return "\n".join(lines)
-            elif record_type == "NS":
-                lines = [f"Registros NS (Name Server) para {domain}:"]
-                lines.append("Los registros NS definen los servidores de nombres autoritativos para este dominio.")
-                for record in records:
-                    lines.append(f"  • {record}")
-                return "\n".join(lines)
-            elif record_type == "A":
-                lines = [f"Registros A (IPv4) para {domain}:"]
-                lines.append("Los registros A mapean el nombre de dominio a direcciones IPv4.")
-                for record in records:
-                    lines.append(f"  • {record}")
-                return "\n".join(lines)
-            elif record_type == "AAAA":
-                lines = [f"Registros AAAA (IPv6) para {domain}:"]
-                lines.append("Los registros AAAA mapean el nombre de dominio a direcciones IPv6.")
-                for record in records:
-                    lines.append(f"  • {record}")
-                return "\n".join(lines)
-            elif record_type == "CNAME":
-                lines = [f"Registros CNAME (Canonical Name) para {domain}:"]
-                lines.append("Los registros CNAME crean un alias que apunta a otro nombre de dominio.")
-                for record in records:
-                    lines.append(f"  • {record}")
-                return "\n".join(lines)
+            md = [f"### 📇 Registros {record_type} para `{domain}`"]
+            
+            descriptions = {
+                "MX": "Los registros **MX (Mail Exchange)** definen los servidores de correo que reciben emails.",
+                "TXT": "Los registros **TXT** contienen información de texto (verificación, SPF, etc.).",
+                "NS": "Los registros **NS (Name Server)** definen los servidores autoritativos.",
+                "A": "Los registros **A (IPv4)** mapean el dominio a direcciones IPv4.",
+                "AAAA": "Los registros **AAAA (IPv6)** mapean el dominio a direcciones IPv6.",
+                "CNAME": "Los registros **CNAME** crean un alias hacia otro dominio."
+            }
+            
+            if record_type in descriptions:
+                md.append(f"_{descriptions[record_type]}_")
+            
+            md.append("")
+            
+            if not records:
+                 md.append("**No se encontraron registros.**")
             else:
-                lines = [f"Registros {record_type} para {domain}:"]
-                for record in records:
-                    lines.append(f"  • {record}")
-                return "\n".join(lines)
+                if record_type == "MX":
+                     md.append("| Prioridad | Servidor (Exchange) |")
+                     md.append("| :---: | :--- |")
+                     for record in records:
+                        if isinstance(record, dict):
+                            md.append(f"| {record.get('priority', 'N/A')} | `{record.get('exchange', 'N/A')}` |")
+                        else:
+                             md.append(f"| - | `{record}` |")
+                
+                elif record_type in ["A", "AAAA", "NS", "CNAME"]:
+                    md.append("| Registro |")
+                    md.append("| :--- |")
+                    for record in records:
+                        md.append(f"| `{record}` |")
+                
+                else: # TXT y otros
+                    for record in records:
+                         md.append(f"- `{record}`")
+
+            return "\n".join(md)
         
         # Formatear comparación DNS
         if result.get("type") == "dns_comparison" and "comparison" in result:

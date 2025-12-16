@@ -142,7 +142,7 @@ Genera una respuesta clara, natural y adaptada a la complejidad de la pregunta u
         """
         return await self._execute_query(query_text, top_k, conversation_context)
 
-    async def _query_with_cache(self, query_text: str, top_k: int = 8, conversation_context: Optional[str] = None):
+    async def _query_with_cache(self, query_text: str, top_k: int = 12, conversation_context: Optional[str] = None):
         """
         Método interno que realiza la consulta RAG con cache.
         Solo se usa cuando NO hay contexto de conversación.
@@ -157,20 +157,20 @@ Genera una respuesta clara, natural y adaptada a la complejidad de la pregunta u
         return await self._execute_query_cached(query_text, top_k)
     
     @cache_result("rag", ttl=7200)  # Cache por 2 horas (optimizado para mejor rendimiento)
-    async def _execute_query_cached(self, query_text: str, top_k: int = 8):
+    async def _execute_query_cached(self, query_text: str, top_k: int = 12):
         """
         Método interno cacheado que ejecuta la consulta RAG.
         Solo se llama cuando NO hay contexto de conversación.
         """
         return await self._execute_query(query_text, top_k, None)
 
-    def query(self, query_text: str, top_k: int = 8, conversation_context: Optional[str] = None):
+    def query(self, query_text: str, top_k: int = 12, conversation_context: Optional[str] = None):
         """
         Realiza una consulta RAG sobre los documentos indexados.
         
         Args:
             query_text: Texto de la consulta
-            top_k: Número de resultados a recuperar (aumentado a 8 para mejor cobertura)
+            top_k: Número de resultados a recuperar (aumentado a 12 para mejor cobertura)
             conversation_context: Contexto opcional de la conversación previa (últimos mensajes)
         
         Returns:
@@ -333,7 +333,7 @@ Genera una respuesta clara, natural y adaptada a la complejidad de la pregunta u
             for h in hits
         )
     
-    async def _execute_query(self, query_text: str, top_k: int = 8, conversation_context: Optional[str] = None):
+    async def _execute_query(self, query_text: str, top_k: int = 12, conversation_context: Optional[str] = None):
         """
         Método interno que ejecuta la consulta RAG real.
         OPTIMIZACIÓN: Búsqueda híbrida paralela (densa + dispersa) usando asyncio.gather().
@@ -553,24 +553,22 @@ Responde SOLO con una palabra: "relevante" o "no_relevante".
             }
         
         # Filtrar y concatenar los chunks más relevantes
-        # IMPORTANTE: Usar un umbral más bajo (0.3) para incluir más resultados relevantes
-        # En búsquedas vectoriales, scores de 0.3-0.5 pueden ser aún relevantes
-        relevant_hits = [h for h in hits if h.get('score', 0) > 0.3]
+        # IMPORTANTE: Usar un umbral más bajo (0.25) para incluir más resultados relevantes y aumentar cobertura
+        relevant_hits = [h for h in hits if h.get('score', 0) > 0.25]
         
-        # Si no hay hits con score > 0.3, usar los top 3 resultados (incluso con scores bajos)
-        # Esto asegura que siempre tengamos contexto para generar una respuesta
+        # Si no hay hits con score > 0.25, usar los top 5 resultados (incluso con scores bajos)
         if not relevant_hits:
-            logger.warning(f"[RAG] No hay hits con score > 0.3. Usando top {min(3, len(hits))} resultados disponibles (scores: {[h.get('score', 0) for h in hits[:3]]})")
-            relevant_hits = hits[:3] if hits else []
+            logger.warning(f"[RAG] No hay hits con score > 0.25. Usando top {min(5, len(hits))} resultados disponibles")
+            relevant_hits = hits[:5] if hits else []
         else:
-            # Limitar a máximo 3 chunks más relevantes para tener mejor cobertura
-            relevant_hits = relevant_hits[:3]
+            # Limitar a máximo 6 chunks más relevantes para tener mejor cobertura (antes 3)
+            relevant_hits = relevant_hits[:6]
         
         # Concatenar los textos más relevantes
         context = "\n\n".join([h["payload"].get("text", "") for h in relevant_hits])
         
         # OPTIMIZACIÓN: Limitar tamaño del contexto para evitar problemas de memoria
-        MAX_CONTEXT_LENGTH = 4000  # Máximo 4000 caracteres de contexto (balance entre funcionalidad y memoria)
+        MAX_CONTEXT_LENGTH = 7000  # Aumentado a 7000 para permitir contextos más ricos (listas, explicaciones)
         if len(context) > MAX_CONTEXT_LENGTH:
             # Truncar contexto manteniendo los primeros chunks más relevantes
             context = context[:MAX_CONTEXT_LENGTH]

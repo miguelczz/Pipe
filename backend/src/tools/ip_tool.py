@@ -396,91 +396,90 @@ class IPTool:
             
             # Construir mensaje de comparación completo con conclusiones
             comparison_parts = []
-            comparison_parts.append(f"## Comparación entre {ip1} y {ip2}\n")
+            comparison_parts.append(f"### Comparación de Rendimiento: {ip1} vs {ip2}\\n")
             
-            if r["resolved_ip1"]:
-                comparison_parts.append(f"**{ip1}** → {resolved_ip1}")
-            if r["resolved_ip2"]:
-                comparison_parts.append(f"**{ip2}** → {resolved_ip2}")
+            # Tabla de comparación directa
+            comparison_parts.append("| Métrica | " + f"**{ip1}**" + " | " + f"**{ip2}**" + " | Diferencia |")
+            comparison_parts.append("| :--- | :--- | :--- | :--- |")
             
-            comparison_parts.append(f"\n### Resultados de Ping\n")
+            # IP Resuelta
+            rip1 = r['resolved_ip1'] if r['resolved_ip1'] else "❌"
+            rip2 = r['resolved_ip2'] if r['resolved_ip2'] else "❌"
+            comparison_parts.append(f"| **IP** | `{rip1}` | `{rip2}` | - |")
             
-            if avg1 is not None:
+            # Latencia AVG
+            if avg1 is not None and avg2 is not None:
+                diff_val = abs(avg1 - avg2)
+                cell1 = f"{avg1:.2f} ms"
+                cell2 = f"{avg2:.2f} ms"
+                if avg1 < avg2:
+                    cell1 = f"**{cell1}** 🏆"
+                elif avg2 < avg1:
+                    cell2 = f"**{cell2}** 🏆"
+                
+                comparison_parts.append(f"| **Latencia Promedio** | {cell1} | {cell2} | {diff_val:.2f} ms |")
+                
+                # Min/Max
                 min1 = r['ping1'].get('min_time', avg1)
                 max1 = r['ping1'].get('max_time', avg1)
-                comparison_parts.append(f"**{ip1}**:")
-                comparison_parts.append(f"  - Latencia promedio: {avg1:.2f}ms")
-                comparison_parts.append(f"  - Latencia mínima: {min1:.2f}ms")
-                comparison_parts.append(f"  - Latencia máxima: {max1:.2f}ms")
-                comparison_parts.append(f"  - Variabilidad: {max1 - min1:.2f}ms")
-            
-            if avg2 is not None:
                 min2 = r['ping2'].get('min_time', avg2)
                 max2 = r['ping2'].get('max_time', avg2)
-                comparison_parts.append(f"\n**{ip2}**:")
-                comparison_parts.append(f"  - Latencia promedio: {avg2:.2f}ms")
-                comparison_parts.append(f"  - Latencia mínima: {min2:.2f}ms")
-                comparison_parts.append(f"  - Latencia máxima: {max2:.2f}ms")
-                comparison_parts.append(f"  - Variabilidad: {max2 - min2:.2f}ms")
+                
+                comparison_parts.append(f"| **Mínima** | {min1:.2f} ms | {min2:.2f} ms | - |")
+                comparison_parts.append(f"| **Máxima** | {max1:.2f} ms | {max2:.2f} ms | - |")
+                
+                # Variabilidad (Jitter aprox)
+                var1 = max1 - min1
+                var2 = max2 - min2
+                comparison_parts.append(f"| **Variabilidad** | {var1:.2f} ms | {var2:.2f} ms | - |")
+
+            # Tiempo de respuesta TCP
+            if r["response_time1"] is not None and r["response_time2"] is not None:
+                rt1 = f"{r['response_time1']:.2f} ms"
+                rt2 = f"{r['response_time2']:.2f} ms"
+                comparison_parts.append(f"| **Respuesta TCP** | {rt1} | {rt2} | - |")
             
-            # Conclusiones y análisis
-            comparison_parts.append(f"\n### Conclusiones\n")
+            comparison_parts.append("")
+            
+            # Conclusiones y análisis detallado
+            comparison_parts.append(f"#### 📊 Análisis")
             
             if avg1 is not None and avg2 is not None:
                 difference = abs(avg1 - avg2)
-                percentage_diff = (difference / max(avg1, avg2)) * 100
+                percentage_diff = (difference / max(avg1, avg2)) * 100 if max(avg1, avg2) > 0 else 0
                 
                 if avg1 < avg2:
                     faster_host = ip1
-                    slower_host = ip2
                     faster_avg = avg1
-                    slower_avg = avg2
                 else:
                     faster_host = ip2
-                    slower_host = ip1
                     faster_avg = avg2
-                    slower_avg = avg1
                 
-                comparison_parts.append(f"**Rendimiento:**")
-                comparison_parts.append(f"  - {faster_host} es **{difference:.2f}ms más rápido** ({faster_avg:.2f}ms vs {slower_avg:.2f}ms)")
-                comparison_parts.append(f"  - Diferencia porcentual: **{percentage_diff:.1f}%**")
-                
-                # Análisis de estabilidad
-                var1 = r['ping1'].get('max_time', avg1) - r['ping1'].get('min_time', avg1)
-                var2 = r['ping2'].get('max_time', avg2) - r['ping2'].get('min_time', avg2)
-                
-                if var1 < var2:
-                    comparison_parts.append(f"  - {ip1} tiene **mayor estabilidad** (variabilidad: {var1:.2f}ms vs {var2:.2f}ms)")
-                elif var2 < var1:
-                    comparison_parts.append(f"  - {ip2} tiene **mayor estabilidad** (variabilidad: {var2:.2f}ms vs {var1:.2f}ms)")
-                else:
-                    comparison_parts.append(f"  - Ambos tienen **estabilidad similar**")
-                
-                # Clasificación de latencia
-                if faster_avg < 20:
-                    comparison_parts.append(f"  - {faster_host} tiene latencia **excelente** (< 20ms)")
-                elif faster_avg < 50:
-                    comparison_parts.append(f"  - {faster_host} tiene latencia **buena** (20-50ms)")
-                elif faster_avg < 100:
-                    comparison_parts.append(f"  - {faster_host} tiene latencia **aceptable** (50-100ms)")
-                else:
-                    comparison_parts.append(f"  - {faster_host} tiene latencia **alta** (> 100ms)")
-                
-                # Recomendación
+                # Recomendación basada en datos
+                recommendation = ""
                 if difference < 5:
-                    comparison_parts.append(f"\n**Recomendación:** La diferencia es mínima. Ambos hosts ofrecen rendimiento similar.")
+                     recommendation = "La diferencia es insignificante. Ambos ofrecen rendimiento similar."
                 elif percentage_diff < 20:
-                    comparison_parts.append(f"\n**Recomendación:** {faster_host} es ligeramente mejor, pero la diferencia no es significativa para la mayoría de aplicaciones.")
+                     recommendation = f"**{faster_host}** es ligeramente más rápido, pero no es crítico."
                 else:
-                    comparison_parts.append(f"\n**Recomendación:** {faster_host} ofrece un rendimiento notablemente mejor y sería preferible para aplicaciones sensibles a la latencia.")
+                     recommendation = f"**{faster_host}** es claramente superior para latencia."
+
+                comparison_parts.append(f"* **Ganador:** {faster_host} es un **{percentage_diff:.1f}%** más rápido.")
+                
+                # Estabilidad
+                var1 = (r['ping1'].get('max_time', avg1) - r['ping1'].get('min_time', avg1)) if r['ping1'] else 0
+                var2 = (r['ping2'].get('max_time', avg2) - r['ping2'].get('min_time', avg2)) if r['ping2'] else 0
+                
+                stability_msg = "Similar"
+                if abs(var1 - var2) >= 5:
+                    stable_host = ip1 if var1 < var2 else ip2
+                    stability_msg = f"{stable_host} es más estable"
+                
+                comparison_parts.append(f"* **Estabilidad:** {stability_msg}.")
+                comparison_parts.append(f"* **Conclusión:** {recommendation}")
             
-            if r["response_time1"] is not None and r["response_time2"] is not None:
-                comparison_parts.append(f"\n### Tiempo de Respuesta TCP\n")
-                comparison_parts.append(f"  - {ip1}: {r['response_time1']:.2f}ms")
-                comparison_parts.append(f"  - {ip2}: {r['response_time2']:.2f}ms")
-            
-            comparison_parts.append(f"\n### Información de Red\n")
-            comparison_parts.append(f"  - {r['network_info']}")
+            if r["network_info"]:
+                 comparison_parts.append(f"* **Red:** {r['network_info']}")
             
             r["comparison"] = "\n".join(comparison_parts)
             r["summary"] = f"Comparación completa entre {ip1} y {ip2} con análisis detallado de latencia y conclusiones."
@@ -642,43 +641,56 @@ class IPTool:
         # Formatear ping
         if result.get("type") == "ping" or ("ping" in str(result).lower() and "stdout" in result):
             host = result.get("host", "N/A")
-            stdout = result.get("stdout", "")
-            avg_time = result.get("avg_time")
-            min_time = result.get("min_time")
-            max_time = result.get("max_time")
-            resolved_ip = result.get("resolved_ip")
-            packet_loss = result.get("packet_loss")
-            success = result.get("success", True)
-            error_msg = result.get("error")
+            ip_str = f" (`{result.get('resolved_ip')}`)" if result.get('resolved_ip') and result.get('resolved_ip') != host else ""
             
-            parts = [f"Ping a {host}"]
-            if resolved_ip and resolved_ip != host:
-                parts.append(f" ({resolved_ip})")
+            # Determinar estado
+            success = result.get("success", False)
+            status_icon = "✅" if success else "❌"
+            status_text = "Exitoso" if success else "Fallido"
             
-            # Si hay stdout, mostrarlo
-            if stdout:
-                parts.append(f":\n{stdout}")
-            else:
-                parts.append(":")
+            # Métricas
+            avg = f"{result.get('avg_time', 0):.2f} ms" if result.get('avg_time') is not None else "N/A"
+            min_t = f"{result.get('min_time', 0):.2f} ms" if result.get('min_time') is not None else "N/A"
+            max_t = f"{result.get('max_time', 0):.2f} ms" if result.get('max_time') is not None else "N/A"
+            loss = f"{result.get('packet_loss', 0):.1f}%"
             
-            # Si el ping fue exitoso, mostrar métricas
-            if success and avg_time is not None:
-                parts.append(f"\n\nLatencia promedio: {avg_time:.2f}ms")
-                if min_time is not None and max_time is not None:
-                    parts.append(f" (min: {min_time:.2f}ms, max: {max_time:.2f}ms)")
-                if packet_loss is not None and packet_loss > 0:
-                    parts.append(f"\nPérdida de paquetes: {packet_loss:.1f}%")
-            
-            # Si el ping falló, mostrar el error claramente
+            # Construir tabla de resumen
+            md = [
+                f"### 📡 Reporte de Ping: {host}{ip_str}",
+                "",
+                f"**Estado:** {status_icon} {status_text}",
+                "",
+                "| Métrica | Valor |",
+                "| :--- | :--- |",
+                f"| **Latencia Mínima** | {min_t} |",
+                f"| **Latencia Promedio** | {avg} |",
+                f"| **Latencia Máxima** | {max_t} |",
+                f"| **Pérdida de Paquetes** | {loss} |",
+                ""
+            ]
+
+            # Detalles de paquetes individuales si existen
+            times = result.get("times", [])
+            if times:
+                md.append("**Detalle de paquetes:**")
+                pkts = ", ".join([f"`{t:.1f}ms`" for t in times])
+                md.append(f"> {pkts}")
+                md.append("")
+                
+            # Mensaje de error si falla
             if not success:
-                if error_msg:
-                    parts.append(f"\n\n❌ Error: {error_msg}")
-                else:
-                    parts.append(f"\n\n❌ No se recibieron respuestas del servidor")
-                if packet_loss is not None and packet_loss == 100:
-                    parts.append(f"\nPérdida de paquetes: 100% (no se recibieron respuestas)")
-            
-            return "\n".join(parts)
+                error_msg = result.get("error", "No se recibieron respuestas")
+                md.append(f"**❌ Error:** {error_msg}")
+                
+            # output original crudo en bloque colapsable (opcional)
+            stdout = result.get("stdout", "").strip()
+            if stdout:
+                md.append("")
+                md.append("```text")
+                md.append(stdout)
+                md.append("```")
+
+            return "\n".join(md)
         
         # Formatear múltiples pings
         if result.get("type") == "multiple_ping":
@@ -699,7 +711,15 @@ class IPTool:
         if "traceroute" in result or ("stdout" in result and result.get("type") == "traceroute"):
             host = result.get("host", "N/A")
             stdout = result.get("stdout", "")
-            return f"Traceroute a {host}:\n{stdout}"
+            
+            md = [
+                f"### 🗺️ Traceroute: {host}",
+                "",
+                "```text",
+                stdout,
+                "```"
+            ]
+            return "\n".join(md)
         
         # Fallback: convertir a string
         return str(result)
