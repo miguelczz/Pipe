@@ -77,45 +77,25 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
 """
     
     BASE_PROMPT_TEMPLATE = """
-Eres un asistente experto en redes y telecomunicaciones. Responde la pregunta del usuario de manera clara, natural y adaptada a su complejidad.
+Eres un asistente experto en redes y telecomunicaciones. Tu objetivo es ayudar al usuario respondiendo sus preguntas basándote en la documentación proporcionada.
 
-INSTRUCCIONES:
-1. ANALIZA LA PREGUNTA: Determina si hace referencia a acciones/eventos de la conversación previa o busca información técnica general.
-2. FIDELIDAD: 
-   - Si la pregunta es sobre acciones/eventos de la conversación (ej: "antes del ping", "el ping que hiciste", "a qué dominio fue"): usa el CONTEXTO DE CONVERSACIÓN como fuente principal
-   - Si la pregunta es sobre conceptos técnicos (qué es, cómo funciona): usa los DOCUMENTOS como fuente principal
-   - NO inventes información que no esté en el contexto proporcionado
-3. LENGUAJE NATURAL: Responde como si fueras un experto explicando a un usuario, de manera clara y comprensible.
-4. LONGITUD ADAPTATIVA: {length_guidance}
-5. ESTRUCTURA CLARA: Organiza la información de forma lógica y fácil de leer.
-
-REGLAS CRÍTICAS DE FIDELIDAD:
-- Si la pregunta menciona "antes", "anterior", "que hiciste", "que realizaste", "a qué dominio", "qué IP", busca esa información en el CONTEXTO DE CONVERSACIÓN
-- Si la pregunta es sobre conceptos técnicos (qué es, cómo funciona), usa EXCLUSIVAMENTE los DOCUMENTOS
-- FIDELIDAD ABSOLUTA: SOLO menciona información que esté EXPLÍCITAMENTE escrita en el CONTEXTO DE DOCUMENTOS
-- Si el documento menciona protocolos específicos, SOLO menciona esos protocolos. NO agregues protocolos relacionados que no estén en el documento
-- Si la información solicitada NO está en el contexto de documentos, indica claramente que no tienes esa información en los documentos disponibles
-- NO uses conocimiento general sobre el tema que no esté en el contexto
-- NO copies párrafos completos, parafrasea de manera natural pero mantén la información exacta
-- Mantén un tono profesional pero accesible
-- Para preguntas simples, ve directo al punto sin rodeos
-- ENFOQUE: Tu función es explicar conceptos y proporcionar información educativa basada SOLO en los documentos, o responder sobre acciones previas en la conversación.
+INSTRUCCIONES DE RESPUESTA:
+1. **FUENTE DE VERDAD**: Usa EXCLUSIVAMENTE la información contenida en el "CONTEXTO DE DOCUMENTOS" para los datos técnicos (definiciones, listas, protocolos, métricas).
+2. **ESTILO EXPLICATIVO**: No te limites a copiar y pegar. Lee la información, entiéndela y explícala de manera natural y pedagógica al usuario.
+3. **NO INVENTAR DATOS**: Si el documento menciona 3 conceptos, explica esos 3. No agregues otros conceptos de tu conocimiento general que no estén en el texto.
+4. **MANEJO DE VACÍOS**: Si la información específica no está en los documentos, indícalo suavemente (ej: "Los documentos disponibles no detallan específicamente X, pero mencionan Y...").
 
 {context_section}
-CONTEXTO DE DOCUMENTOS (ÚNICA FUENTE DE INFORMACIÓN - NO agregues información que no esté aquí):
+CONTEXTO DE DOCUMENTOS (Información base para tu respuesta):
 {context}
 
 Pregunta: {query_text}
 
-IMPORTANTE: 
-- Si la información solicitada NO está en el CONTEXTO DE DOCUMENTOS, indica que no tienes esa información en los documentos disponibles
-- SOLO menciona protocolos, conceptos o información que esté EXPLÍCITAMENTE escrita en el contexto
-- NO agregues protocolos relacionados o información complementaria que no esté en el documento
-
-Genera una respuesta clara, natural y adaptada a la complejidad de la pregunta usando EXCLUSIVAMENTE la información del CONTEXTO DE DOCUMENTOS:
+Genera una respuesta natural, útil y precisa, basada en la información técnica anterior. Explica los conceptos encontrados de forma clara.
+Respuesta:
 """
     
-    SYSTEM_MESSAGE = "Eres un asistente experto en redes y telecomunicaciones. Tu función es explicar conceptos y proporcionar información educativa basada EXCLUSIVAMENTE en el contexto proporcionado.\n\nREGLAS CRÍTICAS DE FIDELIDAD:\n1. SOLO puedes usar información que esté EXPLÍCITAMENTE escrita en el CONTEXTO DE DOCUMENTOS proporcionado\n2. NO puedes agregar conocimiento general, información de otras fuentes, o inferencias que no estén en el contexto\n3. Si la información solicitada NO está en el contexto, debes indicar que no tienes esa información en los documentos disponibles\n4. NO inventes nombres de protocolos, características, o detalles técnicos que no aparezcan en el contexto\n5. Si el contexto menciona protocolos específicos, SOLO menciona esos. NO agregues protocolos relacionados que no estén mencionados\n6. Mantén fidelidad ABSOLUTA: cada afirmación debe estar respaldada por el texto del contexto\n\nADAPTA la longitud según la complejidad: preguntas simples requieren respuestas MUY BREVES (2-3 oraciones), preguntas moderadas requieren respuestas equilibradas (80-150 palabras), preguntas complejas requieren respuestas detalladas (200-400 palabras). Habla de manera natural como un experto explicando a un usuario, pero sé CONCISO y ve directo al punto. ENFOQUE: Solo explica conceptos e información técnica. NO menciones limitaciones sobre ejecutar comandos, NO sugieras acciones manuales del usuario. Tu trabajo es educar, no instruir sobre qué hacer."
+    SYSTEM_MESSAGE = "Eres un asistente experto en redes. Tu función es procesar la información de los documentos técnicos y explicársela al usuario de manera clara y útil. Usa los documentos como tu base de conocimiento estricta para los hechos, pero usa tus capacidades de lenguaje para explicar esos hechos de forma agradable y coherente. No agregues datos técnicos externos."
     
     RELEVANCE_SYSTEM_MESSAGE = "Eres un analizador ESTRICTO que determina si una pregunta está relacionada EXCLUSIVAMENTE con redes y telecomunicaciones. Sé MUY ESTRICTO: solo marca como relevante si está CLARAMENTE relacionada con redes, protocolos, telecomunicaciones o tecnologías de red. Rechaza CUALQUIER pregunta sobre otros temas (física general, matemáticas, historia, literatura, medicina, etc.)."
     
@@ -218,24 +198,42 @@ Genera una respuesta clara, natural y adaptada a la complejidad de la pregunta u
     def _extract_keywords(self, query_text: str) -> List[str]:
         """
         Extrae keywords relevantes de la consulta para búsqueda dispersa.
-        OPTIMIZACIÓN: Usa patrones predefinidos para mejor rendimiento.
+        OPTIMIZADO: Ahora extrae palabras significativas de la consulta del usuario,
+        no solo de una lista predefinida, para mejorar el matching de frases exactas.
         """
         query_lower = query_text.lower()
         keywords = []
         
-        # Buscar patrones de keywords
+        # 1. Buscar patrones técnicos predefinidos (alta prioridad)
         for pattern_key, pattern_list in self.KEYWORD_PATTERNS.items():
             if any(pattern in query_lower for pattern in pattern_list):
                 keywords.extend(pattern_list)
         
-        # Keywords adicionales específicas
-        if 'wifi' in query_lower or 'wi-fi' in query_lower:
-            keywords.extend(['wifi', 'wi-fi'])
-        if '802.11' in query_text:
-            keywords.append('802.11')
+        # 2. Extraer sustantivos y términos significativos de la query
+        # Eliminar palabras comunes/stopwords (lista básica en español e inglés)
+        stopwords = {
+            'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas', 'y', 'o', 'de', 'del', 'al', 'a', 'en', 
+            'con', 'por', 'para', 'sin', 'sobre', 'que', 'cual', 'quien', 'como', 'donde', 'cuando', 
+            'es', 'son', 'fue', 'fueron', 'tiene', 'tienen', 'hay', 'hacer', 'esta', 'este', 'ese', 'esa',
+            'what', 'is', 'are', 'the', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'
+        }
         
-        # Eliminar duplicados manteniendo orden
-        return list(dict.fromkeys(keywords))
+        # Limpiar caracteres no alfanuméricos simples
+        clean_text = re.sub(r'[^\w\s]', '', query_lower)
+        words = clean_text.split()
+        
+        for word in words:
+            # Filtrar palabras cortas (<3 chars) y stopwords
+            if len(word) >= 3 and word not in stopwords:
+                # Evitar duplicados
+                if word not in keywords:
+                    keywords.append(word)
+        
+        # Logging para debugging de qué keywords se están usando
+        if keywords:
+            logger.debug(f"[RAG] Keywords extraídos para búsqueda dispersa: {keywords}")
+            
+        return keywords
     
     async def _dense_search(self, query_text: str, top_k: int) -> List[Dict[str, Any]]:
         """
@@ -567,8 +565,8 @@ Responde SOLO con una palabra: "relevante" o "no_relevante".
         # Concatenar los textos más relevantes
         context = "\n\n".join([h["payload"].get("text", "") for h in relevant_hits])
         
-        # OPTIMIZACIÓN: Limitar tamaño del contexto para evitar problemas de memoria
-        MAX_CONTEXT_LENGTH = 7000  # Aumentado a 7000 para permitir contextos más ricos (listas, explicaciones)
+        # OPTIMIZACIÓN: Limitar tamaño del contexto para evitar problemas de memoria y latencia
+        MAX_CONTEXT_LENGTH = 5500  # Reducido de 7000 para mejorar velocidad y evitar timeouts
         if len(context) > MAX_CONTEXT_LENGTH:
             # Truncar contexto manteniendo los primeros chunks más relevantes
             context = context[:MAX_CONTEXT_LENGTH]
@@ -642,7 +640,7 @@ EJEMPLOS DE SEGUIMIENTO:
             max_tokens_response = 200  # Aumentado de 100 a 200
         elif "compleja" in complexity:
             length_guidance = "Respuesta COMPLETA y DETALLADA: 200-400 palabras con explicación estructurada, ejemplos si son relevantes, y organización clara. Si la pregunta requiere una lista completa (ej: todas las capas del modelo OSI, todos los tipos de algo), asegúrate de incluir TODOS los elementos de la lista sin omitir ninguno."
-            max_tokens_response = 1200  # Aumentado de 600 a 1200 para listas completas
+            max_tokens_response = 800  # Optimizado para velocidad (antes 1200)
         else:  # moderada
             length_guidance = "Respuesta EQUILIBRADA: 100-200 palabras con explicación clara y algunos detalles relevantes. Si la pregunta requiere una lista, incluye todos los elementos importantes."
             max_tokens_response = 500  # Aumentado de 300 a 500
