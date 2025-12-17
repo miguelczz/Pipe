@@ -159,6 +159,8 @@ async def agent_query_stream(
         # Solo agregar si es un mensaje nuevo
         if last_user_msg_in_state != user_message:
             session_state.add_message("user", user_message)
+            # Persistir mensaje del usuario inmediatamente
+            session_manager.update_session(query.session_id, session_state)
         
         # Actualizar user_id si se proporciona
         if query.user_id:
@@ -198,10 +200,12 @@ async def agent_query_stream(
                 # Enviar el chunk al cliente
                 yield chunk
             
-            # Guardar la respuesta del asistente en el contexto de ventana
+            # Guardar la respuesta del asistente en el contexto de ventana y PERSISTIR EN REDIS
             if assistant_response:
                 session_state.add_message("assistant", assistant_response)
-                logger.info(f"[Streaming] Respuesta guardada en contexto de ventana para sesión {query.session_id}")
+                # IMPORTANTE: Persistir el cambio en Redis/Base de datos
+                session_manager.update_session(query.session_id, session_state)
+                logger.info(f"[Streaming] Respuesta guardada y persistida para sesión {query.session_id}")
 
         # Crear respuesta de streaming
         return StreamingResponse(
