@@ -23,63 +23,68 @@ class DashboardStats(BaseModel):
     avg_latency: float
     services: List[ServiceStatus]
 
-import time
-
 @router.get("/dashboard/status", response_model=DashboardStats)
 async def get_dashboard_status():
-    # En entornos Cloud (Heroku, AWS), ICMP (Ping) suele estar bloqueado.
-    # Usamos peticiones HTTP (TCP) para medir la latencia y disponibilidad real.
+    # In a real app, this would query a background monitoring service or DB
+    # For now, we perform real-time check on key targets
     
     targets = [
-        {"name": "Internet (Google)", "url": "http://www.google.com"},
-        {"name": "Gateway (Cloudflare)", "url": "http://1.1.1.1"}, 
-        {"name": "Sistema NetMind", "url": "http://example.com"}
+        {"name": "Internet (Google DNS)", "host": "8.8.8.8"},
+        {"name": "Gateway", "host": "1.1.1.1"}, # Cloudflare as proxy for external connectivity
+        {"name": "Internal Auth", "host": "localhost"} # Dummy internal
     ]
     
     services = []
     total_latency = 0
+    count_up = 0
     
-    def measure_http_latency(url: str) -> float:
+    import platform
+    import subprocess
+    import re
+    
+    # Simple ping helper (non-blocking ideally, but blocking for MVP)
+    def simple_ping(host):
+        param = '-n' if platform.system().lower()=='windows' else '-c'
+        # Timeout 1s (1000ms)
+        command = ['ping', param, '1', host]
         try:
-            start_time = time.time()
-            # HEAD es rápido y suficiente para comprobar conectividad
-            requests.head(url, timeout=2.0)
-            end_time = time.time()
-            return round((end_time - start_time) * 1000, 2)
+            # Short timeout to avoid blocking main thread too long
+            output = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2)
+            if output.returncode == 0:
+                # Extract time
+                match = re.search(r"time[=<](\d+)", output.stdout)
+                if match:
+                    return float(match.group(1))
+                return 1.0 # <1ms
+            return None
         except:
-            return 999.0 # Timeout o error de conexión
+            return None
 
     for t in targets:
-        latency = measure_http_latency(t["url"])
+        latency = simple_ping(t["host"])
+        status = "down"
         
-        # Lógica de estado
-        metric_value = latency
-        status = "operational"
+        # Si hay latencia real, usarla. Si no (timeout), usar penalización de 999ms
+        # para que impacte el gráfico y el promedio visualmente.
+        metric_value = latency if latency is not None else 999.0
         
-        if latency >= 999.0:
-            status = "down"
-        elif latency > 500:
-            status = "degraded"
-            
+        if latency is not None:
+            status = "operational" if latency < 100 else "degraded"
+        
         total_latency += metric_value
-        
-        # Mapeamos nombres amigables para el frontend
-        display_name = t["name"]
-        
+        count_up += 1 # Contamos todos los objetivos para el promedio, incluso los caídos
+            
         services.append(ServiceStatus(
-            name=display_name,
+            name=t["name"],
             status=status,
             latency_ms=metric_value,
-            uptime_percentage=100.0 if status == "operational" else (50.0 if status == "degraded" else 0.0)
+            uptime_percentage=99.9 if status != "down" else 0.0
         ))
         
     avg = total_latency / len(targets) if targets else 0
     
-    # Active incidents: count of non-operational services
-    active_incidents = sum(1 for s in services if s.status != "operational")
-    
     return DashboardStats(
-        active_incidents=active_incidents,
+        active_incidents=len(targets) - count_up,
         avg_latency=round(avg, 2),
         services=services
     )
@@ -106,57 +111,51 @@ async def geo_trace(host: str = Query(..., description="Host to trace")):
     
     hops_ips = []
     
-    # En entornos Cloud (Heroku), no tenemos permisos para raw sockets (ICMP).
-    # Solución: Usamos una API externa (Looking Glass) para obtener la traza real.
+    # Simplified traceroute for demo (captures IPs)
+    # Using 'tracert -d' on windows to avoid DNS lookup delay, 'traceroute -n' on linux
+    cmd = ['tracert', '-d', '-h', '15', host] if platform.system().lower() == 'windows' else ['traceroute', '-n', '-m', '15', host]
+    
     try:
-        # Usamos la API de HackerTarget para obtener un MTR (Traceroute + Ping)
-        # Esto nos da los saltos reales desde un servidor en internet hacia el destino
-        response = requests.get(f"https://api.hackertarget.com/mtr/?q={host}", timeout=15)
+        # Run traceroute (this can take time, in prod use async task/process)
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # We handle output line by line or wait
+        out, err = proc.communicate(timeout=30) 
         
-        if response.status_code == 200:
-            # El output es texto plano tipo MTR:
-            # Host             Loss%   Snt   Last   Avg  Best  Wrst StDev
-            # 1. 45.79.x.x      0.0%    10    0.4   0.5   0.4   1.2   0.2
-            # 2. 172.x.x.x      0.0%    10    1.2   3.4   1.1  15.0   4.0
-            
-            lines = response.text.split('\n')
-            for line in lines:
-                # Buscamos líneas que empiecen con número de salto (ej: " 1.")
-                # y extraemos la IP (que suele ser el segundo campo o estar entre paréntesis)
-                if not line or "Loss%" in line: continue
+        # Parse IPs from output
+        lines = out.split('\n')
+        for line in lines:
+            ip_match = re.search(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', line)
+            if ip_match:
+                ip = ip_match.group(1)
+                if ip not in hops_ips:
+                    hops_ips.append(ip)
                 
-                # Regex para encontrar IPs
-                ip_match = re.search(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', line)
-                if ip_match:
-                    ip = ip_match.group(1)
-                    # Evitamos duplicados consecutivos y la IP 0.0.0.0 o???
-                    if ip not in hops_ips:
-                        hops_ips.append(ip)
-        else:
-            raise Exception("API error")
-
-    except Exception as e:
-        print(f"External Trace failed: {e}")
-        # Si falla la API externa, intentamos el traceroute local (por si estamos en local dev)
+    except Exception:
+        # If local traceroute fails (common on Heroku/Cloud), use external trace API
         try:
-             import platform
-             cmd = ['tracert', '-d', '-h', '10', host] if platform.system().lower() == 'windows' else ['traceroute', '-n', '-m', '10', host]
-             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-             out, err = proc.communicate(timeout=10)
-             for line in out.split('\n'):
-                ip_match = re.search(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', line)
-                if ip_match:
-                    hops_ips.append(ip_match.group(1))
-        except:
-             pass
+            # HackerTarget provides a free MTR/Traceroute API (limited requests)
+            external_resp = requests.get(f"https://api.hackertarget.com/mtr/?q={host}", timeout=15)
+            if external_resp.status_code == 200:
+                lines = external_resp.text.split('\n')
+                for line in lines:
+                    ip_match = re.search(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', line)
+                    if ip_match:
+                        ip = ip_match.group(1)
+                        if ip not in hops_ips:
+                            hops_ips.append(ip)
+        except Exception:
+            pass
         
     if not hops_ips:
-        # Último recurso: Resolver destino final
+        # Final fallback: Server source to Host destination
         try:
-             target_ip = socket.gethostbyname(host)
-             hops_ips.append(target_ip)
-        except:
-             raise HTTPException(status_code=400, detail="Could not trace host")
+            # 1. Get server IP (self)
+            server_ip = requests.get("https://api.ipify.org", timeout=5).text
+            # 2. Get destination IP
+            target_ip = socket.gethostbyname(host)
+            hops_ips = [server_ip, target_ip]
+        except Exception:
+             raise HTTPException(status_code=400, detail="Could not trace host or find destination")
 
     # 2. Geolocation (Batch query to ip-api.com)
     # Max 100 IPs per batch. We have max 15 hops.
