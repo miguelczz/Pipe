@@ -106,37 +106,55 @@ async def geo_trace(host: str = Query(..., description="Host to trace")):
     
     hops_ips = []
     
-    # Simplified traceroute for demo (captures IPs)
-    # Using 'tracert -d' on windows to avoid DNS lookup delay, 'traceroute -n' on linux
-    cmd = ['tracert', '-d', '-h', '15', host] if platform.system().lower() == 'windows' else ['traceroute', '-n', '-m', '15', host]
-    
+    # En entornos Cloud (Heroku), no tenemos permisos para raw sockets (ICMP).
+    # Solución: Usamos una API externa (Looking Glass) para obtener la traza real.
     try:
-        # Run traceroute (this can take time, in prod use async task/process)
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        # We handle output line by line or wait
-        out, err = proc.communicate(timeout=30) 
+        # Usamos la API de HackerTarget para obtener un MTR (Traceroute + Ping)
+        # Esto nos da los saltos reales desde un servidor en internet hacia el destino
+        response = requests.get(f"https://api.hackertarget.com/mtr/?q={host}", timeout=15)
         
-        # Parse IPs from output
-        # Windows: "  1    <1 ms    <1 ms    <1 ms  192.168.1.1"
-        # Linux: " 1  192.168.1.1  0.123 ms"
-        
-        lines = out.split('\n')
-        for line in lines:
-            # Find IPv4 address
-            ip_match = re.search(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', line)
-            if ip_match:
-                ip = ip_match.group(1)
-                # Avoid duplicates if multiple RTTs show same IP? Usually one IP per line
-                hops_ips.append(ip)
+        if response.status_code == 200:
+            # El output es texto plano tipo MTR:
+            # Host             Loss%   Snt   Last   Avg  Best  Wrst StDev
+            # 1. 45.79.x.x      0.0%    10    0.4   0.5   0.4   1.2   0.2
+            # 2. 172.x.x.x      0.0%    10    1.2   3.4   1.1  15.0   4.0
+            
+            lines = response.text.split('\n')
+            for line in lines:
+                # Buscamos líneas que empiecen con número de salto (ej: " 1.")
+                # y extraemos la IP (que suele ser el segundo campo o estar entre paréntesis)
+                if not line or "Loss%" in line: continue
                 
+                # Regex para encontrar IPs
+                ip_match = re.search(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', line)
+                if ip_match:
+                    ip = ip_match.group(1)
+                    # Evitamos duplicados consecutivos y la IP 0.0.0.0 o???
+                    if ip not in hops_ips:
+                        hops_ips.append(ip)
+        else:
+            raise Exception("API error")
+
     except Exception as e:
-        # If traceroute fails or timeouts, we might still have some hops
-        pass
+        print(f"External Trace failed: {e}")
+        # Si falla la API externa, intentamos el traceroute local (por si estamos en local dev)
+        try:
+             import platform
+             cmd = ['tracert', '-d', '-h', '10', host] if platform.system().lower() == 'windows' else ['traceroute', '-n', '-m', '10', host]
+             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+             out, err = proc.communicate(timeout=10)
+             for line in out.split('\n'):
+                ip_match = re.search(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', line)
+                if ip_match:
+                    hops_ips.append(ip_match.group(1))
+        except:
+             pass
         
     if not hops_ips:
-        # Fallback for demo if traceroute fails: just resolve the host
+        # Último recurso: Resolver destino final
         try:
-             hops_ips.append(socket.gethostbyname(host))
+             target_ip = socket.gethostbyname(host)
+             hops_ips.append(target_ip)
         except:
              raise HTTPException(status_code=400, detail="Could not trace host")
 
