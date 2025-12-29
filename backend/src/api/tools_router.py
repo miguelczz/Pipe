@@ -23,68 +23,63 @@ class DashboardStats(BaseModel):
     avg_latency: float
     services: List[ServiceStatus]
 
+import time
+
 @router.get("/dashboard/status", response_model=DashboardStats)
 async def get_dashboard_status():
-    # In a real app, this would query a background monitoring service or DB
-    # For now, we perform real-time check on key targets
+    # En entornos Cloud (Heroku, AWS), ICMP (Ping) suele estar bloqueado.
+    # Usamos peticiones HTTP (TCP) para medir la latencia y disponibilidad real.
     
     targets = [
-        {"name": "Internet (Google DNS)", "host": "8.8.8.8"},
-        {"name": "Gateway", "host": "1.1.1.1"}, # Cloudflare as proxy for external connectivity
-        {"name": "Internal Auth", "host": "localhost"} # Dummy internal
+        {"name": "Internet (Google)", "url": "http://www.google.com"},
+        {"name": "Gateway (Cloudflare)", "url": "http://1.1.1.1"}, 
+        {"name": "Sistema NetMind", "url": "http://example.com"}
     ]
     
     services = []
     total_latency = 0
-    count_up = 0
     
-    import platform
-    import subprocess
-    import re
-    
-    # Simple ping helper (non-blocking ideally, but blocking for MVP)
-    def simple_ping(host):
-        param = '-n' if platform.system().lower()=='windows' else '-c'
-        # Timeout 1s (1000ms)
-        command = ['ping', param, '1', host]
+    def measure_http_latency(url: str) -> float:
         try:
-            # Short timeout to avoid blocking main thread too long
-            output = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2)
-            if output.returncode == 0:
-                # Extract time
-                match = re.search(r"time[=<](\d+)", output.stdout)
-                if match:
-                    return float(match.group(1))
-                return 1.0 # <1ms
-            return None
+            start_time = time.time()
+            # HEAD es rápido y suficiente para comprobar conectividad
+            requests.head(url, timeout=2.0)
+            end_time = time.time()
+            return round((end_time - start_time) * 1000, 2)
         except:
-            return None
+            return 999.0 # Timeout o error de conexión
 
     for t in targets:
-        latency = simple_ping(t["host"])
-        status = "down"
+        latency = measure_http_latency(t["url"])
         
-        # Si hay latencia real, usarla. Si no (timeout), usar penalización de 999ms
-        # para que impacte el gráfico y el promedio visualmente.
-        metric_value = latency if latency is not None else 999.0
+        # Lógica de estado
+        metric_value = latency
+        status = "operational"
         
-        if latency is not None:
-            status = "operational" if latency < 100 else "degraded"
-        
-        total_latency += metric_value
-        count_up += 1 # Contamos todos los objetivos para el promedio, incluso los caídos
+        if latency >= 999.0:
+            status = "down"
+        elif latency > 500:
+            status = "degraded"
             
+        total_latency += metric_value
+        
+        # Mapeamos nombres amigables para el frontend
+        display_name = t["name"]
+        
         services.append(ServiceStatus(
-            name=t["name"],
+            name=display_name,
             status=status,
             latency_ms=metric_value,
-            uptime_percentage=99.9 if status != "down" else 0.0
+            uptime_percentage=100.0 if status == "operational" else (50.0 if status == "degraded" else 0.0)
         ))
         
     avg = total_latency / len(targets) if targets else 0
     
+    # Active incidents: count of non-operational services
+    active_incidents = sum(1 for s in services if s.status != "operational")
+    
     return DashboardStats(
-        active_incidents=len(targets) - count_up,
+        active_incidents=active_incidents,
         avg_latency=round(avg, 2),
         services=services
     )
