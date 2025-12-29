@@ -81,7 +81,7 @@ export default function DashboardPage() {
                     <div className="relative z-10">
                         <div className="text-dark-text-muted text-sm font-medium mb-1">Servicios Monitoreados</div>
                         <div className="text-3xl font-bold text-dark-text-primary mb-1">
-                             <p className="text-2xl font-medium">
+                             <p className="text-xl font-medium">
                                 Verificando Internet, Router y Sistema
                              </p>
                         </div>

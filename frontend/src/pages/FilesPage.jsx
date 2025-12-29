@@ -77,14 +77,14 @@ export function FilesPage() {
   }
 
   return (
-    <div className="container-app py-4 sm:py-8 overflow-x-hidden min-w-0">
+    <div className="container-app py-4 sm:py-8 overflow-x-hidden min-w-0 px-4">
       <div className="max-w-4xl mx-auto w-full min-w-0">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 sm:mb-8 gap-4 sm:gap-6">
           <div className="flex-1 min-w-0">
             <h1 className="text-xl sm:text-2xl font-medium text-dark-text-primary mb-1 sm:mb-2 tracking-tight">
               Gestión de Archivos
             </h1>
-            <p className="text-dark-text-secondary text-sm sm:text-[15px] leading-relaxed">
+            <p className="text-dark-text-secondary text-sm sm:text-[15px] leading-relaxed break-words text-wrap">
               Sube y gestiona los documentos PDF que el agente utilizará para responder consultas
             </p>
           </div>
