@@ -323,21 +323,75 @@ def _execute_compare(hosts: List[str], search_text: str, messages: List[AnyMessa
         previous_host = _extract_previous_result_host(messages, search_text)
         if previous_host:
             logger.info(f"[Compare] LLM identificó referencia a resultado anterior: {previous_host}")
-            # Extraer el nuevo dominio mencionado en el texto actual
-            new_hosts = extract_domains_from_text(search_text)
-            if new_hosts:
-                # Usar solo el anterior y el nuevo mencionado
-                hosts = [previous_host, new_hosts[0]]
-                logger.info(f"[Compare] Comparando {previous_host} con {new_hosts[0]}")
-            else:
-                # Si no se encuentra nuevo dominio en el texto, usar LLM para extraerlo
-                domain_from_llm = extract_domain_using_llm(search_text)
-                if domain_from_llm and domain_from_llm != previous_host:
-                    hosts = [previous_host, domain_from_llm]
-                    logger.info(f"[Compare] Comparando {previous_host} con {domain_from_llm} (extraído con LLM)")
+            
+            # CORRECCIÓN CRÍTICA: Extraer el NUEVO dominio mencionado usando un prompt específico
+            # que excluya explícitamente el dominio anterior para evitar duplicados
+            try:
+                new_domain_prompt = f"""
+Analiza el siguiente texto e identifica el NUEVO dominio o servicio que el usuario quiere comparar.
+
+Texto: "{search_text}"
+
+INSTRUCCIONES CRÍTICAS:
+1. Identifica el NUEVO servicio o dominio mencionado en el texto (ej: "tesla", "facebook", "google")
+2. El dominio anterior ya identificado es: {previous_host} - NO lo incluyas en tu respuesta
+3. Busca SOLO el nuevo servicio/dominio mencionado en el texto actual
+4. Convierte el nombre del servicio al dominio completo (ej: "tesla" → "tesla.com", "facebook" → "facebook.com")
+5. Si el texto menciona un dominio completo (ej: "tesla.com"), úsalo tal cual
+6. Responde SOLO con el dominio completo del NUEVO servicio (ej: tesla.com), sin explicaciones
+7. Si no encuentras un nuevo dominio/servicio, responde "ninguno"
+
+Ejemplos:
+- "comparalo con tesla" → tesla.com
+- "comparalo con facebook" → facebook.com
+- "compara con google.com" → google.com
+- "comparalo con el anterior" → ninguno (no hay nuevo dominio)
+
+Nuevo dominio (o "ninguno"):
+"""
+                llm_response = llm.generate(new_domain_prompt, max_tokens=100).strip().lower()
+                
+                # Limpiar la respuesta del LLM
+                llm_response = re.sub(r'[^\w\.-]', '', llm_response)
+                
+                if llm_response and llm_response != "ninguno" and '.' in llm_response:
+                    if ip_tool.validate_ip_or_domain(llm_response) and llm_response != previous_host:
+                        logger.info(f"[Compare] Nuevo dominio extraído con LLM: {llm_response}")
+                        hosts = [previous_host, llm_response]
+                        logger.info(f"[Compare] Comparando {previous_host} con {llm_response}")
+                    else:
+                        logger.warning(f"[Compare] LLM retornó dominio inválido o duplicado: {llm_response}")
+                        # Fallback: intentar con extract_domains_from_text pero filtrar el anterior
+                        new_hosts = extract_domains_from_text(search_text)
+                        new_hosts = [h for h in new_hosts if h != previous_host]  # Filtrar el anterior
+                        if new_hosts:
+                            hosts = [previous_host, new_hosts[0]]
+                            logger.info(f"[Compare] Comparando {previous_host} con {new_hosts[0]} (fallback)")
+                        else:
+                            hosts = [previous_host]
+                            logger.warning(f"[Compare] No se pudo extraer nuevo dominio, solo se tiene: {previous_host}")
                 else:
-                    # Si no se encuentra, mantener solo el anterior y continuar con la lógica normal
+                    logger.warning(f"[Compare] LLM no encontró nuevo dominio: {llm_response}")
+                    # Fallback: intentar con extract_domains_from_text pero filtrar el anterior
+                    new_hosts = extract_domains_from_text(search_text)
+                    new_hosts = [h for h in new_hosts if h != previous_host]  # Filtrar el anterior
+                    if new_hosts:
+                        hosts = [previous_host, new_hosts[0]]
+                        logger.info(f"[Compare] Comparando {previous_host} con {new_hosts[0]} (fallback)")
+                    else:
+                        hosts = [previous_host]
+                        logger.warning(f"[Compare] No se pudo extraer nuevo dominio, solo se tiene: {previous_host}")
+            except Exception as e:
+                logger.error(f"[Compare] Error al extraer nuevo dominio: {e}")
+                # Fallback: intentar con extract_domains_from_text pero filtrar el anterior
+                new_hosts = extract_domains_from_text(search_text)
+                new_hosts = [h for h in new_hosts if h != previous_host]  # Filtrar el anterior
+                if new_hosts:
+                    hosts = [previous_host, new_hosts[0]]
+                    logger.info(f"[Compare] Comparando {previous_host} con {new_hosts[0]} (fallback de error)")
+                else:
                     hosts = [previous_host]
+                    logger.warning(f"[Compare] Error y no se pudo extraer nuevo dominio, solo se tiene: {previous_host}")
     
     # Si NO hay referencia a resultado anterior, usar la lógica normal
     if not previous_host:

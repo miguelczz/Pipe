@@ -84,18 +84,27 @@ TOOL DECISION RULES (STEP 2 - only if relevant):
 1. ANALYZE THE USER REQUEST CAREFULLY: Break down the request into separate parts if it contains multiple questions or tasks.
 2. IMPORTANT: If the user is asking for a follow-up, conclusion, or continuation of a previous conversation (e.g., "conclusión", "resumen", "entonces", "en resumen", "dame más detalles sobre lo anterior"), use RAG tool but be aware it should use conversation context.
 3. UNDERSTAND USER INTENTION FROM CONTEXT: When the user makes a request like "haz uno", "hazlo", "ejecuta uno", "realiza uno", "haz un", "ejecuta un", you must understand what they want to do by analyzing:
-   - The conversation context: What was discussed in previous messages? What operation or concept was mentioned?
+   - The conversation context: What TOPIC or CONCEPT was discussed in previous messages? (DNS, ping, traceroute, etc.)
    - The user's intent: What specific action are they asking to perform?
-   - The relationship between context and request: If they asked "¿Qué es DNS?" and then say "realiza uno", they likely want to perform a DNS operation. If they asked "¿Qué es un ping?" and then say "realiza uno", they likely want to perform a ping operation.
+   - The relationship between context and request: Analyze the MAIN TOPIC of the conversation to determine the operation.
    
-   You must intelligently infer the user's intention from the full context, not from keywords alone. Analyze what operation makes sense given the conversation flow.
+   CRITICAL RULE: Analyze the MAIN TOPIC/CONCEPT being discussed, not just isolated keywords:
+   - If the context discusses "DNS", "registro DNS", "registros DNS", "consulta DNS", "DNS records", etc. → the user wants a DNS operation
+   - If the context discusses "ping", "latencia", "tiempo de respuesta", etc. → the user wants a ping operation
+   - If the context discusses "traceroute", "ruta", "saltos", "hops", etc. → the user wants a traceroute operation
+   
+   You must intelligently infer the user's intention from the MAIN TOPIC of the conversation, not from isolated keywords.
    
    Examples of intelligent context understanding:
    - Context: "user: ¿Qué es DNS?" → User: "Realiza uno a google" → tool: "dns", plan_step: "query all DNS records for google.com"
+   - Context: "user: ¿Qué es un registro DNS?" → User: "Realiza uno a gmail" → tool: "dns", plan_step: "query all DNS records for gmail.com"
+   - Context: "assistant: Un registro DNS es..." → User: "Haz uno a facebook" → tool: "dns", plan_step: "query all DNS records for facebook.com"
    - Context: "user: ¿Qué es un ping?" → User: "Haz uno a facebook" → tool: "ip", plan_step: "ping to facebook.com"
    - Context: "user: Explica cómo funciona traceroute" → User: "Hazlo a google" → tool: "ip", plan_step: "traceroute to google.com"
+   - Context: "user: ¿Qué son los registros MX?" → User: "Consulta los de gmail" → tool: "dns", plan_step: "query MX records for gmail.com"
    
-   The key is understanding the user's intent from the conversation flow, not matching keywords.
+   The key is understanding the MAIN TOPIC from the conversation flow, not matching isolated keywords.
+
 
 4. For each part, determine which tool is needed by understanding the user's intent:
    - RAG tool: for questions about concepts, definitions, explanations, educational content, asking "what is", "que es", "explain", "define", follow-up questions, conclusions, summaries
