@@ -763,12 +763,13 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
             complexity = "moderada"  # Valor por defecto
             max_appropriate_length = 2000  # Aumentado de 800 a 2000
         
-        # Si la calidad es baja (< 0.5), intentar mejorar la respuesta
-        # SOLO ajustar longitud si la respuesta es EXCESIVAMENTE larga (más del doble del límite apropiado)
-        # Esto evita recortar respuestas que están ligeramente por encima del límite
-        response_too_long = len(final_output) > (max_appropriate_length * 2)
+        # NUEVA ESTRATEGIA: Solo modificar en casos EXTREMOS para minimizar doble respuesta
+        # - Calidad MUY baja (< 0.4) en lugar de (< 0.5)
+        # - Respuesta EXTREMADAMENTE larga (> 3x límite) en lugar de (> 2x límite)
+        # Esto reduce drásticamente las modificaciones del Supervisor
+        response_too_long = len(final_output) > (max_appropriate_length * 3)  # Más permisivo
         
-        if quality_score < 0.5 or response_too_long:
+        if quality_score < 0.4 or response_too_long:  # Umbral más bajo
             # Determinar guía de longitud según complejidad
             if "simple" in complexity:
                 length_guidance = "Respuesta MUY BREVE y DIRECTA: máximo 2-3 oraciones (30-60 palabras). Ve directo al punto sin explicaciones adicionales, sin introducciones largas, sin conclusiones innecesarias."
@@ -899,43 +900,15 @@ Respuesta ajustada (adaptada a la complejidad, natural y fiel a la información)
                         "warning"
                     )
             else:
-                # CORRECCIÓN CRÍTICA: Hacer streaming de la respuesta original
-                # Esto asegura que el usuario SIEMPRE vea streaming, evitando doble respuesta
-                # OPTIMIZACIÓN: Streaming directo sin pasar por LLM adicional
-                if stream_callback:
-                    try:
-                        # Hacer streaming directo de la respuesta token por token
-                        # Simular streaming enviando la respuesta en chunks
-                        chunk_size = 10  # Enviar 10 caracteres a la vez para simular streaming
-                        for i in range(0, len(supervised_output), chunk_size):
-                            chunk = supervised_output[i:i+chunk_size]
-                            stream_callback(chunk)
-                        
-                        thought_chain = add_thought(
-                            thought_chain,
-                            "Supervisor",
-                            "Validación: aprobada con streaming",
-                            f"Calidad: {quality_score:.2f}, respuesta transmitida al usuario",
-                            "success"
-                        )
-                    except Exception as e:
-                        logger.warning(f"Error al hacer streaming de respuesta: {e}")
-                        thought_chain = add_thought(
-                            thought_chain,
-                            "Supervisor",
-                            "Validación: aprobada (error en streaming)",
-                            f"Calidad: {quality_score:.2f}",
-                            "warning"
-                        )
-                else:
-                    # Si no hay callback, simplemente marcar como aprobada
-                    thought_chain = add_thought(
-                        thought_chain,
-                        "Supervisor",
-                        "Validación: aprobada",
-                        f"Calidad: {quality_score:.2f}",
-                        "success"
-                    )
+                # Calidad buena y longitud apropiada - NO modificar
+                # El streaming ya se hizo en el Synthesizer
+                thought_chain = add_thought(
+                    thought_chain,
+                    "Supervisor",
+                    "Validación: aprobada sin modificaciones",
+                    f"Calidad: {quality_score:.2f}, respuesta aceptada tal cual",
+                    "success"
+                )
             
             # OPTIMIZACIÓN: Limpiar estado para evitar acumulación de memoria (solo si hay mucho contenido)
             if state.messages and len(state.messages) > 30:
@@ -1126,13 +1099,13 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
             try:
                 # Usar max_tokens adaptado según complejidad
                 # No recortar respuestas - permitir respuestas completas según max_tokens configurado
-                # CORRECCIÓN: NO hacer streaming aquí, el Supervisor hará el streaming final
-                # Esto evita la doble respuesta (Synthesizer + Supervisor)
+                # RESTAURADO: Hacer streaming aquí para velocidad óptima
+                # El Supervisor solo modificará en casos EXTREMOS
                 # ASYNC CHANGE
                 final_answer = await llm.agenerate(
                     synthesis_prompt, 
                     max_tokens=max_tokens_synthesis,
-                    stream_callback=None  # SIN streaming - el Supervisor hará el streaming
+                    stream_callback=stream_callback  # Streaming directo para velocidad
                 )
                 final_answer = final_answer.strip()
                 
@@ -1206,12 +1179,12 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
         )
         
         try:
-            # CORRECCIÓN: NO hacer streaming aquí, el Supervisor hará el streaming final
+            # RESTAURADO: Hacer streaming aquí para velocidad óptima
             # ASYNC CHANGE
             final_answer = await llm.agenerate(
                 synthesis_prompt,
                 max_tokens=800,
-                stream_callback=None  # SIN streaming - el Supervisor hará el streaming
+                stream_callback=stream_callback  # Streaming directo para velocidad
             )
             final_answer = final_answer.strip()
             
@@ -1266,12 +1239,12 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
         )
         
         try:
-            # CORRECCIÓN: NO hacer streaming aquí, el Supervisor hará el streaming final
+            # RESTAURADO: Hacer streaming aquí para velocidad óptima
             # ASYNC CHANGE
             final_answer = await llm.agenerate(
                 synthesis_prompt,
                 max_tokens=800,
-                stream_callback=None  # SIN streaming - el Supervisor hará el streaming
+                stream_callback=stream_callback  # Streaming directo para velocidad
             )
             final_answer = final_answer.strip()
             
@@ -1369,11 +1342,11 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
         )
 
         try:
-            # CORRECCIÓN: NO hacer streaming aquí, el Supervisor hará el streaming final
+            # RESTAURADO: Hacer streaming aquí para velocidad óptima
             # ASYNC CHANGE
             final_response = await llm.agenerate(
                 synthesis_prompt,
-                stream_callback=None  # SIN streaming - el Supervisor hará el streaming
+                stream_callback=stream_callback  # Streaming directo para velocidad
             )
             thought_chain = add_thought(
                 thought_chain,
