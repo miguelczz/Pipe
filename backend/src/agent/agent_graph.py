@@ -899,13 +899,43 @@ Respuesta ajustada (adaptada a la complejidad, natural y fiel a la información)
                         "warning"
                     )
             else:
-                thought_chain = add_thought(
-                    thought_chain,
-                    "Supervisor",
-                    "Validación: aprobada",
-                    f"Calidad: {quality_score:.2f}",
-                    "success"
-                )
+                # CORRECCIÓN CRÍTICA: Hacer streaming de la respuesta original
+                # Esto asegura que el usuario SIEMPRE vea streaming, evitando doble respuesta
+                # OPTIMIZACIÓN: Streaming directo sin pasar por LLM adicional
+                if stream_callback:
+                    try:
+                        # Hacer streaming directo de la respuesta token por token
+                        # Simular streaming enviando la respuesta en chunks
+                        chunk_size = 10  # Enviar 10 caracteres a la vez para simular streaming
+                        for i in range(0, len(supervised_output), chunk_size):
+                            chunk = supervised_output[i:i+chunk_size]
+                            stream_callback(chunk)
+                        
+                        thought_chain = add_thought(
+                            thought_chain,
+                            "Supervisor",
+                            "Validación: aprobada con streaming",
+                            f"Calidad: {quality_score:.2f}, respuesta transmitida al usuario",
+                            "success"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Error al hacer streaming de respuesta: {e}")
+                        thought_chain = add_thought(
+                            thought_chain,
+                            "Supervisor",
+                            "Validación: aprobada (error en streaming)",
+                            f"Calidad: {quality_score:.2f}",
+                            "warning"
+                        )
+                else:
+                    # Si no hay callback, simplemente marcar como aprobada
+                    thought_chain = add_thought(
+                        thought_chain,
+                        "Supervisor",
+                        "Validación: aprobada",
+                        f"Calidad: {quality_score:.2f}",
+                        "success"
+                    )
             
             # OPTIMIZACIÓN: Limpiar estado para evitar acumulación de memoria (solo si hay mucho contenido)
             if state.messages and len(state.messages) > 30:
@@ -1096,12 +1126,13 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
             try:
                 # Usar max_tokens adaptado según complejidad
                 # No recortar respuestas - permitir respuestas completas según max_tokens configurado
-                # Pasamos el callback para streaming real
+                # CORRECCIÓN: NO hacer streaming aquí, el Supervisor hará el streaming final
+                # Esto evita la doble respuesta (Synthesizer + Supervisor)
                 # ASYNC CHANGE
                 final_answer = await llm.agenerate(
                     synthesis_prompt, 
                     max_tokens=max_tokens_synthesis,
-                    stream_callback=stream_callback  # Streaming en tiempo real
+                    stream_callback=None  # SIN streaming - el Supervisor hará el streaming
                 )
                 final_answer = final_answer.strip()
                 
@@ -1175,11 +1206,12 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
         )
         
         try:
-            # ASYNC CHANGE - Usar LLM con streaming
+            # CORRECCIÓN: NO hacer streaming aquí, el Supervisor hará el streaming final
+            # ASYNC CHANGE
             final_answer = await llm.agenerate(
                 synthesis_prompt,
                 max_tokens=800,
-                stream_callback=stream_callback  # Streaming en tiempo real
+                stream_callback=None  # SIN streaming - el Supervisor hará el streaming
             )
             final_answer = final_answer.strip()
             
@@ -1234,11 +1266,12 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
         )
         
         try:
-            # ASYNC CHANGE - Usar LLM con streaming
+            # CORRECCIÓN: NO hacer streaming aquí, el Supervisor hará el streaming final
+            # ASYNC CHANGE
             final_answer = await llm.agenerate(
                 synthesis_prompt,
                 max_tokens=800,
-                stream_callback=stream_callback  # Streaming en tiempo real
+                stream_callback=None  # SIN streaming - el Supervisor hará el streaming
             )
             final_answer = final_answer.strip()
             
@@ -1336,10 +1369,11 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
         )
 
         try:
+            # CORRECCIÓN: NO hacer streaming aquí, el Supervisor hará el streaming final
             # ASYNC CHANGE
             final_response = await llm.agenerate(
                 synthesis_prompt,
-                stream_callback=stream_callback  # Streaming en tiempo real
+                stream_callback=None  # SIN streaming - el Supervisor hará el streaming
             )
             thought_chain = add_thought(
                 thought_chain,
