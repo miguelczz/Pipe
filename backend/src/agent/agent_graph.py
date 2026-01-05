@@ -262,9 +262,11 @@ def planner_node(state: GraphState) -> Dict[str, Any]:
     )
     
     # Retornar solo el campo modificado como diccionario para propagación correcta
+    # IMPORTANTE: Limpiar 'results' previos para evitar acumulación de ejecuciones anteriores
     return {
         "plan_steps": plan_steps,
-        "thought_chain": thought_chain
+        "thought_chain": thought_chain,
+        "results": []
     }
 
 

@@ -54,11 +54,12 @@ class IPTool:
             # El error se manejará en compare
             return host
     
-    def measure_ping(self, host: str, count: int = 4) -> Dict[str, Any]:
+    def measure_ping(self, host: str, count: int = 2) -> Dict[str, Any]:
         """
         Mide la latencia (ping) a un host.
         Retorna información sobre el tiempo de respuesta.
         Primero intenta usar subprocess, si falla usa ping3 como alternativa.
+        Se usa count=2 por defecto para mejorar tiempo de respuesta.
         """
         system = platform.system().lower()
         
@@ -148,7 +149,7 @@ class IPTool:
                 return self._ping_with_tcp(host, count)
             return result
     
-    def _ping_with_tcp(self, host: str, count: int = 4) -> Dict[str, Any]:
+    def _ping_with_tcp(self, host: str, count: int = 2) -> Dict[str, Any]:
         """
         Método alternativo usando conexiones TCP cuando ICMP no está disponible.
         Este método funciona sin permisos especiales y es compatible con Heroku.
@@ -226,7 +227,7 @@ class IPTool:
                 "packet_loss": 100
             }
     
-    def _ping_with_ping3(self, host: str, count: int = 4) -> Dict[str, Any]:
+    def _ping_with_ping3(self, host: str, count: int = 2) -> Dict[str, Any]:
         """
         Método alternativo usando la biblioteca ping3 cuando subprocess no está disponible.
         Nota: Este método puede fallar en entornos sin permisos de root (como Heroku).
@@ -592,7 +593,7 @@ class IPTool:
         return r
 
     @cache_result("ip_ping", ttl=300)  # Cache por 5 minutos (TTL corto para operaciones de red)
-    def ping(self, host: str, count: int = 4) -> Dict[str, Any]:
+    def ping(self, host: str, count: int = 2) -> Dict[str, Any]:
         """
         Ejecuta un ping a la IP o dominio proporcionado.
         Retorna el resultado completo del ping con información de latencia.

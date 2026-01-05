@@ -91,11 +91,12 @@ TOOL DECISION RULES (STEP 2 - only if relevant):
    You must intelligently infer the user's intention from the full context, not from keywords alone. Analyze what operation makes sense given the conversation flow.
    
    Examples of intelligent context understanding:
-   - Context: "user: ¿Qué es DNS?" → User: "Realiza uno a google" → tool: "dns", plan_step: "query all DNS records for google.com"
+   - Context: "user: ¿Qué es DNS?" → User: "Realiza uno a google" → tool: "dns", plan_step: "query all DNS records for google.com" (User means "Perform a DNS query")
+   - Context: "user: Explícame el registro MX" → User: "Muestra el de gmail" → tool: "dns", plan_step: "query MX records for gmail.com"
    - Context: "user: ¿Qué es un ping?" → User: "Haz uno a facebook" → tool: "ip", plan_step: "ping to facebook.com"
    - Context: "user: Explica cómo funciona traceroute" → User: "Hazlo a google" → tool: "ip", plan_step: "traceroute to google.com"
    
-   The key is understanding the user's intent from the conversation flow, not matching keywords.
+   CRITICAL: If the previous conversation was about DNS (records, lookup, propagation), and the user says "haz uno" or "hazlo", assume they want a DNS operation, NOT a ping.
 
 4. For each part, determine which tool is needed by understanding the user's intent:
    - RAG tool: for questions about concepts, definitions, explanations, educational content, asking "what is", "que es", "explain", "define", follow-up questions, conclusions, summaries
