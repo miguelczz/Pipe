@@ -27,6 +27,7 @@ hiredis>=2.2.0
 python-multipart>=0.0.6
 PyPDF2>=3.0.0
 aiofiles>=23.2.0
+pyshark>=0.6.0
 
 # Utilities
 tqdm>=4.66.0

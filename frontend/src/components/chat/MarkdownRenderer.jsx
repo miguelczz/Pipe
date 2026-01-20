@@ -3,106 +3,149 @@ import remarkGfm from 'remark-gfm'
 import { cn } from '../../utils/cn'
 
 /**
- * Componente para renderizar markdown de forma agradable
+ * Renderizador de Markdown optimizado para dashboards técnicos
+ * - Usa todo el ancho disponible
+ * - Sin límites por caracteres
+ * - Texto y marcadores forzados a blanco
+ * - Sin estilos heredados tipo "prose"
  */
 export function MarkdownRenderer({ content, className }) {
   return (
-    <div className={cn('prose prose-invert max-w-none overflow-hidden min-w-0', className)}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-        // Personalizar estilos de los elementos markdown
-        h1: ({ ...props }) => (
-          <h1 className="text-2xl font-semibold text-dark-text-primary mt-4 mb-2 first:mt-0" {...props} />
-        ),
-        h2: ({ ...props }) => (
-          <h2 className="text-xl font-semibold text-dark-text-primary mt-4 mb-2 first:mt-0" {...props} />
-        ),
-        h3: ({ ...props }) => (
-          <h3 className="text-lg font-medium text-dark-text-primary mt-3 mb-2 first:mt-0" {...props} />
-        ),
-        p: ({ ...props }) => (
-          <p className="text-[15px] text-dark-text-primary leading-relaxed mb-2 last:mb-0" {...props} />
-        ),
-        ul: ({ ...props }) => (
-          <ul className="list-disc list-inside mb-2 space-y-1 text-[15px] text-dark-text-primary" {...props} />
-        ),
-        ol: ({ ...props }) => (
-          <ol className="mb-2 space-y-1 text-[15px] text-dark-text-primary" {...props} />
-        ),
-        li: ({ ...props }) => (
-          <li className="text-[15px] text-dark-text-primary leading-relaxed" {...props} />
-        ),
-        strong: ({ ...props }) => (
-          <strong className="font-semibold text-dark-text-primary" {...props} />
-        ),
-        em: ({ ...props }) => (
-          <em className="italic text-dark-text-secondary" {...props} />
-        ),
-        code: ({ inline, ...props }) => {
-          if (inline) {
-            return (
-              <code
-                className="px-1.5 py-0.5 bg-dark-surface-secondary text-dark-text-primary rounded text-sm font-mono border border-dark-border-primary/20 break-words"
+    <div className={cn('w-full max-w-full overflow-hidden', className)}>
+      <div className="space-y-3 break-words text-white">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            h1: ({ ...props }) => (
+              <h1
+                className="text-2xl font-bold text-white mt-8 mb-4 border-b border-dark-border-primary/50 pb-2 first:mt-0"
                 {...props}
               />
-            )
-          }
-          return (
-            <code
-              className="block p-3 bg-dark-surface-secondary text-dark-text-primary rounded-lg text-sm font-mono overflow-x-auto mb-2 border border-dark-border-primary/20"
-              {...props}
-            />
-          )
-        },
-        pre: ({ ...props }) => (
-          <pre className="bg-dark-surface-secondary rounded-lg p-3 overflow-x-auto mb-2 max-w-full" {...props} />
-        ),
-        blockquote: ({ ...props }) => (
-          <blockquote
-            className="border-l-4 border-dark-accent-primary pl-4 italic text-dark-text-secondary my-2 bg-dark-surface-secondary/30 rounded-r-lg py-2 overflow-x-auto"
-            {...props}
-          />
-        ),
-        a: ({ ...props }) => (
-          <a
-            className="text-dark-accent-primary hover:text-dark-accent-hover underline break-words"
-            target="_blank"
-            rel="noopener noreferrer"
-            {...props}
-          />
-        ),
-        hr: ({ ...props }) => (
-          <hr className="border-dark-border-primary my-4" {...props} />
-        ),
-        table: ({ ...props }) => (
-          <div className="overflow-x-auto my-3 w-full">
-            <table className="border-collapse w-full" {...props} />
-          </div>
-        ),
-        thead: ({ ...props }) => (
-          <thead className="bg-dark-surface-secondary" {...props} />
-        ),
-        th: ({ ...props }) => (
-          <th
-            className="px-4 py-2.5 text-left text-sm font-semibold text-dark-text-primary border-b border-dark-border-primary/50"
-            {...props}
-          />
-        ),
-        td: ({ ...props }) => (
-          <td
-            className="px-4 py-2.5 text-sm text-dark-text-secondary border-b border-dark-border-primary/30"
-            {...props}
-          />
-        ),
-        tr: ({ ...props }) => (
-          <tr className="hover:bg-dark-surface-hover/50 transition-colors" {...props} />
-        ),
-      }}
-      >
-        {content}
-      </ReactMarkdown>
+            ),
+            h2: ({ ...props }) => (
+              <h2
+                className="text-xl font-bold text-white mt-8 mb-4 first:mt-0 items-center flex gap-2"
+                {...props}
+              />
+            ),
+            h3: ({ ...props }) => (
+              <h3
+                className="text-lg font-semibold text-white mt-6 mb-3"
+                {...props}
+              />
+            ),
+
+            p: ({ ...props }) => (
+              <p
+                className="text-[15px] text-gray-200 leading-relaxed mb-4 last:mb-0"
+                {...props}
+              />
+            ),
+
+            ul: ({ ...props }) => (
+              <ul
+                className="list-disc list-outside ml-6 mb-4 space-y-2 text-[15px] text-gray-200"
+                {...props}
+              />
+            ),
+
+            ol: ({ ...props }) => (
+              <ol
+                className="list-decimal list-outside ml-6 mb-4 space-y-2 text-[15px] text-gray-200"
+                {...props}
+              />
+            ),
+
+            li: ({ ...props }) => (
+              <li
+                className="leading-relaxed pl-1 marker:text-dark-accent-primary marker:font-bold"
+                {...props}
+              />
+            ),
+
+            strong: ({ ...props }) => (
+              <strong className="font-bold text-white" {...props} />
+            ),
+
+            em: ({ ...props }) => (
+              <em className="italic text-gray-400" {...props} />
+            ),
+
+            code: ({ inline, ...props }) =>
+              inline ? (
+                <code
+                  className="font-bold text-white break-words"
+                  {...props}
+                />
+              ) : (
+                <code
+                  className="block p-4 bg-dark-surface-secondary text-gray-200 rounded-lg text-sm font-mono overflow-x-auto mb-4 border border-dark-border-primary/30 w-full"
+                  {...props}
+                />
+              ),
+
+            pre: ({ ...props }) => (
+              <pre
+                className="bg-dark-surface-secondary rounded-lg overflow-hidden mb-6 border border-dark-border-primary/30 w-full"
+                {...props}
+              />
+            ),
+
+            blockquote: ({ ...props }) => (
+              <blockquote
+                className="border-l-4 border-dark-accent-primary pl-4 py-1 my-6 italic text-gray-400 bg-dark-surface-secondary/20 rounded-r-lg"
+                {...props}
+              />
+            ),
+
+            a: ({ ...props }) => (
+              <a
+                className="text-dark-accent-secondary hover:text-dark-accent-hover underline decoration-dark-accent-secondary/30 hover:decoration-dark-accent-hover underline-offset-4 transition-all"
+                target="_blank"
+                rel="noopener noreferrer"
+                {...props}
+              />
+            ),
+
+            hr: ({ ...props }) => (
+              <hr className="border-dark-border-primary/50 my-8" {...props} />
+            ),
+
+            table: ({ ...props }) => (
+              <div className="overflow-x-auto my-6 w-full border border-dark-border-primary/40 rounded-lg">
+                <table className="w-full text-left border-collapse" {...props} />
+              </div>
+            ),
+
+            thead: ({ ...props }) => (
+              <thead className="bg-dark-surface-secondary border-b border-dark-border-primary/40" {...props} />
+            ),
+
+            th: ({ ...props }) => (
+              <th
+                className="px-6 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap"
+                {...props}
+              />
+            ),
+
+            td: ({ ...props }) => (
+              <td
+                className="px-6 py-4 text-sm text-gray-300 border-b border-dark-border-primary/20 last:border-0"
+                {...props}
+              />
+            ),
+
+            tr: ({ ...props }) => (
+              <tr
+                className="hover:bg-dark-surface-hover/30 transition-colors"
+                {...props}
+              />
+            ),
+          }}
+        >
+          {content}
+        </ReactMarkdown>
+      </div>
     </div>
   )
 }
-

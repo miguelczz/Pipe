@@ -260,5 +260,33 @@ export const filesService = {
   },
 }
 
+/**
+ * Servicio para análisis de capturas de red (Wireshark / PCAP)
+ */
+export const networkAnalysisService = {
+  /**
+   * Sube una captura de red (pcap/pcapng) y obtiene el análisis de la IA
+   * @param {File} file - Archivo de captura
+   * @returns {Promise} - Análisis y estadísticas básicas
+   */
+  async analyzeCapture(file) {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const uploadClient = axios.create({
+      baseURL: API_URL,
+      timeout: 120000,
+    })
+
+    const response = await uploadClient.post('/network-analysis/analyze', formData, {
+      headers: {
+        // Dejar que axios ponga el Content-Type con boundary
+      },
+    })
+
+    return response.data
+  },
+}
+
 export default apiClient
 
