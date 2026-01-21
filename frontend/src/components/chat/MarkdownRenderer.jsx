@@ -63,9 +63,26 @@ export function MarkdownRenderer({ content, className }) {
               />
             ),
 
-            strong: ({ ...props }) => (
-              <strong className="font-bold text-white" {...props} />
-            ),
+            strong: ({ node, children, ...props }) => {
+              const text = String(children).toUpperCase()
+              let colorClass = 'text-white'
+              
+              if (text.includes('EXITOSA') || text.includes('EXCELLENT') || text.includes('GOOD')) {
+                colorClass = 'text-green-400'
+              } else if (text.includes('FALLIDA') || text.includes('FAILED')) {
+                colorClass = 'text-red-400'
+              } else if (text.includes('PREVENTIVE')) {
+                colorClass = 'text-blue-400'
+              } else if (text.includes('INCONCLUSO') || text.includes('WARNING')) {
+                colorClass = 'text-yellow-400'
+              }
+
+              return (
+                <strong className={`font-bold ${colorClass}`} {...props}>
+                  {children}
+                </strong>
+              )
+            },
 
             em: ({ ...props }) => (
               <em className="italic text-gray-400" {...props} />

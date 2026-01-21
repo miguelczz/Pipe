@@ -56,6 +56,10 @@ export function NetworkAnalysisPage() {
   const fileInputRef = useRef(null)
 
   const handleSelectClick = () => {
+    // Resetear el valor para permitir seleccionar el mismo archivo y que dispare onChange
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
     fileInputRef.current?.click()
   }
 
@@ -77,32 +81,39 @@ export function NetworkAnalysisPage() {
     
     setError('')
     setSelectedFile(file)
-    setFileMetadata({
+    const meta = {
       name: file.name,
       size: file.size
-    })
+    }
+    setFileMetadata(meta)
     setResult(null)
+    
+    // Disparar análisis automáticamente
+    performAnalysis(file, meta)
   }
 
-  const handleAnalyze = async () => {
-    if (!selectedFile) {
-      setError('Selecciona primero un archivo de captura .pcap o .pcapng.')
-      return
+  const handleAnalyze = () => {
+    if (selectedFile) {
+      performAnalysis(selectedFile, fileMetadata)
+    } else {
+      handleSelectClick()
     }
+  }
 
+  const performAnalysis = async (file, meta) => {
     setUploading(true)
     setError('')
     setResult(null)
 
     try {
-      const res = await networkAnalysisService.analyzeCapture(selectedFile)
+      const res = await networkAnalysisService.analyzeCapture(file)
+      
+      // Debug: Ver estructura de datos
+      console.log('Respuesta del análisis:', res)
       
       // Guardar en persistencia
       setResult(res)
       localStorage.setItem('networkAnalysisResult', JSON.stringify(res))
-      
-      const meta = { name: selectedFile.name, size: selectedFile.size }
-      setFileMetadata(meta)
       localStorage.setItem('networkAnalysisFileMeta', JSON.stringify(meta))
       
     } catch (err) {
@@ -117,9 +128,78 @@ export function NetworkAnalysisPage() {
     }
   }
 
+  // Función para limpiar el nombre del archivo (quitar UUID y prefijos numéricos)
+  const cleanFileName = (fileName) => {
+    if (!fileName) return ''
+    
+    let clean = fileName
+    
+    // 1. Remover UUID del formato: "uuid_nombre.ext"
+    const parts = clean.split('_')
+    if (parts.length > 1 && parts[0].length > 20) { // Probable UUID
+      clean = parts.slice(1).join('_')
+    }
+    
+    // 2. Remover prefijos tipo "7." o "01."
+    clean = clean.replace(/^\d+\./, '')
+    return clean.trim()
+  }
+
+  // Función para formatear el tamaño del archivo
+  const formatFileSize = (bytes) => {
+    if (!bytes) return '0 Bytes'
+    const k = 1024
+    const sizes = ['Bytes', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  }
+
+  // Función para formatear el veredicto técnico a español
+  const formatVerdict = (verdict) => {
+    if (!verdict) return 'N/A'
+    
+    const mapping = {
+      'EXCELLENT': 'Excelente',
+      'GOOD': 'Bueno',
+      'PREVENTIVE_SUCCESS': 'Éxito Preventivo',
+      'FAILED_BTM_REJECT': 'Fallo: Rechazo BTM',
+      'FAILED_LOOP': 'Fallo: Bucle entre APs',
+      'FAILED_NO_REASSOC': 'Fallo: Sin reconexión',
+      'FAILED_ALGORITHM': 'Fallo de algoritmo',
+      'WARNING_INCONCLUSIVE': 'Inconcluso',
+      'NOT_EVALUABLE': 'No evaluable',
+      'FAILED': 'Fallido',
+      'ACCEPTABLE': 'Aceptable',
+      'SLOW_BUT_SUCCESSFUL': 'Lento pero Exitoso',
+      'NO_DATA': 'Sin Datos',
+      'NO_STEERING_EVENTS': 'Sin Eventos'
+    }
+
+    return mapping[verdict] || verdict.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())
+  }
+
+  // Función para manejar la impresión/PDF
+  const handlePrint = () => {
+    const fileName = result?.file_name || fileMetadata?.name || ''
+    const cleanName = cleanFileName(fileName).split('.')[0].replace(/_/g, ' ').trim()
+    
+    // El título del documento influye en el nombre del archivo al guardar
+    const originalTitle = document.title
+    document.title = `NetMind ${cleanName}`
+    
+    window.print()
+  }
+
+  // Obtener nombre limpio para el encabezado de impresión
+  const printTitle = result || fileMetadata 
+    ? cleanFileName(result?.file_name || fileMetadata?.name).split('.')[0].replace(/_/g, ' ').trim()
+    : ''
+
   return (
     <div className="container-app py-4 sm:py-8 overflow-x-hidden min-w-0 px-4">
-      <div className="max-w-5xl mx-auto w-full min-w-0 space-y-6">
+      
+
+      <div className="max-w-5xl mx-auto w-full min-w-0 space-y-6 pt-4 print:pt-2">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-6">
           <div className="flex-1 min-w-0">
             <h1 className="text-xl sm:text-2xl font-semibold text-dark-text-primary mb-2 tracking-tight flex items-center gap-2">
@@ -142,7 +222,18 @@ export function NetworkAnalysisPage() {
             </p>
           </div>
 
-          <div className="flex-shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+            {result && (
+              <Button
+                variant="outline"
+                onClick={handlePrint}
+                className="w-full sm:w-auto border-dark-accent-primary/10 text-dark-accent-primary hover:bg-dark-accent-primary/10"
+              >
+                <HardDrive className="w-4 h-4 mr-2" />
+                Exportar PDF
+              </Button>
+            )}
+            
             <input
               ref={fileInputRef}
               type="file"
@@ -156,17 +247,6 @@ export function NetworkAnalysisPage() {
               disabled={uploading}
               className="w-full sm:w-auto"
             >
-              <Upload className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">Seleccionar archivo</span>
-              <span className="sm:hidden">Seleccionar</span>
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={handleAnalyze}
-              disabled={uploading || !selectedFile}
-              className="w-full sm:w-auto"
-            >
               {uploading ? (
                 <>
                   <Loading size="sm" className="sm:mr-2" />
@@ -174,8 +254,8 @@ export function NetworkAnalysisPage() {
                 </>
               ) : (
                 <>
-                  <Activity className="w-4 h-4 sm:mr-2" />
-                  <span>{result ? 'Analizar otro' : 'Analizar captura'}</span>
+                  <Upload className="w-4 h-4 sm:mr-2" />
+                  <span>{result ? 'Analizar otra captura' : 'Seleccionar y analizar'}</span>
                 </>
               )}
             </Button>
@@ -193,12 +273,12 @@ export function NetworkAnalysisPage() {
                   Archivo {result ? 'analizado' : 'seleccionado'}
                 </p>
                 <p className="text-xs text-dark-text-secondary break-all truncate">
-                  {selectedFile?.name || fileMetadata?.name}
+                  {cleanFileName(selectedFile?.name || fileMetadata?.name || result?.file_name)}
                 </p>
               </div>
               <div className="text-right flex-shrink-0">
                 <p className="text-sm font-semibold text-dark-text-primary">
-                  {((selectedFile?.size || fileMetadata?.size || 0) / (1024 * 1024)).toFixed(2)} MB
+                  {formatFileSize(selectedFile?.size || fileMetadata?.size || 0)}
                 </p>
                 <p className="text-xs text-dark-text-muted">
                   {(selectedFile?.size || fileMetadata?.size || 0).toLocaleString()} bytes
@@ -238,19 +318,19 @@ export function NetworkAnalysisPage() {
 
         {result && (
           <div className="space-y-6">
-            {/* Estadísticas principales */}
+            {/* Estadísticas principales - Métricas de Band Steering */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card className="p-5 bg-gradient-to-br from-blue-500/10 to-blue-600/5 border-blue-500/20">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="p-2 rounded-lg bg-blue-500/20">
-                    <Package className="w-5 h-5 text-blue-400" />
+                    <Activity className="w-5 h-5 text-blue-400" />
                   </div>
                   <div>
                     <p className="text-xs text-dark-text-muted uppercase tracking-wide">
-                      Paquetes analizados
+                      Eventos 802.11
                     </p>
                     <p className="text-2xl font-bold text-dark-text-primary">
-                      {result.stats?.total_packets?.toLocaleString() ?? '0'}
+                      {result.stats?.diagnostics?.steering_events_count ?? '0'}
                     </p>
                   </div>
                 </div>
@@ -259,16 +339,14 @@ export function NetworkAnalysisPage() {
               <Card className="p-5 bg-gradient-to-br from-green-500/10 to-green-600/5 border-green-500/20">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="p-2 rounded-lg bg-green-500/20">
-                    <HardDrive className="w-5 h-5 text-green-400" />
+                    <TrendingUp className="w-5 h-5 text-green-400" />
                   </div>
                   <div>
                     <p className="text-xs text-dark-text-muted uppercase tracking-wide">
-                      Bytes aproximados
+                      Transiciones exitosas
                     </p>
                     <p className="text-2xl font-bold text-dark-text-primary">
-                      {result.stats?.approx_total_bytes
-                        ? (result.stats.approx_total_bytes / 1024).toFixed(2) + ' KB'
-                        : '0 KB'}
+                      {result.stats?.steering_analysis?.successful_transitions ?? '0'}
                     </p>
                   </div>
                 </div>
@@ -281,10 +359,10 @@ export function NetworkAnalysisPage() {
                   </div>
                   <div>
                     <p className="text-xs text-dark-text-muted uppercase tracking-wide">
-                      Protocolos únicos
+                      BSSIDs detectados
                     </p>
                     <p className="text-2xl font-bold text-dark-text-primary">
-                      {result.stats?.top_protocols?.length ?? 0}
+                      {Object.keys(result.stats?.diagnostics?.bssid_info || {}).length}
                     </p>
                   </div>
                 </div>
@@ -307,135 +385,238 @@ export function NetworkAnalysisPage() {
                     <div>
                       <p className="text-xs text-dark-text-muted mb-1">Nombre</p>
                       <p className="text-sm font-mono text-dark-text-primary break-all">
-                        {result.file_name || selectedFile?.name || fileMetadata?.name}
+                        {cleanFileName(result.file_name || selectedFile?.name || fileMetadata?.name)}
                       </p>
                     </div>
                     {(selectedFile || fileMetadata) && (
                       <div>
                         <p className="text-xs text-dark-text-muted mb-1">Tamaño</p>
                         <p className="text-sm text-dark-text-primary">
-                          {((selectedFile?.size || fileMetadata?.size || 0) / (1024 * 1024)).toFixed(2)} MB
+                          {formatFileSize(selectedFile?.size || fileMetadata?.size || 0)}
                         </p>
                       </div>
                     )}
                   </div>
                 </Card>
 
-                {/* Protocolos principales */}
-                {Array.isArray(result.stats?.top_protocols) &&
-                  result.stats.top_protocols.length > 0 && (
-                    <Card className="p-4">
-                      <div className="flex items-center gap-2 mb-3">
-                        <TrendingUp className="w-4 h-4 text-dark-accent-primary" />
-                        <h3 className="text-sm font-semibold text-dark-text-primary">
-                          Protocolos principales
-                        </h3>
-                      </div>
-                      <div className="space-y-2">
-                        {result.stats.top_protocols.slice(0, 8).map((p, idx) => (
-                          <div
-                            key={p.protocol}
-                            className="flex items-center justify-between gap-3 p-2 rounded-lg bg-dark-bg-secondary/50 hover:bg-dark-bg-secondary transition-colors"
-                          >
-                            <div className="flex items-center gap-2 flex-1 min-w-0">
-                              <span className="text-xs font-medium text-dark-text-muted w-5">
-                                #{idx + 1}
-                              </span>
-                              <span className="font-mono text-xs text-dark-text-primary truncate">
-                                {p.protocol}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              <span className="text-xs text-dark-text-secondary">
-                                {p.count}
-                              </span>
-                              <span className="text-xs text-dark-text-muted min-w-[3rem] text-right">
-                                {(p.percentage ?? 0).toFixed(1)}%
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </Card>
-                  )}
+                {/* Métricas de Band Steering */}
+                <Card className="p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Activity className="w-4 h-4 text-dark-accent-primary" />
+                    <h3 className="text-sm font-semibold text-dark-text-primary">
+                      Métricas de Steering
+                    </h3>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="p-2 rounded-lg bg-dark-bg-secondary/50">
+                      <p className="text-xs text-dark-text-muted mb-1">Estándares KVR Identificados</p>
+                      <p className="text-sm font-semibold text-dark-text-primary">
+                        {(() => {
+                          const kvr = result.stats?.diagnostics?.band_counters?.kvr_stats || {}
+                          const detected = []
+                          if (kvr['11k']) detected.push('11k')
+                          if (kvr['11v']) detected.push('11v')
+                          if (kvr['11r']) detected.push('11r')
+                          return detected.length > 0 ? detected.join(', ') : 'Ninguno'
+                        })()}
+                      </p>
+                    </div>
+                    <div className="p-2 rounded-lg bg-dark-bg-secondary/50">
+                      <p className="text-xs text-dark-text-muted mb-1">Intentos de steering</p>
+                      <p className="text-sm font-semibold text-dark-text-primary">
+                        {result.stats?.steering_analysis?.steering_attempts ?? 0}
+                      </p>
+                    </div>
+                    <div className="p-2 rounded-lg bg-dark-bg-secondary/50">
+                      <p className="text-xs text-dark-text-muted mb-1">Tiempo promedio</p>
+                      <p className="text-sm font-semibold text-dark-text-primary">
+                        {result.stats?.steering_analysis?.avg_transition_time ?? 0}s
+                      </p>
+                    </div>
+                  </div>
+                </Card>
 
-                {/* IPs origen */}
-                {Array.isArray(result.stats?.top_sources) &&
-                  result.stats.top_sources.length > 0 && (
-                    <Card className="p-4">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Server className="w-4 h-4 text-dark-accent-primary" />
-                        <h3 className="text-sm font-semibold text-dark-text-primary">
-                          IPs origen (Top 5)
-                        </h3>
-                      </div>
-                      <div className="space-y-2">
-                        {result.stats.top_sources.slice(0, 5).map((s, idx) => (
-                          <div
-                            key={s.ip}
-                            className="flex items-center justify-between gap-2 p-2 rounded-lg bg-dark-bg-secondary/50"
-                          >
-                            <span className="font-mono text-xs text-dark-text-primary truncate">
-                              {s.ip}
-                            </span>
-                            <span className="text-xs text-dark-text-muted flex-shrink-0">
-                              {s.count} pkt
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </Card>
-                  )}
-
-                {/* IPs destino */}
-                {Array.isArray(result.stats?.top_destinations) &&
-                  result.stats.top_destinations.length > 0 && (
-                    <Card className="p-4">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Globe className="w-4 h-4 text-dark-accent-primary" />
-                        <h3 className="text-sm font-semibold text-dark-text-primary">
-                          IPs destino (Top 5)
-                        </h3>
-                      </div>
-                      <div className="space-y-2">
-                        {result.stats.top_destinations.slice(0, 5).map((d, idx) => (
-                          <div
-                            key={d.ip}
-                            className="flex items-center justify-between gap-2 p-2 rounded-lg bg-dark-bg-secondary/50"
-                          >
-                            <span className="font-mono text-xs text-dark-text-primary truncate">
-                              {d.ip}
-                            </span>
-                            <span className="text-xs text-dark-text-muted flex-shrink-0">
-                              {d.count} pkt
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </Card>
-                  )}
               </div>
 
               {/* Panel principal: Análisis de IA */}
               <Card className="lg:col-span-2 p-6">
-                <div className="flex items-center gap-2 mb-5 pb-4 border-b border-dark-border-primary/30">
-                  <div className="p-2 rounded-lg bg-dark-accent-primary/20">
-                    <Activity className="w-5 h-5 text-dark-accent-primary" />
+                <div className="space-y-4">
+                  {/* Header con Veredicto Visual */}
+                  <div className="flex items-start justify-between gap-4 pb-4 border-b border-dark-border-primary/30">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-dark-accent-primary/20">
+                        <Activity className="w-5 h-5 text-dark-accent-primary" />
+                      </div>
+                      <div>
+                        <h2 className="text-lg font-semibold text-dark-text-primary">
+                          Análisis de Band Steering
+                        </h2>
+                        <p className="text-sm text-dark-text-secondary mt-1">
+                          Evaluación técnica de capacidades 802.11k/v/r
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {/* Badge de Veredicto */}
+                    {result.stats?.steering_analysis && (() => {
+                      const verdict = result.stats.steering_analysis.verdict || ''
+                      const isSuccess = ['EXCELLENT', 'GOOD', 'PREVENTIVE_SUCCESS'].includes(verdict)
+                      const isFailed = verdict.startsWith('FAILED')
+                      
+                      return (
+                        <div className={`px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 ${
+                          isSuccess 
+                            ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
+                            : isFailed 
+                            ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                            : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                        }`}>
+                          {isSuccess ? '✅' : isFailed ? '❌' : '⚠️'}
+                          <span>{formatVerdict(verdict).toUpperCase()}</span>
+                        </div>
+                      )
+                    })()}
                   </div>
-                  <h2 className="text-lg font-semibold text-dark-text-primary">
-                    Análisis de Tráfico
-                  </h2>
-                </div>
-                <div className="prose prose-invert prose-sm max-w-none">
-                  <div className="text-dark-text-primary leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                    <MarkdownRenderer content={result.analysis || ''} />
+                  
+                  {/* Contenido del Análisis */}
+                  <div className="prose prose-invert prose-sm max-w-none">
+                    <div className="text-dark-text-primary leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                      <MarkdownRenderer content={result.analysis || ''} />
+                    </div>
                   </div>
                 </div>
               </Card>
+
             </div>
           </div>
         )}
       </div>
+
+      {/* Estilos para impresión */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @page {
+          margin: 1.5cm;
+          size: auto;
+        }
+
+        @media print {
+          /* Ocultar elementos de UI no necesarios de forma específica */
+          nav, 
+          button, 
+          header,
+          .flex-shrink-0,
+          /* Seleccionar específicamente el contenedor de botones en el header para ocultarlo */
+          .container-app > div:nth-child(2) > div:first-child > div:last-child {
+            display: none !important;
+          }
+
+          /* Asegurar que el título de impresión esté arriba a la derecha */
+          .print\\:flex {
+            display: flex !important;
+            position: fixed !important;
+            top: 0 !important;
+            right: 0 !important;
+            z-index: 1000;
+          }
+          
+          /* Reset de Layout para PDF */
+          .container-app, body, #root {
+            background: white !important;
+            color: black !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            height: auto !important;
+            width: 100% !important;
+          }
+
+          .max-w-5xl {
+            max-width: 100% !important;
+            width: 100% !important;
+            box-shadow: none !important;
+          }
+          
+          /* Forzar visibilidad de texto y bordes */
+          h1, h2, h3, h4, p, span, div, li, td, th {
+            color: #000 !important;
+            background-color: transparent !important;
+          }
+          
+          .text-dark-text-primary, 
+          .text-dark-text-secondary, 
+          .text-dark-text-muted,
+          .text-white {
+            color: #111 !important;
+          }
+          
+          /* Cards con bordes para definición visual en papel */
+          .Card, [class*="bg-dark-accent-primary/5"], [class*="bg-gradient-to-br"] {
+            background: #fff !important;
+            border: 1px solid #ccc !important;
+            box-shadow: none !important;
+            color: black !important;
+            margin-bottom: 1rem !important;
+            break-inside: avoid;
+          }
+
+          /* Arreglar Grid para impresión */
+          .grid {
+            display: block !important;
+          }
+          .md\\:grid-cols-3 {
+            display: flex !important;
+            flex-direction: row !important;
+            gap: 1% !important;
+            margin-bottom: 20px !important;
+          }
+          .md\\:grid-cols-3 > div {
+            flex: 1 !important;
+            width: 32% !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+            min-height: 75px !important; /* Más compactos */
+            padding: 10px 15px !important; /* Menos padding */
+            margin-right: 0 !important;
+          }
+
+          .lg\\:grid-cols-3 {
+            display: block !important;
+          }
+          .lg\\:col-span-1 {
+            width: 100% !important;
+            margin-bottom: 20px !important;
+          }
+          
+          /* FORZAR SALTO DE PÁGINA PARA EL ANÁLISIS */
+          .lg\\:col-span-2 {
+            width: 100% !important;
+            page-break-before: always !important;
+            margin-top: 0 !important;
+            padding-top: 3rem !important; /* Espacio extra para que no pegue arriba */
+          }
+
+          /* Ajustar Markdown (prose) para impresión */
+          .prose {
+            color: black !important;
+            max-width: 100% !important;
+          }
+          .prose * {
+            color: black !important;
+          }
+          .prose h2, .prose h3 {
+            border-bottom: 1px solid #eee !important;
+            margin-top: 1.5rem !important;
+            padding-bottom: 0.5rem !important;
+          }
+          
+          /* Detalle de veredicto en PDF */
+          [class*="rounded-lg font-semibold"] {
+            border: 2px solid #000 !important;
+            background: #f8f8f8 !important;
+            padding: 8px 16px !important;
+          }
+        }
+      `}} />
     </div>
   )
 }
