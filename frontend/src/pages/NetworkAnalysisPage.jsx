@@ -460,18 +460,17 @@ export function NetworkAnalysisPage() {
                     {/* Badge de Veredicto */}
                     {result.stats?.steering_analysis && (() => {
                       const verdict = result.stats.steering_analysis.verdict || ''
-                      const isSuccess = ['EXCELLENT', 'GOOD', 'PREVENTIVE_SUCCESS'].includes(verdict)
-                      const isFailed = verdict.startsWith('FAILED')
+                      // Definir explícitamente qué veredictos son "Éxito" (Verde)
+                      const successVerdicts = ['EXCELLENT', 'GOOD', 'PREVENTIVE_SUCCESS', 'ACCEPTABLE', 'SLOW_BUT_SUCCESSFUL']
+                      const isSuccess = successVerdicts.includes(verdict)
                       
                       return (
                         <div className={`px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 ${
                           isSuccess 
                             ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
-                            : isFailed 
-                            ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                            : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                            : 'bg-red-500/20 text-red-400 border border-red-500/30'
                         }`}>
-                          {isSuccess ? '✅' : isFailed ? '❌' : '⚠️'}
+                          {isSuccess ? '✅' : '❌'}
                           <span>{formatVerdict(verdict).toUpperCase()}</span>
                         </div>
                       )

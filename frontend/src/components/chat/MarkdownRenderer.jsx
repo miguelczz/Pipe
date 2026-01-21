@@ -58,7 +58,7 @@ export function MarkdownRenderer({ content, className }) {
 
             li: ({ ...props }) => (
               <li
-                className="leading-relaxed pl-1 marker:text-dark-accent-primary marker:font-bold"
+                className="leading-relaxed pl-1 marker:text-dark-accent-primary marker:font-bold mb-1"
                 {...props}
               />
             ),

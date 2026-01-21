@@ -748,18 +748,21 @@ class WiresharkTool:
     def _determine_verdict(self, attempts: int, successful: int, failed: int,
                           loop_detected: bool, avg_time: float, band_counters: dict = None) -> str:
         """
-        Determina el veredicto general del análisis de steering.
-        PRIORIDAD ABSOLUTA:
-        1. BTM Status 0 (Accept) -> EXCELLENT (Prueba de oro)
-        2. Fast Transition (11r) Exitosa -> EXCELLENT
-        3. Transiciones Standard Exitosas -> GOOD/ACCEPTABLE
-        4. Fallos críticos -> FAILED
+        Determina el veredicto general con granularidad de calidad.
+        
+        NIVELES:
+        - EXCELLENT: Éxito limpio (BTM o Transición rápida) SIN fallos ni bucles.
+        - GOOD: Éxito estándar sin fallos graves.
+        - ACCEPTABLE: Éxito (logró pasar) PERO con bucles o intentos fallidos previos ("Pasó raspando").
+        - FAILED: Sin éxito de transición ni BTM Accept.
         """
         
-        # ⭐ PRIORIDAD 1: BTM Accept (La prueba de oro - tiene precedencia sobre TODO)
+        # Detectar "suciedad" en la prueba (fallos previos o bucles)
+        has_issues = loop_detected or (failed > 0)
+        
+        # 1. Análisis BTM (802.11v)
         if band_counters and "btm_stats" in band_counters:
             btm = band_counters["btm_stats"]
-            responses = btm.get("responses", 0)
             status_codes = btm.get("status_codes", [])
             
             # Chequear si hubo alguna aceptación explícita (Status 0)
@@ -772,34 +775,38 @@ class WiresharkTool:
                         break
                 except: pass
             
+            # Si hubo aceptación BTM
             if has_accepted_btm:
-                # ✅ ÉXITO ROTUNDO: El cliente aceptó la sugerencia BTM de la red
-                # Esto es suficiente para declarar éxito, independientemente de otras métricas
-                return "EXCELLENT"
-            
-            # Si hubo BTM Reject explícito, es un fallo potencial
-            if responses > 0 and not has_accepted_btm and successful == 0:
-                 return "FAILED_BTM_REJECT"
+                if has_issues:
+                    return "ACCEPTABLE" # Pasó por BTM, pero tuvo problemas operativos
+                return "EXCELLENT" # Pasó limpio
 
-        # 2. Análisis de transiciones estándar (si no hubo BTM o fue rechazado)
+        # 2. Análisis de transiciones exitosas
         if successful > 0:
-            if avg_time < 0.1: # Muy rápido (probablemente 11r)
+            if has_issues:
+                return "ACCEPTABLE" # Logró pasar, pero con intentos fallidos o bucles previos
+            
+            # Si es limpio, calificar por tiempo
+            if avg_time < 1.0: 
                 return "EXCELLENT" 
-            elif avg_time < 1.0:
+            elif avg_time < 4.0:
                 return "GOOD"
-            elif avg_time < 3.0:
-                return "ACCEPTABLE"
             else:
-                return "SLOW_BUT_SUCCESSFUL"
+                return "ACCEPTABLE" # Lento
         
-        # 3. Fallos críticos
+        # 3. Fallos (Si llegamos aquí, es porque NO hubo éxito confirmed)
         if loop_detected:
             return "FAILED_LOOP"
             
-        if attempts > 0 and successful == 0:
+        if failed > 0:
             return "FAILED"
+            
+        if band_counters and "btm_stats" in band_counters and band_counters["btm_stats"].get("requests", 0) > 0:
+             return "FAILED"
 
-        # 4. Si no hubo intentos pero tampoco fallos, puede ser steering preventivo
+        if attempts > 0:
+            return "FAILED"
+            
         return "NO_STEERING_EVENTS"
 
     def _evaluate_capture_quality(self, steering_analysis: dict, events: list) -> str:
@@ -1041,7 +1048,10 @@ class WiresharkTool:
             
             "## INTERPRETACIÓN DE VEREDICTOS PRELIMINARES\n\n"
             
-            "⭐ **REGLA DE ORO:** Si el veredicto preliminar es 'EXCELLENT', 'GOOD', o 'ACCEPTABLE', el veredicto final DEBE ser ✅ **EXITOSA**.\n\n"
+            "⭐ **CRITERIO DE EVALUACIÓN:**\n"
+            "- **EXCELLENT/GOOD:** Transición exitosa y limpia (sin fallos previos).\n"
+            "- **ACCEPTABLE:** Transición exitosa PERO con intentos fallidos o bucles previos. (El cliente pasó, pero le costó).\n"
+            "- **FAILED:** No hubo ninguna transición exitosa ni BTM Accept.\n\n"
             
             "**EXCELLENT:**\n"
             "- ✅ **EXITOSA** (Máxima calidad)\n"
@@ -1108,10 +1118,8 @@ class WiresharkTool:
             "- Calidad, tiempos y estabilidad.\n"
             
             "## REGLAS ESTRICTAS\n"
-            "1. Si el Veredicto Preliminar es 'PREVENTIVE_SUCCESS', el Veredicto Final DEBE ser ✅ **EXITOSA**.\n"
-            "   (Argumento: El cliente ya está en 5GHz, el objetivo final se cumplió).\n"
-            "2. Si ves 'BTM Status Code: 0 (Accept)', la prueba es EXITOSA sin dudas.\n"
-            "3. USA EXCLUSIVAMENTE EL IDIOMA ESPAÑOL y en concordancia del resultado usa aceptable, bueno, exitoso, etc. Lo mismo con los fallos.\n\n"
+            "1. Si el veredicto detectó al menos una transición exitosa, reporta como EXITOSA.\n"
+            "2. USA EXCLUSIVAMENTE EL IDIOMA ESPAÑOL.\n\n"
         )
 
         completion = self.client.chat.completions.create(
