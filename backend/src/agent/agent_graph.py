@@ -44,7 +44,7 @@ def messages_to_agent_state(messages: List[AnyMessage]) -> AgentState:
     Solo extrae los últimos mensajes relevantes para el contexto.
     """
     context_window = []
-    for msg in messages[-10:]:  # Solo últimos 10 mensajes para contexto
+    for msg in messages[-20:]:  # Aumentado a 20 mensajes para mejor contexto
         role = getattr(msg, "role", None) or getattr(msg, "type", "user")
         content = getattr(msg, "content", str(msg))
         if role in ["user", "human", "assistant", "agent", "system"]:
@@ -638,7 +638,9 @@ async def supervisor_node(state: GraphState, config: Optional[RunnableConfig] = 
         missing_info_keywords = [
             "no encontré información", "no tengo información", 
             "no se menciona en los documentos", "no aparece en el contexto",
-            "no dispongo de información", "no está en los documentos"
+            "no dispongo de información", "no está en los documentos",
+            "fuera de este ámbito especializado", "fuera de este tema especializado",
+            "no está relacionada con redes o tecnologías de red"
         ]
         if any(keyword in final_output.lower() for keyword in missing_info_keywords):
             rag_missed_info = True
@@ -647,19 +649,18 @@ async def supervisor_node(state: GraphState, config: Optional[RunnableConfig] = 
         logger.info("[Supervisor] Detectada falta de información en documentos - Generando respuesta alternativa con conocimiento general")
         
         fallback_prompt = f"""
-El sistema RAG no encontró información en los documentos para la pregunta del usuario, pero el usuario requiere una respuesta.
-Genera una respuesta basada en tu CONOCIMIENTO GENERAL como experto en redes y telecomunicaciones.
+El sistema RAG no encontró información en los documentos para la pregunta del usuario, pero el usuario requiere una respuesta de NetMind.
+Genera una respuesta basada en tu CONOCIMIENTO GENERAL como experto en redes WiFi y Band Steering.
 
 Pregunta del usuario: "{user_prompt}"
 
 INSTRUCCIONES CRÍTICAS:
-1. Comienza la respuesta EXACTAMENTE con esta frase: "⚠️ **Nota:** No encontré esta información específica en tus documentos, pero basado en conocimiento general de redes:"
-2. Proporciona una respuesta técnica, precisa, detallada y útil sobre el tema.
-3. Mantén un tono profesional y educativo.
-4. Si la pregunta solicita una lista (ej: protocolos, capas), enuméralos claramente.
-5. NO menciones que "no puedes responder", simplemente da la respuesta técnica con el disclaimer inicial.
+1. Comienza la respuesta EXACTAMENTE con esta frase: "⚠️ **Nota:** No encontré esta información específica en tus documentos técnicos, pero basado en estándares generales de redes WiFi:"
+2. Proporciona una respuesta técnica, precisa y útil sobre el tema.
+3. CONTEXTO OBLIGATORIO: Cualquier término como 'asociación' debe interpretarse EXCLUSIVAMENTE como 'asociación inalámbrica 802.11'. NO hables de ámbitos sociales o económicos.
+4. Si la pregunta solicita una lista, enuméralos claramente.
 
-Genera la respuesta con el disclaimer y la información técnica completa:
+Genera la respuesta técnica y profesional:
 """
         try:
             # ASYNC CHANGE
@@ -803,10 +804,9 @@ Respuesta original (con problemas o no adaptada):
 Respuesta mejorada (clara, natural, adaptada a la complejidad y fiel a la información):
 """
             try:
-                # ASYNC CHANGE
                 improved_output = await llm.agenerate(
                     improvement_prompt, 
-                    stream_callback=stream_callback
+                    stream_callback=None # Evitar doble streaming/reemplazo visual
                 )
                 thought_chain = add_thought(
                     thought_chain,
@@ -842,7 +842,6 @@ Respuesta mejorada (clara, natural, adaptada a la complejidad y fiel a la inform
             # SOLO ajustar si es EXCESIVAMENTE larga (más del doble del límite)
             # Esto evita recortar respuestas que están ligeramente por encima del límite
             if len(supervised_output) > (max_appropriate_length * 2):
-                # Intentar ajustar la respuesta manteniendo naturalidad
                 # Determinar guía de longitud según complejidad
                 if "simple" in complexity:
                     length_guidance = "Respuesta MUY BREVE: máximo 2-3 oraciones (30-60 palabras). Ve directo al punto."
@@ -872,15 +871,14 @@ Respuesta actual (muy larga para esta pregunta):
 Respuesta ajustada (adaptada a la complejidad, natural y fiel a la información):
 """
                 try:
-                    # ASYNC CHANGE
-                    shortened = await llm.agenerate(
-                        shortening_prompt,
-                        stream_callback=stream_callback
-                    )
-                    supervised_output = shortened.strip()
+                    # DESHABILITADO: El usuario prefiere respuestas largas a que se "cambie" el texto frente a sus ojos.
+                    # shortened = await llm.agenerate(
+                    #     shortening_prompt,
+                    #     stream_callback=None # Evitar doble streaming/reemplazo visual
+                    # )
+                    # supervised_output = shortened.strip()
+                    pass
                     
-                    # No recortar respuestas - permitir respuestas completas
-                    # El LLM ya está configurado con max_tokens apropiado
                     thought_chain = add_thought(
                         thought_chain,
                         "Supervisor",
@@ -890,13 +888,12 @@ Respuesta ajustada (adaptada a la complejidad, natural y fiel a la información)
                     )
                 except Exception as e:
                     logger.warning(f"Error al procesar respuesta: {e}, usando respuesta original")
-                    # No truncar - usar respuesta original completa
                     supervised_output = final_output
                     thought_chain = add_thought(
                         thought_chain,
                         "Supervisor",
-                        "Validación: aprobada (truncada manualmente)",
-                        f"Calidad: {quality_score:.2f}, truncada por error en acortamiento",
+                        "Validación: aprobada (con errores)",
+                        f"Calidad: {quality_score:.2f}, no se pudo acortar: {str(e)}",
                         "warning"
                     )
             else:

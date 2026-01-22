@@ -10,6 +10,18 @@ from .schemas import (
     DocumentMetadata
 )
 from .database import Base, Document, Session
+from .btm_schemas import (
+    BTMStatusCode,
+    SteeringType,
+    DeviceCategory,
+    DeviceInfo,
+    BTMEvent,
+    SteeringTransition,
+    ComplianceCheck,
+    KVRSupport,
+    CaptureFragment,
+    BandSteeringAnalysis
+)
 
 __all__ = [
     "Message",
@@ -21,5 +33,17 @@ __all__ = [
     "Base",
     "Document",
     "Session",
+    
+    # AIDLC Band Steering Models
+    "BTMStatusCode",
+    "SteeringType",
+    "DeviceCategory",
+    "DeviceInfo",
+    "BTMEvent",
+    "SteeringTransition",
+    "ComplianceCheck",
+    "KVRSupport",
+    "CaptureFragment",
+    "BandSteeringAnalysis",
 ]
 

@@ -33,33 +33,19 @@ class RAGTool:
     
     # OPTIMIZACIÓN: Pre-compilar prompts estáticos para evitar reconstruirlos en cada llamada
     RELEVANCE_CHECK_PROMPT_TEMPLATE = """
-Analiza si la siguiente pregunta está relacionada EXCLUSIVAMENTE con la temática de redes, telecomunicaciones, protocolos de red, tecnologías de red, o temas técnicos de TI relacionados con redes.
+Analiza si la siguiente pregunta puede ser respondida basándose en la documentación técnica interna, los resultados de análisis de red almacenados o las capacidades de NetMind.
 
 Pregunta del usuario: "{query_text}"
 
-INSTRUCCIONES CRÍTICAS:
-- Sé MUY ESTRICTO: solo marca como relevante si la pregunta está CLARAMENTE y DIRECTAMENTE relacionada con redes, protocolos de red, telecomunicaciones o tecnologías de red
-- Preguntas sobre física general, matemáticas, historia, literatura, medicina, cocina, deportes, etc. son NO RELEVANTES
-- Preguntas sobre teoría de la relatividad, mecánica cuántica, biología, química, etc. son NO RELEVANTES
-- Solo son relevantes preguntas sobre: protocolos de red (TCP/IP, HTTP, DNS, etc.), dispositivos de red (routers, switches, etc.), tecnologías de red (WiFi, Ethernet, etc.), operaciones de red (ping, traceroute, etc.), configuración de red, seguridad de red, etc.
-
-Ejemplos de NO RELEVANTES:
-- "¿Qué es la teoría de la relatividad?" → NO RELEVANTE
-- "¿Cómo funciona la fotosíntesis?" → NO RELEVANTE
-- "¿Quién ganó el mundial?" → NO RELEVANTE
-- "¿Cómo se cocina una pizza?" → NO RELEVANTE
-- "¿Cómo funciona un motor de combustión?" → NO RELEVANTE
-- "¿Qué es la mecánica cuántica?" → NO RELEVANTE
-- "¿Cómo funciona el sistema digestivo?" → NO RELEVANTE
-
-Ejemplos de RELEVANTES:
-- "¿Qué es un ping?" → RELEVANTE
-- "¿Cómo funciona DNS?" → RELEVANTE
-- "¿Qué es TCP/IP?" → RELEVANTE
-- "Haz ping a google.com" → RELEVANTE
+- CORE MISSION RELEVANCE: Mark as RELEVANT any question seeking technical guidance, procedural understanding, or explanation of network behaviors typical of Band Steering and Wireshark.
+- MANDATORY RELEVANCE: "La prueba", "el análisis", "la guía", "el procedimiento", or asking "con qué me guío" ALWAYS refer to the Band Steering project documentation. Mark them as RELEVANT immediately.
+- DOMAIN OVER KEYWORDS: Do not rely solely on specific words. If the intent is technical or related to interpreting network outcomes, it is RELEVANT.
+- CONTEXTUAL CONTINUITY: If the question is a follow-up or relates to the core system functionalities (BTM, KVR, 802.11 standards), it is RELEVANT.
 
 Responde SOLO con una palabra: "relevante" o "no_relevante".
 """
+
+
     
     COMPLEXITY_PROMPT_TEMPLATE = """
 Analiza la siguiente pregunta y determina su complejidad:
@@ -77,24 +63,25 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
 """
     
     BASE_PROMPT_TEMPLATE = """
-Eres un asistente experto en redes y telecomunicaciones. Tu objetivo es ayudar al usuario respondiendo sus preguntas basándote en la documentación proporcionada.
+Eres un asistente experto en redes WiFi y Band Steering. Tu objetivo es ayudar al usuario respondiendo sus preguntas basándote en la documentación técnica proporcionada por NetMind.
+Importante: Cualquier dato ambiguo debe interpretarse bajo el espectro de redes (ej: asociación = asociación WiFi 802.11).
 
 INSTRUCCIONES DE RESPUESTA:
-1. **FUENTE DE VERDAD**: Usa EXCLUSIVAMENTE la información contenida en el "CONTEXTO DE DOCUMENTOS" para los datos técnicos.
-2. **ESTILO EXPLICATIVO**: Explica de manera natural y pedagógica.
-3. **FORMATO AESTÉTICO (CRÍTICO)**:
-   - **Valores simples**: Usa `código en línea` (un backtick) para IPs, dominios, comandos cortos y rutas. Ej: `192.168.1.1`, `google.com`.
+1. **FUENTE DE VERDAD ABSOLUTA**: Usa EXCLUSIVAMENTE la información contenida en el "CONTEXTO DE DOCUMENTOS". Tienes acceso a los manuales técnicos de Band Steering basados en Wireshark. Si el dato no está en el documento, NO lo inventes ni uses conocimiento general de redes.
+2. **CONTEXTO WIRESHARK**: Todo análisis de Band Steering aquí se basa en Wireshark. Si el usuario pregunta por "la prueba" o "guiarse", refiérete a los criterios técnicos del documento.
+3. **ESTILO EXPLICATIVO**: Explica de manera técnica pero accesible. Prioriza códigos de estado BTM y eventos de transición mencionados en el texto.
+   - **Valores simples**: Usa `código en línea` (un backtick) para IPs, dominios, comandos cortos, códigos BTM y rutas. Ej: `Status Code 0`, `BTM Request`.
    - **NO USES BLOQUES DE CÓDIGO** (```) para una sola línea o un solo valor. Los bloques son solo para scripts largos o configuraciones extensas.
    - **NO USES TABLAS** a menos que sea estrictamente necesario para comparar muchos datos. Para listas de valores, usa listas con viñetas (• o -).
    - **LISTAS CORRECTAS**: La viñeta y el texto deben estar en la MISMA LÍNEA. No pongas la viñeta sola en una línea.
-     * Bien: • **Concepto:** Definición
-     * Mal: •\n**Concepto:** Definición
+     * Bien: • **Fase 1:** Diseño de requerimientos.
+     * Mal: •\n**Fase 1:** Diseño de requerimientos.
    - **Evita scroll horizontal**: Mantén las líneas contenidas y usa formatos compactos.
-4. **NO INVENTAR DATOS**: Si el documento menciona 3 conceptos, explica esos 3.
-5. **MANEJO DE VACÍOS**: Si la información no está, indícalo suavemente.
+4. **NO INVENTAR DATOS**: Si el documento menciona 3 conceptos o fases, explica esos 3.
+5. **MANEJO DE VACÍOS**: Si la información sobre Band Steering no está en los documentos, indícalo suavemente indicando que no se encuentra en la documentación técnica actual.
 
 {context_section}
-CONTEXTO DE DOCUMENTOS (Información base para tu respuesta):
+CONTEXTO DE DOCUMENTOS (Documentación Band Steering):
 {context}
 
 Pregunta: {query_text}
@@ -103,21 +90,28 @@ Genera una respuesta natural, útil y precisa. Recuerda: usa `código en línea`
 Respuesta:
 """
     
-    SYSTEM_MESSAGE = "Eres un asistente experto en redes. Tu función es procesar la información de los documentos técnicos y explicársela al usuario de manera clara y útil. Usa los documentos como tu base de conocimiento estricta para los hechos, pero usa tus capacidades de lenguaje para explicar esos hechos de forma agradable y coherente. No agregues datos técnicos externos."
+    SYSTEM_MESSAGE = """Eres un experto en redes WiFi de NetMind, especializado EXCLUSIVAMENTE en el análisis de Band Steering con Wireshark. 
+
+TU MISIÓN:
+1. Responder ÚNICAMENTE basándote en los documentos técnicos proporcionados.
+2. Todo concepto debe interpretarse desde la perspectiva de Wireshark y el proyecto NetMind.
+3. Si la información no está en los documentos, indica: "No encontré esta información específica en los manuales técnicos de Band Steering, pero basándome en el contexto de la prueba...".
+4. PROHIBIDO: Dar explicaciones generales de redes que no aporten al análisis de Band Steering.
+5. MEMORIA: Mantén el hilo de la conversación para entender a qué se refiere el usuario (ej: si pregunta por "la diferencia", se refiere a la diferencia entre los conceptos de red explicados anteriormente en el contexto de Band Steering).
+"""
     
-    RELEVANCE_SYSTEM_MESSAGE = "Eres un analizador ESTRICTO que determina si una pregunta está relacionada EXCLUSIVAMENTE con redes y telecomunicaciones. Sé MUY ESTRICTO: solo marca como relevante si está CLARAMENTE relacionada con redes, protocolos, telecomunicaciones o tecnologías de red. Rechaza CUALQUIER pregunta sobre otros temas (física general, matemáticas, historia, literatura, medicina, etc.)."
+    RELEVANCE_SYSTEM_MESSAGE = "Eres un analizador técnico de NetMind. 'La prueba', 'el análisis', 'la guía' o 'guiarse' se refieren SIEMPRE al proyecto de Band Steering y deben marcarse como RELEVANTES de forma obligatoria."
     
     COMPLEXITY_SYSTEM_MESSAGE = "Eres un analizador que determina la complejidad de preguntas."
     
     # Keywords comunes para búsqueda dispersa
     KEYWORD_PATTERNS = {
-        'wifi': ['wifi', 'wi-fi', 'wireless'],
-        '802.11': ['802.11', '802.11a', '802.11b', '802.11g', '802.11n', '802.11ac', '802.11ax'],
-        'ethernet': ['ethernet', 'ethernet cable', 'rj45'],
-        'tcp': ['tcp', 'tcp/ip', 'transmission control protocol'],
-        'dns': ['dns', 'domain name system', 'name server'],
-        'http': ['http', 'https', 'hypertext transfer protocol'],
-        'ip': ['ip address', 'ipv4', 'ipv6', 'internet protocol'],
+        'wifi': ['wifi', 'wi-fi', 'wireless', '802.11', 'association', 'reassociation', 'asociación', 'reasociación', 'asosacion', 'reasosacion', 'asosiacion'],
+        'band_steering': ['band steering', 'btm', 'bss transition', '802.11v', '802.11k', '802.11r', 'kvr', 'steering', 'transicion', 'transición'],
+        'ethernet': ['ethernet', 'cable', 'rj45', 'lan'],
+        'tcp': ['tcp', 'retransmisión', 'retransmission', 'window size'],
+        'dns': ['dns', 'domain', 'lookup', 'mx', 'txt'],
+        'ip': ['ip address', 'v4', 'v6', 'icmp', 'ping', 'traceroute'],
     }
     
     def __init__(self):
@@ -357,12 +351,51 @@ Respuesta:
             return {"answer": "La consulta no puede estar vacía.", "hits": 0, "contexts": []}
         
         try:
+            # OPTIMIZACIÓN: Refinar la consulta usando el contexto de conversación para mejorar el search
+            # Esto "des-referencia" preguntas como "¿y cual es la diferencia?" a algo técnico completo
+            search_query = query_text
+            if conversation_context:
+                try:
+                    refinement_prompt = f"""
+Transforma la siguiente "Pregunta Corta" en una "Consulta Técnica Completa" buscando resolver la referencia técnica basada en el "Contexto de Conversación".
+
+EL ENFOQUE DEBE SER EXCLUSIVAMENTE: Band Steering, Wireshark, BTM, WiFi 802.11 y el proyecto NetMind.
+
+CONTEXTO DE CONVERSACIÓN (Historial previo):
+{conversation_context}
+
+PREGUNTA CORTA ACTUAL: "{query_text}"
+
+INSTRUCCIONES:
+1. Si el usuario pregunta "cual es la diferencia", identifica qué términos se comparaban en el historial y genera una consulta técnica como "Diferencia técnica entre [Termino A] y [Termino B] en el contexto de Band Steering y Wireshark".
+2. Si el usuario pregunta por "eso" o "la prueba", relaciónalo con los conceptos técnicos de la conversación.
+3. El resultado debe ser una frase técnica óptima para buscar en manuales de ingeniería de redes.
+4. Responde SOLO con la consulta técnica refinada, sin introducciones.
+
+Consulta técnica refinada:
+"""
+                    def _sync_refine():
+                        res = client.chat.completions.create(
+                            model=settings.llm_model,
+                            messages=[{"role": "system", "content": "Eres un refinador de consultas técnicas."}, {"role": "user", "content": refinement_prompt}],
+                            temperature=0,
+                            max_tokens=60
+                        )
+                        return res.choices[0].message.content.strip()
+                    
+                    refined = await asyncio.to_thread(_sync_refine)
+                    if refined and len(refined) > 5:
+                        logger.info(f"[RAG] Consulta refinada: '{query_text}' -> '{refined}'")
+                        search_query = refined
+                except Exception as e:
+                    logger.warning(f"[RAG] Error al refinar consulta: {e}")
+
             # OPTIMIZACIÓN: Extraer keywords antes de las búsquedas
-            keywords = self._extract_keywords(query_text)
+            keywords = self._extract_keywords(search_query)
             
             # OPTIMIZACIÓN: Ejecutar búsqueda densa y dispersa en paralelo usando asyncio.gather()
             # Esto es más eficiente que ThreadPoolExecutor para operaciones I/O
-            tasks = [self._dense_search(query_text, top_k)]
+            tasks = [self._dense_search(search_query, top_k)]
             
             # Agregar búsqueda dispersa solo si hay keywords
             if keywords:
@@ -460,7 +493,7 @@ Respuesta:
                 if conversation_context:
                     # Construir prompt con contexto para mejor validación
                     relevance_prompt_with_context = f"""
-Analiza si la siguiente pregunta está relacionada EXCLUSIVAMENTE con la temática de redes, telecomunicaciones, protocolos de red, tecnologías de red, o temas técnicos de TI relacionados con redes.
+Analiza si la siguiente pregunta es relevante para NetMind (Análisis de Band Steering con Wireshark).
 
 CONTEXTO DE CONVERSACIÓN PREVIA:
 {conversation_context}
@@ -468,19 +501,9 @@ CONTEXTO DE CONVERSACIÓN PREVIA:
 Pregunta del usuario: "{query_text}"
 
 INSTRUCCIONES CRÍTICAS:
-- Si la pregunta hace referencia a algo mencionado en el CONTEXTO DE CONVERSACIÓN (ej: "los tipos", "cuales son", "menciona", "explica más"), y el contexto es sobre redes/telecomunicaciones, marca como RELEVANTE
-- Si la pregunta está relacionada con redes, protocolos, telecomunicaciones o tecnologías de red, marca como RELEVANTE
-- Solo marca como NO RELEVANTE si la pregunta claramente NO está relacionada con redes/telecomunicaciones Y no hace referencia al contexto previo
-
-Ejemplos de RELEVANTES (con contexto):
-- Si el contexto menciona "firewalls" y la pregunta es "Cuales son los tipos?" → RELEVANTE (se refiere a tipos de firewalls)
-- Si el contexto menciona "DNS" y la pregunta es "Explica más" → RELEVANTE
-- Si el contexto menciona "ping" y la pregunta es "Qué otros comandos hay?" → RELEVANTE
-
-Ejemplos de NO RELEVANTES:
-- "¿Qué es la teoría de la relatividad?" → NO RELEVANTE
-- "¿Cómo funciona la fotosíntesis?" → NO RELEVANTE
-- "¿Quién ganó el mundial?" → NO RELEVANTE
+- CORE DOMAIN: Si la pregunta trata sobre "la prueba", "guiarse", "resultados", o cualquier aspecto técnico de red mencionado en los manuales, es RELEVANTE.
+- CONTINUIDAD: Si la pregunta es un seguimiento de un tema de redes o del proyecto NetMind, marca como RELEVANTE.
+- No seas restrictivo con las palabras; si el usuario busca ayuda técnica o procedimental del sistema, es RELEVANTE.
 
 Responde SOLO con una palabra: "relevante" o "no_relevante".
 """
@@ -550,9 +573,9 @@ Responde SOLO con una palabra: "relevante" o "no_relevante".
         
         # Si no es relevante, retornar mensaje indicando que no puede responder
         if not is_relevant:
-            logger.info(f"[RAG] Pregunta no relacionada con la temática de redes: '{query_text}'")
+            logger.info(f"[RAG] Pregunta no asociada al dominio de NetMind: '{query_text}'")
             return {
-                "answer": "Lo siento, solo puedo responder preguntas relacionadas con redes, telecomunicaciones, protocolos de red y tecnologías de red. Tu pregunta parece estar fuera de esta temática.",
+                "answer": "Lo siento, mi conocimiento está limitado a la documentación técnica de NetMind y análisis de Band Steering con Wireshark. Tu pregunta parece estar fuera de este ámbito especializado.",
                 "hits": 0,
                 "contexts": [],
                 "source": "out_of_topic"

@@ -1,0 +1,79 @@
+{
+    "analysis_id": "300137e2-ceee-4de3-aaab-9a3f2bcc0fdd",
+    "filename": "a0b03aa4-50f6-4dd7-bf23-81b9d15a7175_MOTO G31 .pcapng",
+    "analysis_timestamp": "2026-01-22T13:56:34.544213",
+    "total_packets": 15,
+    "wlan_packets": 15,
+    "analysis_duration_ms": 0,
+    "devices": [
+        {
+            "mac_address": "f8:79:28:86:f3:d4",
+            "oui": "f8:79:28",
+            "vendor": "Moto",
+            "device_model": "MOTO G31",
+            "device_category": "mobile_device",
+            "is_virtual": false,
+            "confidence_score": 1.0
+        }
+    ],
+    "btm_events": [],
+    "transitions": [],
+    "btm_requests": 1,
+    "btm_responses": 0,
+    "btm_success_rate": 0.0,
+    "successful_transitions": 0,
+    "failed_transitions": 0,
+    "loops_detected": false,
+    "kvr_support": {
+        "k_support": false,
+        "v_support": true,
+        "r_support": false,
+        "compliance_score": 0.3333333333333333
+    },
+    "compliance_checks": [
+        {
+            "check_name": "Soporte BTM (802.11v)",
+            "description": "El dispositivo debe demostrar soporte activo de BSS Transition Management",
+            "category": "btm",
+            "passed": false,
+            "severity": "high",
+            "score": 0.0,
+            "details": "Requests: 1, Responses: 0",
+            "recommendation": "El cliente ignora las solicitudes BTM. Se recomienda revisar su política de roaming."
+        },
+        {
+            "check_name": "Conectividad Básica",
+            "description": "Verifica si el dispositivo logra asociarse a la red",
+            "category": "association",
+            "passed": true,
+            "severity": "medium",
+            "score": 0.5,
+            "details": "Asociación: Exitosa",
+            "recommendation": "El cliente se asocia pero de forma legacy (sin cooperación BTM)"
+        },
+        {
+            "check_name": "Steering Efectivo",
+            "description": "Se deben realizar cambios de banda efectivos (2.4 -> 5GHz)",
+            "category": "performance",
+            "passed": false,
+            "severity": "high",
+            "score": 0.0,
+            "details": "Cambios de banda: 0",
+            "recommendation": "Ajustar umbrales de RSSI para forzar steering"
+        },
+        {
+            "check_name": "Estándares KVR",
+            "description": "Soporte de estándares de movilidad (Mínimo 2 de 3: k, v, r)",
+            "category": "kvr",
+            "passed": false,
+            "severity": "medium",
+            "score": 0.3333333333333333,
+            "details": "k=False, v=True, r=False",
+            "recommendation": "Se recomienda habilitar el estándar faltante para roaming óptimo"
+        }
+    ],
+    "overall_compliance_score": 0.20833333333333331,
+    "verdict": "FAILED",
+    "analysis_text": "### 1. RESUMEN EJECUTIVO (EVIDENCIA CLAVE)\nEl análisis de la captura de Wireshark revela que no se logró ninguna transición exitosa entre bandas, lo que se traduce en un veredicto de FALLIDO. Aunque se detectó un intento de BTM (1 Request), no hubo respuestas del cliente, lo que indica que este último probablemente no soporta el estándar 802.11v. No se registraron transiciones exitosas ni fallidas, y el tiempo promedio y máximo de transición es de 0 segundos, lo que refuerza la falta de actividad en el steering. Además, no se detectaron bucles, lo que es un aspecto positivo, pero no compensa la ausencia de transiciones.\n\n### 2. ANÁLISIS BTM Y KVR (802.11k/v/r)\nEn cuanto al soporte de estándares, se identificó la presencia de 802.11v, pero el intercambio de BTM fue deficiente. Se registró un BTM Request enviado desde el AP al cliente, pero no hubo ninguna respuesta, lo que sugiere que el cliente no está configurado para manejar BTM o no es compatible con 802.11v. Esto implica que el cliente no está realizando un roaming inteligente, ya que no responde a las solicitudes del AP para cambiar de banda.\n\n### 3. DETALLE DE TRANSICIONES\nNo se registraron transiciones exitosas, y el único intento de steering no resultó en ninguna respuesta del cliente. La calidad de la captura se considera insuficiente, lo que limita la capacidad de análisis, pero la falta de actividad en el steering es clara. No se observaron retransmisiones TCP, reintentos de WLAN ni errores de DNS, lo que indica que la conectividad básica fue exitosa, pero esto no se traduce en un manejo efectivo del band steering.\n\nEn conclusión, el análisis confirma el veredicto preliminar de FALLIDO, dado que no se lograron transiciones exitosas y el cliente no respondió a las solicitudes de BTM.",
+    "fragments": []
+}

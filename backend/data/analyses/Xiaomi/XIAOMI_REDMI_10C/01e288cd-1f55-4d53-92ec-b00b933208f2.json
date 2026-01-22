@@ -1,0 +1,79 @@
+{
+    "analysis_id": "01e288cd-1f55-4d53-92ec-b00b933208f2",
+    "filename": "55e38416-4a7a-428d-8ebb-72f33f68f578_10.XIAOMI REDMI 10C.pcapng",
+    "analysis_timestamp": "2026-01-22T14:18:26.096361",
+    "total_packets": 172576,
+    "wlan_packets": 172566,
+    "analysis_duration_ms": 0,
+    "devices": [
+        {
+            "mac_address": "f6:74:be:b9:e5:49",
+            "oui": "f6:74:be",
+            "vendor": "Xiaomi",
+            "device_model": "XIAOMI REDMI 10C",
+            "device_category": "mobile_device",
+            "is_virtual": true,
+            "confidence_score": 1.0
+        }
+    ],
+    "btm_events": [],
+    "transitions": [],
+    "btm_requests": 4,
+    "btm_responses": 2,
+    "btm_success_rate": 0.25,
+    "successful_transitions": 1,
+    "failed_transitions": 2,
+    "loops_detected": true,
+    "kvr_support": {
+        "k_support": true,
+        "v_support": true,
+        "r_support": false,
+        "compliance_score": 0.6666666666666666
+    },
+    "compliance_checks": [
+        {
+            "check_name": "Soporte BTM (802.11v)",
+            "description": "El dispositivo debe demostrar soporte activo de BSS Transition Management",
+            "category": "btm",
+            "passed": true,
+            "severity": "high",
+            "score": 1.0,
+            "details": "Requests: 4, Responses: 2 | Code 0 (Accept)",
+            "recommendation": "Habilitar 802.11v"
+        },
+        {
+            "check_name": "Asociación y Reasociación",
+            "description": "Verifica ciclos completos de asociación y reasociación",
+            "category": "association",
+            "passed": true,
+            "severity": "medium",
+            "score": 1.0,
+            "details": "Assoc: 0/0, Reassoc: 4/4",
+            "recommendation": null
+        },
+        {
+            "check_name": "Steering Efectivo",
+            "description": "Se deben realizar cambios de banda efectivos (2.4 -> 5GHz)",
+            "category": "performance",
+            "passed": true,
+            "severity": "high",
+            "score": 1.0,
+            "details": "Cambios de banda: 1",
+            "recommendation": null
+        },
+        {
+            "check_name": "Estándares KVR",
+            "description": "Soporte de estándares de movilidad (Mínimo 2 de 3: k, v, r)",
+            "category": "kvr",
+            "passed": true,
+            "severity": "medium",
+            "score": 0.6666666666666666,
+            "details": "k=True, v=True, r=False",
+            "recommendation": null
+        }
+    ],
+    "overall_compliance_score": 0.9166666666666666,
+    "verdict": "SUCCESS",
+    "analysis_text": "### 1. RESUMEN EJECUTIVO (EVIDENCIA CLAVE)\nEl análisis de la captura de Wireshark revela que, aunque se registraron intentos de steering, la calidad del band steering es **ACEPTABLE**. Se detectó una transición exitosa de 2.4GHz a 5GHz, pero también se observaron dos transiciones fallidas y bucles entre los puntos de acceso (APs). La transición exitosa se realizó en un tiempo promedio de 62.536 segundos, lo que indica que, aunque el cliente logró cambiar de banda, el proceso no fue óptimo. La presencia de un BTM Accept (Status Code 0) confirma que el cliente cooperó con el AP, lo que es un indicativo positivo, pero los bucles y los intentos fallidos afectan la calidad general del steering.\n\n### 2. ANÁLISIS BTM Y KVR (802.11k/v/r)\nSe detectaron los siguientes protocolos de roaming:\n- **802.11k**: Se registraron Neighbor Reports, lo que permite al cliente conocer las redes disponibles.\n- **802.11v**: Se realizaron BTM Requests y Responses, con un Status Code 0 (Accept), lo que indica que el cliente está cooperando con la gestión de la red.\n\nEl cliente muestra un comportamiento inteligente al responder a las solicitudes de BTM, lo que sugiere que es capaz de beneficiarse de la gestión avanzada de la red. Sin embargo, los bucles detectados durante las transiciones indican que la implementación del steering no es completamente efectiva.\n\n### 3. DETALLE DE TRANSICIONES\n- **Transición 1**: De 2.4GHz a 5GHz, con un tiempo de 55.418s, pero se detectó un bucle.\n- **Transición 2**: De 5GHz a 2.4GHz, con un tiempo de 89.873s, también en un estado de bucle.\n- **Transición 3**: De 2.4GHz a 5GHz, con un tiempo de 42.319s, pero resultó en un timeout.\n\nLa calidad de las transiciones es preocupante, ya que los bucles y el timeout indican que el cliente tuvo dificultades para estabilizarse en la banda óptima. A pesar de que se logró una transición exitosa, la presencia de fallos y bucles sugiere que el band steering necesita mejoras para optimizar la experiencia del usuario.",
+    "fragments": []
+}

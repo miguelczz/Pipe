@@ -89,18 +89,23 @@ async def agent_query(
         if not user_message or not user_message.strip():
             raise HTTPException(status_code=400, detail="El último mensaje del usuario no puede estar vacío")
 
-        # Agregar el nuevo mensaje del usuario al contexto de la sesión
-        # (si no está ya agregado)
-        last_user_msg_in_state = None
-        if session_state.context_window:
-            for msg in reversed(session_state.context_window):
-                if msg.role == "user":
-                    last_user_msg_in_state = msg.content
-                    break
-        
-        # Solo agregar si es un mensaje nuevo
-        if last_user_msg_in_state != user_message:
-            session_state.add_message("user", user_message)
+        # Sincronizar contexto de la sesión con los mensajes de la query (fuente de verdad del cliente)
+        # Esto asegura que si el servidor se reinicia, el historial enviado por el frontend se mantenga
+        if query.messages:
+            # Reemplazar el contexto con lo que envía el frontend (limitado a los últimos 20)
+            session_state.context_window = query.messages[-20:]
+            logging.info(f"[API] Contexto de sesión {query.session_id} sincronizado con {len(session_state.context_window)} mensajes del frontend")
+        else:
+            # Si no hay mensajes en la query pero el mensaje de usuario es nuevo, agregarlo
+            last_user_msg_in_state = None
+            if session_state.context_window:
+                for msg in reversed(session_state.context_window):
+                    if msg.role == "user":
+                        last_user_msg_in_state = msg.content
+                        break
+            
+            if last_user_msg_in_state != user_message:
+                session_state.add_message("user", user_message)
         
         # Actualizar user_id si se proporciona
         if query.user_id:

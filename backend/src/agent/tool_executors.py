@@ -28,7 +28,7 @@ dns_tool = DNSTool()
 llm = LLMClient()
 
 
-def get_conversation_context(messages: List[AnyMessage], max_messages: int = 10) -> str:
+def get_conversation_context(messages: List[AnyMessage], max_messages: int = 20, exclude_last: bool = False) -> str:
     """
     Extrae el contexto de conversación de los mensajes.
     OPTIMIZACIÓN: Limita el tamaño total del contexto para evitar problemas de memoria.
@@ -36,19 +36,25 @@ def get_conversation_context(messages: List[AnyMessage], max_messages: int = 10)
     Args:
         messages: Lista de mensajes
         max_messages: Número máximo de mensajes a incluir
+        exclude_last: Si es True, excluye el último mensaje (útil cuando el último mensaje es la pregunta actual)
     
     Returns:
-        Contexto formateado como string (limitado a 5000 caracteres para balance entre funcionalidad y memoria)
+        Contexto formateado como string (limitado a 5000 caracteres)
     """
     if not messages:
         return ""
     
     conversation_context = []
     total_length = 0
-    MAX_CONTEXT_LENGTH = 5000  # Límite aumentado para mantener funcionalidad pero evitar problemas de memoria
+    MAX_CONTEXT_LENGTH = 5000
+    
+    # Mensajes a procesar
+    msg_list = messages
+    if exclude_last and len(msg_list) > 0:
+        msg_list = msg_list[:-1]
     
     # Iterar desde los mensajes más recientes hacia atrás
-    for msg in reversed(messages[-max_messages:]):
+    for msg in reversed(msg_list[-max_messages:]):
         role = getattr(msg, "role", None) or getattr(msg, "type", "user")
         content = getattr(msg, "content", str(msg))
         
@@ -58,25 +64,21 @@ def get_conversation_context(messages: List[AnyMessage], max_messages: int = 10)
             elif role in ["assistant", "agent"]:
                 role = "assistant"
             
-            # Truncar contenido individual si es muy largo (mantener hasta 1000 chars por mensaje)
+            # Truncar contenido individual si es muy largo
             if len(content) > 1000:
                 content = content[:1000] + "..."
             
             msg_text = f"{role}: {content}"
             
-            # Verificar si agregar este mensaje excedería el límite
-            if total_length + len(msg_text) + 1 > MAX_CONTEXT_LENGTH:  # +1 por el \n
+            if total_length + len(msg_text) + 1 > MAX_CONTEXT_LENGTH:
                 break
             
             conversation_context.insert(0, msg_text)
-            total_length += len(msg_text) + 1  # +1 por el \n
+            total_length += len(msg_text) + 1
     
     result = "\n".join(conversation_context)
-    
-    # Si aún es muy largo, truncar (caso extremo)
     if len(result) > MAX_CONTEXT_LENGTH:
         result = result[:MAX_CONTEXT_LENGTH] + "..."
-        logger.debug(f"[ConversationContext] Contexto truncado a {MAX_CONTEXT_LENGTH} caracteres")
     
     return result
 
@@ -630,56 +632,9 @@ Responde SOLO con una palabra: "seguimiento" o "nueva".
             logger.warning(f"Error al detectar seguimiento con LLM: {e}. Usando RAG por defecto.")
             is_followup = False  # En caso de error, usar RAG
     
-    # Si es seguimiento CLARO, usar contexto de conversación
-    # Pero solo si es muy específico y directo
-    if is_followup and messages:
-        logger.info(f"[RAG] Detectado seguimiento de conversación - usando contexto de conversación (sin contextos de documentos)")
-        try:
-            context_text = get_conversation_context(messages, max_messages=10)
-            if context_text:
-                from ..core.cache import cache_result
-                
-                @cache_result("conversation_context", ttl=1800)
-                def generate_from_context(context: str, user_prompt: str) -> str:
-                    followup_prompt = f"""
-Basándote en la siguiente conversación previa, responde la pregunta del usuario de forma DIRECTA, PRECISA y COMPACTA.
-
-REGLAS CRÍTICAS PARA DATOS NUMÉRICOS:
-- Si la pregunta es sobre DATOS NUMÉRICOS (latencia, tiempo, porcentaje, pérdida de paquetes, etc.), extrae los valores EXACTOS del contexto
-- NO inventes, NO aproximes, NO redondees números - usa SOLO los valores EXACTOS que aparecen en el contexto
-- Si hay múltiples valores, usa el más reciente o el más relevante según la pregunta
-- Copia los números EXACTAMENTE como aparecen (con decimales si los tienen)
-- Si el contexto dice "77.29 ms", NO digas "77 ms" ni "30 ms" - di "77.29 ms"
-
-REGLAS GENERALES:
-- Sé CONCISO: ve directo al punto, sin rodeos ni explicaciones innecesarias
-- FORMATO DE LISTAS: Si usas listas, la viñeta debe estar en la MISMA LÍNEA que el texto (Ej: • **Concepto:** ...)
-- Responde SOLO lo que el usuario pregunta, sin información adicional no solicitada
-- Si la pregunta es sobre algo mencionado anteriormente, elabora SOLO sobre eso específicamente
-- Evita repeticiones y redundancias
-- Máximo 3-4 párrafos, preferiblemente menos
-
-Conversación previa:
-{context}
-
-Pregunta del usuario: {user_prompt}
-
-Respuesta (directa, precisa, con valores EXACTOS del contexto):
-"""
-                    return llm.generate(followup_prompt).strip()
-                
-                answer = generate_from_context(context_text, prompt)
-                # Para RAGAS: usar el contexto de conversación como contexto si no hay documentos
-                # Esto permite evaluar faithfulness y relevancy incluso en seguimientos
-                conversation_contexts = [context_text] if context_text else []
-                return {
-                    "answer": answer,
-                    "hits": 0,
-                    "source": "conversation_context",
-                    "contexts": conversation_contexts  # Usar contexto de conversación para RAGAS
-                }
-        except Exception as e:
-            logger.warning(f"Error al usar contexto de conversación: {e}")
+    # PRIORIDAD DOCUMENTACIÓN: Siempre usamos RAG con contexto de conversación para asegurar fidelidad técnica
+    # El refinamiento de consulta en RAGTool se encargará de manejar los seguimientos
+    logger.info(f"[RAG] Ejecutando RAG para: {prompt[:50]}...")
     
     # Ejecutar RAG normal (búsqueda en documentos)
     # El contexto de conversación se usa como complemento para mejorar la respuesta
@@ -691,7 +646,8 @@ Respuesta (directa, precisa, con valores EXACTOS del contexto):
     if messages:
         try:
             # Aumentar a 10 mensajes para tener más contexto histórico
-            conversation_context_for_rag = get_conversation_context(messages, max_messages=10)
+            # EXCLUIMOS el último mensaje porque es la pregunta actual que vamos a refinar
+            conversation_context_for_rag = get_conversation_context(messages, max_messages=10, exclude_last=True)
             if conversation_context_for_rag:
                 logger.info(f"[RAG] Contexto de conversación disponible ({len(conversation_context_for_rag)} chars, {len(messages)} mensajes) - se usará como complemento a los documentos")
         except Exception as e:

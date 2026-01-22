@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from src.api import files, agent, streaming, tools_router, network_analysis
+from src.api import files, agent, streaming, tools_router, network_analysis, reports
 from src.models.database import init_db
 import uvicorn
 
@@ -73,6 +73,7 @@ app.include_router(agent.router)
 app.include_router(streaming.router)
 app.include_router(tools_router.router)
 app.include_router(network_analysis.router)
+app.include_router(reports.router)
 
 # Configurar archivos estáticos del frontend (solo en producción)
 # El directorio frontend_dist estará en el directorio backend (generado por build.sh)

@@ -1,0 +1,79 @@
+{
+    "analysis_id": "72443a4d-3485-4ee0-ac87-1a475a64d357",
+    "filename": "b0b73253-e7ea-4c6e-a939-c38d2e9b209a_MOTO Z2 .pcapng",
+    "analysis_timestamp": "2026-01-22T13:41:29.525376",
+    "total_packets": 13,
+    "wlan_packets": 13,
+    "analysis_duration_ms": 0,
+    "devices": [
+        {
+            "mac_address": "80:58:f8:d8:3a:25",
+            "oui": "80:58:f8",
+            "vendor": "Moto",
+            "device_model": "MOTO Z2",
+            "device_category": "mobile_device",
+            "is_virtual": false,
+            "confidence_score": 1.0
+        }
+    ],
+    "btm_events": [],
+    "transitions": [],
+    "btm_requests": 1,
+    "btm_responses": 0,
+    "btm_success_rate": 0.0,
+    "successful_transitions": 0,
+    "failed_transitions": 1,
+    "loops_detected": false,
+    "kvr_support": {
+        "k_support": false,
+        "v_support": true,
+        "r_support": false,
+        "compliance_score": 0.3333333333333333
+    },
+    "compliance_checks": [
+        {
+            "check_name": "Soporte BTM (802.11v)",
+            "description": "El dispositivo debe demostrar soporte activo de BSS Transition Management",
+            "category": "btm",
+            "passed": true,
+            "severity": "high",
+            "score": 1.0,
+            "details": "Requests: 1, Responses: 0",
+            "recommendation": null
+        },
+        {
+            "check_name": "Asociación Exitosa",
+            "description": "No deben existir fallos de asociación (Status != 0)",
+            "category": "association",
+            "passed": true,
+            "severity": "medium",
+            "score": 1.0,
+            "details": "Fallos detectados: 0",
+            "recommendation": null
+        },
+        {
+            "check_name": "Steering Efectivo",
+            "description": "Se deben realizar cambios de banda efectivos (2.4 -> 5GHz)",
+            "category": "performance",
+            "passed": false,
+            "severity": "high",
+            "score": 0.0,
+            "details": "Cambios de banda: 0",
+            "recommendation": "Ajustar umbrales de RSSI para forzar steering"
+        },
+        {
+            "check_name": "Estándares KVR",
+            "description": "Soporte de estándares de movilidad (Mínimo 2 de 3: k, v, r)",
+            "category": "kvr",
+            "passed": false,
+            "severity": "medium",
+            "score": 0.3333333333333333,
+            "details": "k=False, v=True, r=False",
+            "recommendation": "Se recomienda habilitar el estándar faltante para roaming óptimo"
+        }
+    ],
+    "overall_compliance_score": 0.5833333333333334,
+    "verdict": "FAILED",
+    "analysis_text": "### 1. RESUMEN EJECUTIVO (EVIDENCIA CLAVE)\nEl análisis de la captura de Wireshark revela que no se logró ninguna transición exitosa en el proceso de band steering, lo que se alinea con el veredicto preliminar de \"FAILED\". No se detectaron eventos de BTM (BSS Transition Management), lo que indica que no hubo gestión activa del steering. Además, se registró un intento de transición fallido, donde el cliente 80:58:f8:d8:3a:25 fue desconectado de manera agresiva (Deauth) sin lograr una reasociación a otra banda. Esto refuerza la conclusión de que el band steering no funcionó adecuadamente en esta captura.\n\n### 2. ANÁLISIS BTM Y KVR (802.11k/v/r)\nEn la captura analizada, no se detectaron protocolos 802.11k, 802.11v o 802.11r, lo que sugiere que el cliente no está utilizando mecanismos avanzados de gestión de transición de bandas. La ausencia de eventos BTM y el estado \"NO DETECTADO\" indican que el steering se intentó mediante métodos menos eficientes, como la supresión de probes o mecanismos legacy. Esto implica que el cliente no es inteligente en su capacidad de roaming, ya que no se observó un comportamiento que sugiera una gestión activa de la red.\n\n### 3. DETALLE DE TRANSICIONES\nSe registró un intento de transición que resultó en un fallo. El cliente 80:58:f8:d8:3a:25 fue desconectado de manera agresiva, pero no se realizó ninguna reasociación a otra banda, lo que indica que el cliente permaneció en la misma banda (2.4GHz) sin éxito en el cambio. El tiempo promedio y máximo de transición se reporta como 0s, lo que refuerza que no hubo un proceso de transición exitoso. La falta de bucles detectados es un aspecto positivo, pero no compensa la ausencia de transiciones exitosas.\n\nEn conclusión, el análisis confirma que el band steering en esta red ha fallado, y no se han implementado mecanismos efectivos para gestionar la transición de clientes entre bandas.",
+    "fragments": []
+}

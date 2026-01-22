@@ -1,0 +1,79 @@
+{
+    "analysis_id": "13e387dd-4799-43cd-ae3b-ffa2522f3b23",
+    "filename": "3d2a6ce2-7b88-47c6-8c8a-286b51db6c81_16.SAMSUNG A31.pcapng",
+    "analysis_timestamp": "2026-01-22T14:20:06.022873",
+    "total_packets": 35,
+    "wlan_packets": 35,
+    "analysis_duration_ms": 0,
+    "devices": [
+        {
+            "mac_address": "f6:3b:bc:2b:a8:76",
+            "oui": "f6:3b:bc",
+            "vendor": "Samsung",
+            "device_model": "SAMSUNG A31",
+            "device_category": "mobile_device",
+            "is_virtual": true,
+            "confidence_score": 1.0
+        }
+    ],
+    "btm_events": [],
+    "transitions": [],
+    "btm_requests": 7,
+    "btm_responses": 2,
+    "btm_success_rate": 0.14285714285714285,
+    "successful_transitions": 1,
+    "failed_transitions": 4,
+    "loops_detected": true,
+    "kvr_support": {
+        "k_support": false,
+        "v_support": true,
+        "r_support": false,
+        "compliance_score": 0.3333333333333333
+    },
+    "compliance_checks": [
+        {
+            "check_name": "Soporte BTM (802.11v)",
+            "description": "El dispositivo debe demostrar soporte activo de BSS Transition Management",
+            "category": "btm",
+            "passed": true,
+            "severity": "high",
+            "score": 1.0,
+            "details": "Requests: 7, Responses: 2 | Code 0 (Accept)",
+            "recommendation": "Habilitar 802.11v"
+        },
+        {
+            "check_name": "Asociación y Reasociación",
+            "description": "Verifica ciclos completos de asociación y reasociación",
+            "category": "association",
+            "passed": true,
+            "severity": "medium",
+            "score": 1.0,
+            "details": "Assoc: 3/3, Reassoc: 3/6",
+            "recommendation": null
+        },
+        {
+            "check_name": "Steering Efectivo",
+            "description": "Se deben realizar cambios de banda efectivos (2.4 -> 5GHz)",
+            "category": "performance",
+            "passed": true,
+            "severity": "high",
+            "score": 1.0,
+            "details": "Cambios de banda: 1",
+            "recommendation": null
+        },
+        {
+            "check_name": "Estándares KVR",
+            "description": "Soporte de estándares de movilidad (Mínimo 2 de 3: k, v, r)",
+            "category": "kvr",
+            "passed": false,
+            "severity": "medium",
+            "score": 0.3333333333333333,
+            "details": "k=False, v=True, r=False",
+            "recommendation": "Se recomienda habilitar el estándar faltante para roaming óptimo"
+        }
+    ],
+    "overall_compliance_score": 0.8333333333333334,
+    "verdict": "SUCCESS",
+    "analysis_text": "### 1. RESUMEN EJECUTIVO (EVIDENCIA CLAVE)\nEl análisis de la captura de Wireshark revela que, a pesar de que se registraron múltiples intentos de steering, solo se logró una transición exitosa de banda. La única transición exitosa se produjo de 2.4GHz a 5GHz, pero estuvo acompañada de un tiempo de transición considerable de 118.083 segundos, lo que indica que el cliente tuvo dificultades para cambiar de banda. Además, se detectaron cuatro transiciones fallidas y bucles de desconexión, lo que sugiere problemas significativos en la gestión del band steering. Sin embargo, se observó un BTM Accept (Status Code 0) en las respuestas del cliente, lo que indica que el cliente cooperó con el proceso de steering. Esto justifica el veredicto preliminar de \"ACCEPTABLE\", aunque con serias advertencias sobre la calidad de la experiencia del usuario.\n\n### 2. ANÁLISIS BTM Y KVR (802.11k/v/r)\nSe detectó el soporte para el estándar 802.11v, lo que indica que el cliente es capaz de participar en la gestión de la transición de bandas. Se registraron 2 BTM Requests y 2 BTM Responses, con un Status Code 0 (Accept), lo que confirma que el cliente respondió positivamente a las solicitudes de gestión de transición. Sin embargo, no se detectó soporte para 802.11k y 802.11r, lo que limita la capacidad del cliente para realizar un roaming más eficiente y rápido. Esto sugiere que, aunque el cliente es capaz de cooperar con el AP, no está utilizando las capacidades avanzadas que podrían mejorar su experiencia de conexión.\n\n### 3. DETALLE DE TRANSICIONES\nLas transiciones observadas muestran una calidad deficiente, con un tiempo promedio de transición de 43.813 segundos y un tiempo máximo de 118.083 segundos. La única transición exitosa fue de 2.4GHz a 5GHz, pero estuvo marcada por un estado de TIMEOUT, lo que indica que el cliente no pudo completar la transición de manera eficiente. Las transiciones fallidas se caracterizaron por bucles de desconexión, donde el cliente intentó reconectarse al mismo BSSID sin éxito, lo que es indicativo de problemas en la gestión de la red y en la capacidad del cliente para cambiar de banda de manera efectiva. \n\nEn resumen, aunque se logró una transición exitosa, la experiencia general del cliente fue deficiente, con múltiples intentos fallidos y bucles, lo que justifica el veredicto de \"ACCEPTABLE\" pero con serias preocupaciones sobre la calidad del band steering implementado.",
+    "fragments": []
+}

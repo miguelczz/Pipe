@@ -34,7 +34,7 @@ class LLMClient:
                 stream = await self.aclient.chat.completions.create(
                     model=self.model,
                     messages=[
-                        {"role": "system", "content": "You are a helpful assistant."},
+                        {"role": "system", "content": "Eres NetMind, un asistente técnico experto en redes WiFi, Band Steering y protocolos 802.11. Cualquier término técnico debe interpretarse bajo el contexto exclusivo de redes y telecomunicaciones."},
                         {"role": "user", "content": prompt}
                     ],
                     max_tokens=max_tokens,
@@ -58,7 +58,7 @@ class LLMClient:
                 response = await self.aclient.chat.completions.create(
                     model=self.model,
                     messages=[
-                        {"role": "system", "content": "You are a helpful assistant."},
+                        {"role": "system", "content": "Eres NetMind, un asistente técnico experto en redes WiFi, Band Steering y protocolos 802.11. Cualquier término técnico debe interpretarse bajo el contexto exclusivo de redes y telecomunicaciones."},
                         {"role": "user", "content": prompt}
                     ],
                     max_tokens=max_tokens,
@@ -83,7 +83,7 @@ class LLMClient:
                 stream = self.client.chat.completions.create(
                     model=self.model,
                     messages=[
-                        {"role": "system", "content": "You are a helpful assistant."},
+                        {"role": "system", "content": "Eres NetMind, un asistente técnico experto en redes WiFi, Band Steering y protocolos 802.11. Cualquier término técnico debe interpretarse bajo el contexto exclusivo de redes y telecomunicaciones."},
                         {"role": "user", "content": prompt}
                     ],
                     max_tokens=max_tokens,
@@ -104,7 +104,7 @@ class LLMClient:
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=[
-                        {"role": "system", "content": "You are a helpful assistant."},
+                        {"role": "system", "content": "Eres NetMind, un asistente técnico experto en redes WiFi, Band Steering y protocolos 802.11. Cualquier término técnico debe interpretarse bajo el contexto exclusivo de redes y telecomunicaciones."},
                         {"role": "user", "content": prompt}
                     ],
                     max_tokens=max_tokens,

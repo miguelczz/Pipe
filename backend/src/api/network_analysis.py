@@ -12,24 +12,23 @@ from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 
-from ..tools.wireshark_tool import WiresharkTool
+from ..services.band_steering_service import BandSteeringService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/network-analysis", tags=["network-analysis"])
 
-wireshark_tool = WiresharkTool()
+# Instanciar el servicio orquestador (AIDLC)
+band_steering_service = BandSteeringService()
 
-# Thread pool executor para ejecutar análisis de capturas en threads separados
-# Esto evita conflictos con el event loop de FastAPI y problemas con pyshark
+# Thread pool executor para operaciones pesadas de tshark
 _executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="wireshark_analysis")
 
 
 @router.post("/analyze")
 async def analyze_network_capture(file: UploadFile = File(...)):
     """
-    Sube un archivo de captura de red (pcap/pcapng) y devuelve un análisis
-    generado por la IA a partir de las estadísticas básicas de la captura.
+    Sube un archivo de captura y realiza el proceso AIDLC completo de Band Steering.
     """
     if not file.filename:
         raise HTTPException(status_code=400, detail="Debe proporcionar un archivo de captura.")
@@ -41,7 +40,7 @@ async def analyze_network_capture(file: UploadFile = File(...)):
             detail="Solo se aceptan archivos de captura .pcap o .pcapng.",
         )
 
-    # Directorio temporal/local para guardar la captura
+    # Directorio temporal para la subida
     base_dir = Path(__file__).resolve().parents[2]
     uploads_dir = base_dir / "databases" / "uploads"
     uploads_dir.mkdir(parents=True, exist_ok=True)
@@ -53,22 +52,32 @@ async def analyze_network_capture(file: UploadFile = File(...)):
         content = await file.read()
         temp_path.write_bytes(content)
 
-        logger.info(f"[NetworkAnalysis] Archivo de captura guardado en: {temp_path}")
+        logger.info(f"[NetworkAnalysis] Iniciando proceso AIDLC para: {file.filename}")
 
-        # Ejecutar el análisis en un thread separado usando ThreadPoolExecutor
-        # Esto evita conflictos con el event loop de FastAPI y problemas con pyshark/tshark
+        # Ejecutar el servicio en un thread separado (tshark es bloqueante)
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
+        result_pkg = await loop.run_in_executor(
             _executor,
-            wireshark_tool.analyze_capture,
-            str(temp_path)
+            lambda: asyncio.run(band_steering_service.process_capture(str(temp_path)))
         )
 
+        analysis = result_pkg["analysis"]
+        raw_stats = result_pkg["raw_stats"]
+
+        # Formatear respuesta para compatibilidad TOTAL con el frontend actual
         return JSONResponse(
             content={
-                "file_name": result.get("file_name"),
-                "analysis": result.get("analysis"),
-                "stats": result.get("stats"),
+                "file_name": analysis.filename,
+                "analysis": analysis.analysis_text,
+                "stats": raw_stats,  # Mantenemos la estructura de stats para el dashboard
+                "aidlc": {
+                    "analysis_id": analysis.analysis_id,
+                    "verdict": analysis.verdict,
+                    "overall_score": analysis.overall_compliance_score,
+                    "device": analysis.devices[0].model_dump() if analysis.devices else {},
+                    "compliance_checks": [c.model_dump() for c in analysis.compliance_checks],
+                    "fragments_count": len(analysis.fragments)
+                }
             }
         )
     except RuntimeError as e:

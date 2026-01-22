@@ -1,0 +1,79 @@
+{
+    "analysis_id": "582b51c5-9413-4327-a891-4bface811db4",
+    "filename": "539bc541-c779-4e71-bcd9-22876c8e7983_MOTO G31 .pcapng",
+    "analysis_timestamp": "2026-01-22T13:36:09.389382",
+    "total_packets": 15,
+    "wlan_packets": 15,
+    "analysis_duration_ms": 0,
+    "devices": [
+        {
+            "mac_address": "f8:79:28:86:f3:d4",
+            "oui": "f8:79:28",
+            "vendor": "Moto",
+            "device_model": "MOTO G31",
+            "device_category": "mobile_device",
+            "is_virtual": false,
+            "confidence_score": 1.0
+        }
+    ],
+    "btm_events": [],
+    "transitions": [],
+    "btm_requests": 1,
+    "btm_responses": 0,
+    "btm_success_rate": 0.0,
+    "successful_transitions": 0,
+    "failed_transitions": 0,
+    "loops_detected": false,
+    "kvr_support": {
+        "k_support": false,
+        "v_support": true,
+        "r_support": false,
+        "compliance_score": 0.3333333333333333
+    },
+    "compliance_checks": [
+        {
+            "check_name": "Soporte BTM (802.11v)",
+            "description": "El dispositivo debe demostrar soporte activo de BSS Transition Management",
+            "category": "btm",
+            "passed": true,
+            "severity": "high",
+            "score": 1.0,
+            "details": "Requests: 1, Responses: 0",
+            "recommendation": null
+        },
+        {
+            "check_name": "Asociación Exitosa",
+            "description": "No deben existir fallos de asociación (Status != 0)",
+            "category": "association",
+            "passed": true,
+            "severity": "medium",
+            "score": 1.0,
+            "details": "Fallos detectados: 0",
+            "recommendation": null
+        },
+        {
+            "check_name": "Steering Efectivo",
+            "description": "Se deben realizar cambios de banda efectivos (2.4 -> 5GHz)",
+            "category": "performance",
+            "passed": false,
+            "severity": "high",
+            "score": 0.0,
+            "details": "Cambios de banda: 0",
+            "recommendation": "Ajustar umbrales de RSSI para forzar steering"
+        },
+        {
+            "check_name": "Estándares KVR",
+            "description": "Soporte de estándares de movilidad (Mínimo 2 de 3: k, v, r)",
+            "category": "kvr",
+            "passed": false,
+            "severity": "medium",
+            "score": 0.3333333333333333,
+            "details": "k=False, v=True, r=False",
+            "recommendation": "Se recomienda habilitar el estándar faltante para roaming óptimo"
+        }
+    ],
+    "overall_compliance_score": 0.5833333333333334,
+    "verdict": "FAILED",
+    "analysis_text": "### 1. RESUMEN EJECUTIVO (EVIDENCIA CLAVE)\nEl análisis de la captura de Wireshark revela que no se logró ninguna transición exitosa de banda, lo que se alinea con el veredicto preliminar de \"FAILED\". A pesar de que se detectó un intento de steering (1 BTM Request), no hubo respuestas del cliente, lo que indica que el cliente probablemente no soporta el estándar 802.11v. No se registraron transiciones exitosas ni fallidas, y no se detectaron bucles entre puntos de acceso. La calidad de la captura se considera insuficiente, lo que limita la capacidad de análisis. En resumen, no se observó un comportamiento efectivo de band steering.\n\n### 2. ANÁLISIS BTM Y KVR (802.11k/v/r)\nSe identificó el soporte del estándar 802.11v, lo que permite la gestión de transiciones de BSS a través de BTM. Sin embargo, solo se registró un BTM Request enviado desde el AP al cliente, y no hubo respuestas del cliente, lo que sugiere que este último podría no ser compatible con el protocolo 802.11v. Esto implica que el cliente no está utilizando la gestión avanzada de red, lo que afecta negativamente la funcionalidad del band steering. No se detectaron otros protocolos como 802.11k o 802.11r, lo que limita aún más las capacidades de roaming inteligente.\n\n### 3. DETALLE DE TRANSICIONES\nDado que no se registraron transiciones exitosas, el tiempo promedio y máximo de transición se reporta como 0 segundos. Esto indica que no hubo intentos de roaming exitosos, lo que refuerza el veredicto de \"FAILED\". La falta de transiciones exitosas y la ausencia de respuestas a las solicitudes BTM sugieren que el cliente no está optimizando su conexión a la banda de 5GHz, lo que podría ser un problema de compatibilidad o configuración.\n\nEn conclusión, el análisis confirma que el band steering no está funcionando adecuadamente en esta red, y se recomienda investigar la compatibilidad del cliente con los estándares de gestión de red y considerar ajustes en la configuración del AP para mejorar el rendimiento del band steering.",
+    "fragments": []
+}

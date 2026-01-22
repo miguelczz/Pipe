@@ -1,0 +1,79 @@
+{
+    "analysis_id": "7772b74e-5ecf-4426-a030-703ba92fd95d",
+    "filename": "58c60e30-a9c3-4b06-bc65-5c371f7645b8_HUAWEI P30 PRO .pcapng",
+    "analysis_timestamp": "2026-01-22T11:31:00.419515",
+    "total_packets": 14,
+    "wlan_packets": 14,
+    "analysis_duration_ms": 0,
+    "devices": [
+        {
+            "mac_address": "f8:79:28:56:f3:d5",
+            "oui": "f8:79:28",
+            "vendor": "Unknown",
+            "device_model": null,
+            "device_category": "unknown_device",
+            "is_virtual": false,
+            "confidence_score": 0.1
+        }
+    ],
+    "btm_events": [],
+    "transitions": [],
+    "btm_requests": 0,
+    "btm_responses": 0,
+    "btm_success_rate": 0.0,
+    "successful_transitions": 0,
+    "failed_transitions": 0,
+    "loops_detected": false,
+    "kvr_support": {
+        "k_support": false,
+        "v_support": false,
+        "r_support": false,
+        "compliance_score": 0.0
+    },
+    "compliance_checks": [
+        {
+            "check_name": "Soporte BTM (802.11v)",
+            "description": "El dispositivo debe soportar BSS Transition Management",
+            "category": "btm",
+            "passed": false,
+            "severity": "high",
+            "score": 0.0,
+            "details": "Requests: 0, Responses: 0",
+            "recommendation": "Habilitar 802.11v en configuración del AP"
+        },
+        {
+            "check_name": "Asociación Exitosa",
+            "description": "No deben existir fallos de asociación (Status != 0)",
+            "category": "association",
+            "passed": true,
+            "severity": "medium",
+            "score": 1.0,
+            "details": "Fallos detectados: 0",
+            "recommendation": null
+        },
+        {
+            "check_name": "Steering Efectivo",
+            "description": "El dispositivo debe realizar cambios de banda efectivos (2.4 -> 5GHz)",
+            "category": "performance",
+            "passed": false,
+            "severity": "high",
+            "score": 0.0,
+            "details": "Cambios de banda exitosos: 0",
+            "recommendation": "Ajustar umbrales de RSSI para forzar steering"
+        },
+        {
+            "check_name": "Estándares KVR",
+            "description": "Soporte completo de 802.11k, 802.11v y 802.11r",
+            "category": "kvr",
+            "passed": false,
+            "severity": "medium",
+            "score": 0.0,
+            "details": "k=False, v=False, r=False",
+            "recommendation": "Revisar capacidades del cliente y configuración WLAN"
+        }
+    ],
+    "overall_compliance_score": 0.25,
+    "verdict": "FAILED",
+    "analysis_text": "### 1. RESUMEN EJECUTIVO (EVIDENCIA CLAVE)\nEl análisis de la captura de Wireshark revela un veredicto preliminar de **FAILED_LOOP**, lo que indica que no hubo transiciones exitosas y se detectaron bucles en el proceso de steering. A lo largo de cinco intentos de steering, todos resultaron en fallos, con el cliente permaneciendo en la misma banda (5GHz) sin lograr una transición efectiva. No se registraron eventos de BTM, lo que sugiere que no se utilizó la gestión avanzada de BTM (802.11v) para facilitar el steering. La falta de transiciones exitosas y la presencia de bucles confirman que el band steering no funcionó adecuadamente en este caso.\n\n### 2. ANÁLISIS BTM Y KVR (802.11k/v/r)\n- **Protocolos Detectados:** No se detectaron protocolos 802.11k, 802.11v o 802.11r en la captura.\n- **Intercambio BTM:** No hubo eventos BTM registrados, lo que indica que no se realizaron solicitudes ni respuestas de BTM. Esto es un indicativo de que el cliente no está utilizando mecanismos avanzados para la gestión de la transición entre bandas.\n- **Interpretación:** El cliente no parece ser inteligente en términos de roaming, ya que no se observó un comportamiento que sugiera la capacidad de realizar transiciones efectivas entre bandas.\n\n### 3. DETALLE DE TRANSICIONES\nLas transiciones observadas fueron todas fallidas, con un tiempo promedio de transición de 0.115s y un tiempo máximo de 0.121s. Cada intento de transición resultó en un bucle, donde el cliente intentó cambiar de BSSID pero permaneció en la misma banda (5GHz). Esto se evidencia en los cinco intentos de deautenticación (Deauth) que no lograron una reasociación exitosa, lo que se traduce en un estado de bucle continuo. La falta de éxito en las transiciones y la repetición del mismo BSSID indican un fallo en el proceso de steering, lo que refuerza el veredicto de **FAILED_LOOP**. \n\nEn conclusión, el análisis confirma que el band steering no fue efectivo en esta captura, con un claro fallo en la gestión de transiciones entre bandas.",
+    "fragments": []
+}

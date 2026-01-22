@@ -44,9 +44,9 @@ class NetMindAgent:
                     context_parts.append(f"{role}: {content[:150]}")
                 context_for_cache = "\n".join(context_parts)
             
-            # Últimos 5 mensajes para el prompt completo
-            last_5_messages = state.context_window[-5:]
-            context_messages_str = "\n".join([f"{m.role if hasattr(m, 'role') else 'user'}: {m.content if hasattr(m, 'content') else str(m)}" for m in last_5_messages])
+            # Últimos 10 mensajes para el prompt completo
+            last_10_messages = state.context_window[-10:]
+            context_messages_str = "\n".join([f"{m.role if hasattr(m, 'role') else 'user'}: {m.content if hasattr(m, 'content') else str(m)}" for m in last_10_messages])
         
         # Usar función interna con caché (solo strings serializables)
         return self._decide_cached(user_input, context_for_cache, context_messages_str)
@@ -75,10 +75,11 @@ Context (last 5 messages):
 {context_messages_str}
 
 RELEVANCE RULES (STEP 1):
-- ONLY mark as relevant if the question is CLEARLY and DIRECTLY related to networks, network protocols, telecommunications, or network technologies
-- If the question references previous network operations mentioned in context (ping, traceroute, DNS, IP analysis, etc.), it is RELEVANT even if it doesn't explicitly mention networks
-- Questions about general physics, mathematics, history, literature, medicine, cooking, sports, etc. are NOT RELEVANT (unless they directly reference previous network operations)
-- Only relevant: network protocols (TCP/IP, HTTP, DNS, etc.), network devices (routers, switches, etc.), network technologies (WiFi, Ethernet, etc.), network operations (ping, traceroute, etc.), network configuration, network security, etc.
+- CORE DOMAIN UNDERSTANDING: You are a specialized agent for NetMind. Your absolute focus is Band Steering analysis using Wireshark.
+- MANDATORY RELEVANCE: "La prueba", "el análisis", "la guía", "el procedimiento", or asking "con qué me guío" ALWAYS refer to the Band Steering project documentation. Mark them as RELEVANT immediately.
+- CONTEXTUAL INFERENCE: Any request about network behavior, WiFi standards (BTM, KVR), or "how to interpret results" is RELEVANT.
+- ELASTIC RELEVANCE: Be extremely flexible. If the user seeks technical guidance or explanation of network outcomes, it is RELEVANT.
+- FOLLOW-UP TOLERANCE: Ambiguous questions like "what are the states?", "and the difference?", "how does it work?" MUST be marked RELEVANT if the previous conversation context is technical (Wireshark, BTM, WiFi). Do NOT reject them as "too general".
 
 TOOL DECISION RULES (STEP 2 - only if relevant):
 1. ANALYZE THE USER REQUEST CAREFULLY: Break down the request into separate parts if it contains multiple questions or tasks.
@@ -89,6 +90,7 @@ TOOL DECISION RULES (STEP 2 - only if relevant):
    - The relationship between context and request: Analyze the MAIN TOPIC of the conversation to determine the operation.
    
    CRITICAL RULE: Analyze the MAIN TOPIC/CONCEPT being discussed, not just isolated keywords:
+   - DOMAIN ASSUMPTION: If the user's focus is on technical guidance, procedural steps, or explaining network outcomes, even without keywords, assume it's about the Band Steering core project (Route to RAG tool).
    - If the context discusses "DNS", "registro DNS", "registros DNS", "consulta DNS", "DNS records", etc. → the user wants a DNS operation
    - If the context discusses "ping", "latencia", "tiempo de respuesta", etc. → the user wants a ping operation
    - If the context discusses "traceroute", "ruta", "saltos", "hops", etc. → the user wants a traceroute operation
@@ -154,7 +156,7 @@ Respond ONLY in JSON format. No extra text or markdown.
             response = client.chat.completions.create(
                 model=self.llm_model,
                 messages=[
-                    {"role": "system", "content": "You are NetMind, a smart router that validates relevance and decides which tool to use. Always respond with valid JSON."},
+                    {"role": "system", "content": "You are the NetMind Router. Your domain is Network Analysis (Band Steering/Wireshark). 'La prueba' or 'la guía' are ALWAYS relevant to your project. Always respond with valid JSON."},
                     {"role": "user", "content": combined_prompt}
                 ],
                 max_tokens=500,
@@ -189,7 +191,7 @@ Respond ONLY in JSON format. No extra text or markdown.
         
         # Si NO es relevante, retornar inmediatamente
         if not is_relevant:
-            rejection_msg = data.get("rejection_message", "Lo siento, solo puedo responder preguntas relacionadas con redes, telecomunicaciones, protocolos de red y tecnologías de red. Tu pregunta parece estar fuera de esta temática.")
+            rejection_msg = data.get("rejection_message", "Lo siento, como asistente de NetMind mi especialidad es el análisis de Band Steering y protocolos de red. Tu pregunta parece estar fuera de este ámbito técnico.")
             logger.info(f"[Router] Pregunta rechazada por estar fuera de tema: '{user_input}'")
             return {
                 "tool": "none",
