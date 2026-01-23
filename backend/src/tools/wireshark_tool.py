@@ -314,13 +314,15 @@ class WiresharkTool:
                             "timestamp": float(timestamp) if timestamp else 0,
                             "type": event_type,
                             "subtype": subtype_int,
+                            "sa": wlan_sa,
+                            "da": wlan_da,
                             "client_mac": wlan_sa or wlan_da,
                             "bssid": bssid,
                             "ssid": ssid,
                             "band": band,
                             "frequency": frequency,
                             "reason_code": reason_code,
-                            "assoc_status_code": assoc_status_code  # NUEVO: Para validar éxito
+                            "assoc_status_code": assoc_status_code
                         }
                         steering_events.append(event)
                         
@@ -370,34 +372,27 @@ class WiresharkTool:
                 }.get(subtype_val, f"Unknown (0x{subtype_val:02x})")
                 logger.info(f"  - {frame_name}: {count}")
         
-        if len(steering_events) > 0:
-            logger.debug(f"Primeros eventos capturados: {steering_events[:3]}")
-
-        # Análisis de sesiones de clientes y transiciones
-        steering_analysis = self._analyze_steering_patterns(steering_events, bssid_info, band_counters)
-        
-        # Evaluación de calidad de captura para band steering
-        capture_quality = self._evaluate_capture_quality(steering_analysis, steering_events)
-
-        # Determinar MAC de Cliente (la más frecuente que sea UNICAST y no sea BSSID)
+        # 1. Determinar MAC de Cliente (la más frecuente que sea UNICAST y no sea BSSID)
         client_mac = "Desconocido"
         
         def is_valid_client_mac(mac: str) -> bool:
             if not mac or mac == "ff:ff:ff:ff:ff:ff" or mac == "00:00:00:00:00:00":
                 return False
-            # Ignorar Multicast (primer octeto impar)
             try:
                 first_octet = int(mac.split(':')[0], 16)
-                if first_octet & 1:
-                    return False
-            except:
-                return False
+                if first_octet & 1: return False
+            except: return False
             return True
 
         potential_clients = [m for m in all_client_macs if is_valid_client_mac(m) and m not in bssid_info]
         if potential_clients:
-            # El cliente es el que más aparece en SA/DA excluyendo infraestructura
             client_mac = Counter(potential_clients).most_common(1)[0][0]
+
+        # 2. Análisis de sesiones de clientes y transiciones
+        steering_analysis = self._analyze_steering_patterns(steering_events, bssid_info, band_counters, client_mac)
+        
+        # 3. Evaluación de calidad de captura para band steering
+        capture_quality = self._evaluate_capture_quality(steering_analysis, steering_events)
 
         diagnostics = {
             "tcp_retransmissions": tcp_retransmissions,
@@ -424,7 +419,7 @@ class WiresharkTool:
             "top_destinations": dst_counter.most_common(10),
         }
 
-    def _analyze_steering_patterns(self, events: list, bssid_info: dict, band_counters: dict = None) -> Dict[str, Any]:
+    def _analyze_steering_patterns(self, events: list, bssid_info: dict, band_counters: dict = None, primary_client_mac: str = None) -> Dict[str, Any]:
         """
         Analiza patrones de band steering en los eventos capturados.
         
@@ -683,7 +678,8 @@ class WiresharkTool:
                 total_steering_attempts, successful_transitions, 
                 failed_transitions, loop_detected, avg_transition_time,
                 band_counters, # Pasamos band_counters para ver BTM
-                events # NUEVO: Pasar eventos para detectar Deauth/Disassoc
+                events, # NUEVO: Pasar eventos para detectar Deauth/Disassoc
+                primary_client_mac # PASAR MAC PARA FILTRO
             )
         
         return {
@@ -747,40 +743,39 @@ class WiresharkTool:
         if not (is_band_change or is_bssid_change):
             return "NO_CHANGE"
         
-        if transition_time is None:
-            return "SUCCESS"  # Steering asistido sin tiempo previo
-        
-        if transition_time < 1.0:
+        if transition_time < 2.0: # Aumentado de 1.0 a 2.0 para SUCCESS
             return "SUCCESS"
-        elif transition_time < 3.0:
+        elif transition_time < 8.0: # Aumentado de 3.0 a 8.0 para SLOW
             return "SLOW"
         else:
             return "TIMEOUT"
     
     def _determine_verdict(self, attempts: int, successful: int, failed: int,
                           loop_detected: bool, avg_time: float, band_counters: dict = None,
-                          steering_events: list = None) -> str:
+                          steering_events: list = None, client_mac: str = None) -> str:
         """
         Determina el veredicto general con granularidad de calidad.
-        
-        NIVELES:
-        - EXCELLENT: Éxito limpio (BTM o Transición rápida) SIN fallos ni bucles.
-        - GOOD: Éxito estándar sin fallos graves.
-        - ACCEPTABLE: Éxito (logró pasar) PERO con bucles o intentos fallidos previos ("Pasó raspando").
-        - FAILED: Sin éxito de transición ni BTM Accept, O desconexiones forzadas detectadas.
         """
         
         # PRIORIDAD 1: Detectar desconexiones forzadas (Deauth/Disassoc)
-        # Esto es CRÍTICO y anula cualquier éxito aparente
-        deauth_count = 0
-        disassoc_count = 0
-        if steering_events:
-            deauth_count = sum(1 for e in steering_events if e.get("subtype") == 12)
-            disassoc_count = sum(1 for e in steering_events if e.get("subtype") == 10)
-        
-        if deauth_count > 0 or disassoc_count > 0:
-            logger.warning(f"⚠️ Desconexiones forzadas detectadas: {deauth_count} Deauth, {disassoc_count} Disassoc → FAILED")
-            return "FAILED"  # Fallo automático por inestabilidad
+        # Solo fallar si el evento es DIRIGIDO al cliente y no es una salida normal
+        forced_disconnects = 0
+        if steering_events and client_mac:
+            for e in steering_events:
+                # Subtype 12 (Deauth) o 10 (Disassoc)
+                if e.get("subtype") in [10, 12]:
+                    # ¿Va dirigido a nuestro cliente?
+                    is_targeted = (e.get("da") == client_mac)
+                    # ¿Qué motivo tiene? (Ignorar 3=STA leaving, 8=STA leaving BSS)
+                    reason = str(e.get("reason_code", "0"))
+                    is_graceful = reason in ["3", "8"]
+                    
+                    if is_targeted and not is_graceful:
+                        forced_disconnects += 1
+                        logger.warning(f"⚠️ Desconexión forzada REAL en cliente {client_mac}: Reason {reason}")
+
+        if forced_disconnects > 0:
+            return "FAILED"  # Fallo automático por inestabilidad real
         
         # Detectar "suciedad" en la prueba (fallos previos o bucles)
         has_issues = loop_detected or (failed > 0)
@@ -808,16 +803,17 @@ class WiresharkTool:
 
         # 2. Análisis de transiciones exitosas
         if successful > 0:
-            if has_issues:
-                return "ACCEPTABLE" # Logró pasar, pero con intentos fallidos o bucles previos
+            if loop_detected or failed > 0:
+                # Si hubo éxito pero con "ruido", es GOOD o ACCEPTABLE, no FALLIDO automáticamente
+                return "GOOD" if successful > failed else "ACCEPTABLE"
             
             # Si es limpio, calificar por tiempo
-            if avg_time < 1.0: 
+            if avg_time < 3.0: 
                 return "EXCELLENT" 
-            elif avg_time < 4.0:
+            elif avg_time < 10.0:
                 return "GOOD"
             else:
-                return "ACCEPTABLE" # Lento
+                return "ACCEPTABLE" # Lento pero exitoso
         
         # 3. Fallos (Si llegamos aquí, es porque NO hubo éxito confirmed)
         if loop_detected:
@@ -1035,7 +1031,6 @@ class WiresharkTool:
             f"---\n\n"
             f"{bssid_summary}"
             f"## MÉTRICAS DE BAND STEERING\n\n"
-            f"**Veredicto preliminar:** {sa['verdict']}\n"
             f"**Clientes analizados:** {sa['clients_analyzed']}\n"
             f"**Intentos de steering:** {sa['steering_attempts']}\n"
             f"**Transiciones exitosas:** {sa['successful_transitions']}\n"
@@ -1144,18 +1139,25 @@ class WiresharkTool:
             "  * Preferencias de banda observadas\n"
             "  * Nivel de cooperación con el AP\n\n"
             
-            "### ÚLTIMA SECCIÓN OBLIGATORIA: CONCLUSIÓN FINAL\n"
-            "- Resumen final del estado de la prueba.\n"
-            "- NO incluyas una lista de 'Próximos pasos'.\n"
-            "- Cierra el informe con un veredicto claro basado estrictamente en los hallazgos.\n\n"
+            "## REGLA DE ORO: FIDELIDAD TOTAL AL VEREDICTO FINAL\n"
+            "El resumen técnico tiene una sección llamada '**VEREDICTO FINAL AIDLC**'.\n"
+            "- Si el veredicto es **SUCCESS** o **EXITOSA**, el reporte **DEBE** concluir que la prueba fue exitosa.\n"
+            "- Si el veredicto es **SUCCESS**, puedes mencionar bucles o tiempos altos como 'puntos de mejora' o 'observaciones técnicas', pero **NUNCA** usarlos para decir que la prueba falló.\n"
+            "- Un veredicto de **SUCCESS** significa que los criterios mínimos se cumplieron; tu análisis debe validar ese éxito.\n\n"
+            
+            "**PARA EL VEREDICTO:**\n"
+            "- **SOLO** menciona como causas de fallo los checks que aparezcan en '❌ CHECKS QUE FALLARON'\n"
+            "- Si un check dice 'PASÓ', NO lo uses como causa de fallo ni de veredicto negativo.\n\n"
+            
+            "## ESTRUCTURA DEL REPORTE (ADAPTATIVA)\n\n"
+            "1. **RESUMEN EJECUTIVO**: Declara el veredicto basándote estrictamente en el 'VEREDICTO FINAL AIDLC'.\n"
+            "2. **ANÁLISIS TÉCNICO**: Usa las métricas para explicar el proceso.\n"
+            "3. **CONCLUSIÓN FINAL**: Debe ser 100% coherente con el veredicto de la tabla.\n\n"
             
             "## REGLAS ESTRICTAS\n"
-            "1. **FIDELIDAD AL VEREDICTO**: Las causas del veredicto SOLO pueden ser los checks de '❌ CHECKS QUE FALLARON'\n"
-            "2. **RIQUEZA TÉCNICA**: Usa TODAS las métricas disponibles para enriquecer el análisis (BTM, transiciones, tiempos, etc.)\n"
-            "3. **COHERENCIA**: Tu narrativa debe ser 100% coherente con el 'Veredicto Final AIDLC'\n"
-            "4. **PROFESIONALISMO**: Usa terminología técnica precisa y estructura clara\n"
-            "5. **IDIOMA**: USA EXCLUSIVAMENTE ESPAÑOL\n"
-            "6. **NO PRÓXIMOS PASOS**: Está prohibido incluir una sección de 'Próximos pasos sugeridos'.\n\n"
+            "1. **CONSISTENCIA**: Si la tabla dice SUCCESS, tu conclusión es EXITOSA.\n"
+            "2. **TONO**: Si es SUCCESS, el tono debe ser positivo, reconociendo el cumplimiento de los estándares.\n"
+            "3. **IDIOMA**: ESPAÑOL.\n"
         )
 
         completion = self.client.chat.completions.create(
@@ -1165,7 +1167,7 @@ class WiresharkTool:
                 {"role": "user", "content": technical_summary},
             ],
             temperature=0.1,
-            max_tokens=1000,
+            max_tokens=2000,
         )
 
         return completion.choices[0].message.content.strip()

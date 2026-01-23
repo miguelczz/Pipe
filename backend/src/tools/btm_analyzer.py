@@ -80,7 +80,8 @@ class BTMAnalyzer:
             btm_requests, btm_responses, btm_success_rate, 
             kvr_support, transitions, band_counters,
             success_count_override=successful_transitions,
-            steering_events=steering_events
+            steering_events=steering_events,
+            device_info=device_info
         )
         
         # 7. Determinar veredicto (REGLA DE ORO: 1 éxito = SUCCESS)
@@ -346,7 +347,8 @@ class BTMAnalyzer:
         transitions: List[SteeringTransition],
         band_counters: dict,
         success_count_override: int = 0,
-        steering_events: List[Dict[str, Any]] = None
+        steering_events: List[Dict[str, Any]] = None,
+        device_info: Optional[DeviceInfo] = None
     ) -> List[ComplianceCheck]:
         """Genera la tabla de resumen de cumplimiento."""
         checks = []
@@ -384,42 +386,55 @@ class BTMAnalyzer:
             recommendation="El cliente ignora o rechaza solicitudes BTM. Revisar códigos de estado." if not passed_btm else "Habilitar 802.11v"
         ))
         
-        # 2. Asociación y Reasociación
-        # Subtypes: 0=AssocReq, 1=AssocResp, 2=ReassocReq, 3=ReassocResp, 10=Disassoc, 12=Deauth
-        assoc_req = sum(1 for e in (steering_events or []) if e.get("subtype") == 0)
-        assoc_resp = sum(1 for e in (steering_events or []) if e.get("subtype") == 1)
-        reassoc_req = sum(1 for e in (steering_events or []) if e.get("subtype") == 2)
-        reassoc_resp = sum(1 for e in (steering_events or []) if e.get("subtype") == 3)
-        disassoc = sum(1 for e in (steering_events or []) if e.get("subtype") == 10)
-        deauth = sum(1 for e in (steering_events or []) if e.get("subtype") == 12)
+        # 2. Asociación y Reasociación (Lógica Refinada y Segura)
+        primary_client = device_info.mac_address if device_info else None
+        
+        # Filtros inteligentes para Deauth/Disassoc
+        forced_deauth_count = 0
+        forced_disassoc_count = 0
+        
+        # Contadores brutos para el detalle visual
+        assoc_req = 0
+        assoc_resp = 0
+        reassoc_req = 0
+        reassoc_resp = 0
+        
+        for e in (steering_events or []):
+            st = e.get("subtype")
+            # Contar ráfaga de handshakes (esto es general)
+            if st == 0: assoc_req += 1
+            elif st == 1: assoc_resp += 1
+            elif st == 2: reassoc_req += 1
+            elif st == 3: reassoc_resp += 1
+            
+            # Análisis de desconexiones (SOLO SI ES EL CLIENTE ANALIZADO)
+            elif st in [10, 12] and primary_client:
+                # Solo penalizar si va dirigido a nuestro cliente
+                is_targeted = (e.get("da") == primary_client or e.get("sa") == primary_client)
+                # Ignorar motivos de salida voluntaria (3=STA leaving, 8=STA leaving BSS)
+                reason = str(e.get("reason_code", "0"))
+                is_graceful = reason in ["3", "8"]
+                
+                if is_targeted and not is_graceful:
+                    if st == 10: forced_disassoc_count += 1
+                    else: forced_deauth_count += 1
         
         assoc_failures = band_counters.get("association_failures", [])
         failure_count = len(assoc_failures)
         
-        # Lógica ESTRICTA de estabilidad: 
-        # Cualquier desconexión forzada (Deauth/Disassoc) indica inestabilidad y debe fallar.
-        # Esto es crítico porque aunque el dispositivo se reconecte, la desconexión forzada
-        # demuestra que el AP está expulsando al cliente, lo cual es un fallo de steering.
-        has_forced_disconnect = (deauth > 0 or disassoc > 0)
+        # Un handshake se considera completo si hay al menos un ciclo exitoso
         has_complete_handshake = (assoc_req > 0 and assoc_resp > 0) or (reassoc_req > 0 and reassoc_resp > 0)
         
-        # Solo pasa si: hay handshake completo, sin fallos de status code, y SIN desconexiones forzadas
-        assoc_passed = has_complete_handshake and failure_count == 0 and not has_forced_disconnect
+        # CRITERIO DE ÉXITO: Handshake completo Y sin desconexiones forzadas REALES
+        assoc_passed = has_complete_handshake and failure_count == 0 and (forced_deauth_count == 0 and forced_disassoc_count == 0)
         
-        # Ajustar el score: 1.0 si es óptimo, 0.0 si falló
-        assoc_score = 0.0
-        if assoc_passed:
-            assoc_score = 1.0 if btm_responses > 0 else 0.5
-
         # Recomendación técnica precisa
-        if has_forced_disconnect:
-            rec = f"Prueba FALLIDA: Se detectaron {deauth} Deauth y {disassoc} Disassoc (desconexiones forzadas por el AP)."
+        if (forced_deauth_count + forced_disassoc_count) > 0:
+            rec = f"Prueba FALLIDA: Se detectaron {forced_deauth_count} Deauth y {forced_disassoc_count} Disassoc DIRIGIDOS al cliente, indicando inestabilidad forzada."
         elif failure_count > 0:
             rec = "Se detectaron fallos explícitos de asociación (Status Code != 0)."
         elif not has_complete_handshake:
-            rec = "Handshake incompleto o captura parcial; se detectaron respuestas sin solicitudes (o viceversa)."
-        elif btm_responses == 0:
-            rec = "El dispositivo se asocia pero no demuestra cooperación con protocolos inteligentes (BTM)."
+            rec = "Handshake incompleto o captura parcial; no se detectó el ciclo completo de asociación."
         else:
             rec = None
 
@@ -429,7 +444,7 @@ class BTMAnalyzer:
             category="association",
             passed=assoc_passed,
             severity="medium",
-            details=f"Assoc: {assoc_req}/{assoc_resp}, Reassoc: {reassoc_req}/{reassoc_resp}\nDisassoc: {disassoc}, Deauth: {deauth}",
+            details=f"Assoc: {assoc_req}/{assoc_resp}, Reassoc: {reassoc_req}/{reassoc_resp}\nDisassoc: {forced_disassoc_count}, Deauth: {forced_deauth_count}",
             recommendation=rec
         ))
         

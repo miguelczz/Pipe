@@ -544,7 +544,7 @@ export function NetworkAnalysisPage() {
                   )}
 
                   {/* Contenido del Análisis */}
-                  <div className="prose prose-invert prose-sm max-w-none">
+                  <div className="max-w-none">
                     <div className="text-dark-text-primary leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
                       <MarkdownRenderer content={result.analysis || ''} />
                     </div>
