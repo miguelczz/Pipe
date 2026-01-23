@@ -21,6 +21,7 @@ import {
   Info
 } from 'lucide-react'
 import { MarkdownRenderer } from '../components/chat/MarkdownRenderer'
+import { BandSteeringChart } from '../components/charts/BandSteeringChart'
 
 export function NetworkAnalysisPage() {
   const [selectedFile, setSelectedFile] = useState(null)
@@ -329,9 +330,9 @@ export function NetworkAnalysisPage() {
         {result && (
           <div className="space-y-6">
 
-            {/* Layout principal: Estadísticas detalladas y Análisis */}
+            {/* Fila Superior: Estadísticas (3 cards) + Gráfica de Band Steering */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-              {/* Panel lateral: Estadísticas detalladas */}
+              {/* Panel lateral izquierdo: 3 Cards de estadísticas */}
               <div className="lg:col-span-1 space-y-4">
                 
                 {/* Identidad del Dispositivo*/}
@@ -449,110 +450,127 @@ export function NetworkAnalysisPage() {
 
               </div>
 
-              {/* Panel principal: Análisis de IA */}
+              {/* Panel derecho: Gráfica de Band Steering */}
               <Card className="lg:col-span-2 p-6">
-                <div className="space-y-4">
-                  {/* Header con Veredicto Visual */}
-                  <div className="flex items-start justify-between gap-4 pb-4 border-b border-dark-border-primary/100">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-dark-accent-primary/20">
-                        <Activity className="w-5 h-5 text-dark-accent-primary" />
-                      </div>
-                      <div>
-                        <h2 className="text-lg font-semibold text-dark-text-primary">
-                          Análisis de Band Steering
-                        </h2>
-                        <p className="text-sm text-dark-text-secondary mt-1">
-                          Evaluación técnica de capacidades 802.11k/v/r
-                        </p>
-                      </div>
-                    </div>
-                    
-                    {/* Badge de Veredicto */}
-                    {(result.aidlc?.verdict || result.stats?.steering_analysis?.verdict) && (() => {
-                      const verdict = (result.aidlc?.verdict || result.stats?.steering_analysis?.verdict || '').toUpperCase()
-                      // Definir explícitamente qué veredictos son "Éxito" (Verde)
-                      const successVerdicts = ['SUCCESS', 'EXCELLENT', 'GOOD', 'PREVENTIVE_SUCCESS', 'ACCEPTABLE', 'SLOW_BUT_SUCCESSFUL']
-                      const isSuccess = successVerdicts.includes(verdict)
-                      
-                      return (
-                        <div className={`px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 ${
-                          isSuccess 
-                            ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
-                            : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                        }`}>
-                          {isSuccess ? '✅' : '❌'}
-                          <span>{formatVerdict(verdict).toUpperCase()}</span>
-                        </div>
-                      )
-                    })()}
-                  </div>
-
-                  {/* Detalle de Cumplimiento Técnico (AIDLC) - AHORA AL PRINCIPIO */}
-                  {result.aidlc?.compliance_checks && (
-                    <div className="mb-8 pb-6 border-b border-dark-border-primary/100">
-                      <h3 className="text-base font-semibold text-dark-text-primary mb-4 flex items-center gap-2">
-                        <ShieldCheck className="w-5 h-5 text-dark-accent-primary" />
-                        Detalle de Cumplimiento Técnico
-                      </h3>
-                      <div className="space-y-2.5">
-                        {result.aidlc.compliance_checks.map((check, idx) => (
-                          <div 
-                            key={idx} 
-                            className="bg-dark-bg-secondary/30 rounded-lg py-2.5 px-4 border border-dark-border-primary/10 hover:border-dark-accent-primary/20 transition-all"
-                          >
-                            <div className="flex items-center justify-between gap-4">
-                              {/* Contenido (Título + Detalles) */}
-                              <div className="flex-1 min-w-0">
-                                <h4 className="font-bold text-dark-text-primary text-base tracking-tight">
-                                  {check.check_name}
-                                </h4>
-                                
-                                {/* Detalles técnicos (Justo debajo del título) */}
-                                {check.details && (
-                                  <div className="mt-0.5">
-                                    <p className="text-[11px] text-dark-text-muted font-mono leading-tight opacity-80 uppercase tracking-tight">
-                                      {check.details}
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                              
-                              {/* Badge de Estado Centrado Verticalmente */}
-                              <div className={`compliance-badge flex-shrink-0 px-3 py-1.5 rounded-md font-bold text-xs flex items-center gap-1.5 ${
-                                check.passed 
-                                  ? 'bg-green-500/15 text-green-400 border border-green-500/30' 
-                                  : 'bg-red-500/15 text-red-400 border border-red-500/30'
-                              }`}>
-                                {check.passed ? (
-                                  <>
-                                    <CheckCircle2 className="w-4 h-4" />
-                                    <span>PASÓ</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <XCircle className="w-4 h-4" />
-                                    <span>FALLÓ</span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Contenido del Análisis */}
-                  <div className="max-w-none">
-                    <div className="text-dark-text-primary leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                      <MarkdownRenderer content={result.analysis || ''} />
-                    </div>
-                  </div>
+                <div className="flex items-center gap-2 mb-4">
+                  <Activity className="w-5 h-5 text-dark-accent-primary" />
+                  <h3 className="text-lg font-semibold text-dark-text-primary">
+                    Visualización de Cambios de Banda
+                  </h3>
                 </div>
+                <BandSteeringChart 
+                  btmEvents={result.aidlc?.btm_events || []}
+                  transitions={result.aidlc?.transitions || []}
+                  signalSamples={result.aidlc?.signal_samples || []}
+                  rawStats={result.stats || {}}
+                />
               </Card>
 
             </div>
+
+            {/* Fila Inferior: Panel de Análisis de IA (ancho completo) */}
+            <Card className="p-6">
+              <div className="space-y-4">
+                {/* Header con Veredicto Visual */}
+                <div className="flex items-start justify-between gap-4 pb-4 border-b border-dark-border-primary/100">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-dark-accent-primary/20">
+                      <Activity className="w-5 h-5 text-dark-accent-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-semibold text-dark-text-primary">
+                        Análisis de Band Steering
+                      </h2>
+                      <p className="text-sm text-dark-text-secondary mt-1">
+                        Evaluación técnica de capacidades 802.11k/v/r
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Badge de Veredicto */}
+                  {(result.aidlc?.verdict || result.stats?.steering_analysis?.verdict) && (() => {
+                    const verdict = (result.aidlc?.verdict || result.stats?.steering_analysis?.verdict || '').toUpperCase()
+                    // Definir explícitamente qué veredictos son "Éxito" (Verde)
+                    const successVerdicts = ['SUCCESS', 'EXCELLENT', 'GOOD', 'PREVENTIVE_SUCCESS', 'ACCEPTABLE', 'SLOW_BUT_SUCCESSFUL']
+                    const isSuccess = successVerdicts.includes(verdict)
+                    
+                    return (
+                      <div className={`px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 ${
+                        isSuccess 
+                          ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
+                          : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                      }`}>
+                        {isSuccess ? '✅' : '❌'}
+                        <span>{formatVerdict(verdict).toUpperCase()}</span>
+                      </div>
+                    )
+                  })()}
+                </div>
+
+                {/* Detalle de Cumplimiento Técnico (AIDLC) - AHORA AL PRINCIPIO */}
+                {result.aidlc?.compliance_checks && (
+                  <div className="mb-8 pb-6 border-b border-dark-border-primary/100">
+                    <h3 className="text-base font-semibold text-dark-text-primary mb-4 flex items-center gap-2">
+                      <ShieldCheck className="w-5 h-5 text-dark-accent-primary" />
+                      Detalle de Cumplimiento Técnico
+                    </h3>
+                    <div className="space-y-2.5">
+                      {result.aidlc.compliance_checks.map((check, idx) => (
+                        <div 
+                          key={idx} 
+                          className="bg-dark-bg-secondary/30 rounded-lg py-2.5 px-4 border border-dark-border-primary/10 hover:border-dark-accent-primary/20 transition-all"
+                        >
+                          <div className="flex items-center justify-between gap-4">
+                            {/* Contenido (Título + Detalles) */}
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-bold text-dark-text-primary text-base tracking-tight">
+                                {check.check_name}
+                              </h4>
+                              
+                              {/* Detalles técnicos (Justo debajo del título) */}
+                              {check.details && (
+                                <div className="mt-0.5">
+                                  <p className="text-[11px] text-dark-text-muted font-mono leading-tight opacity-80 uppercase tracking-tight">
+                                    {check.details}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Badge de Estado Centrado Verticalmente */}
+                            <div className={`compliance-badge flex-shrink-0 px-3 py-1.5 rounded-md font-bold text-xs flex items-center gap-1.5 ${
+                              check.passed 
+                                ? 'bg-green-500/15 text-green-400 border border-green-500/30' 
+                                : 'bg-red-500/15 text-red-400 border border-red-500/30'
+                            }`}>
+                              {check.passed ? (
+                                <>
+                                  <CheckCircle2 className="w-4 h-4" />
+                                  <span>PASÓ</span>
+                                </>
+                              ) : (
+                                <>
+                                  <XCircle className="w-4 h-4" />
+                                  <span>FALLÓ</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Contenido del Análisis */}
+                <div className="max-w-none">
+                  <div className="text-dark-text-primary leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                    <MarkdownRenderer content={result.analysis || ''} />
+                  </div>
+                </div>
+              </div>
+            </Card>
+
           </div>
         )}
       </div>

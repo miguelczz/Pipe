@@ -98,8 +98,10 @@ export function ReportsPage() {
             analysis_id: fullDetail.analysis_id,
             verdict: fullDetail.verdict,
             device: fullDetail.devices?.[0] || {},
-            compliance_checks: fullDetail.compliance_checks || [],
-            fragments_count: fullDetail.fragments?.length || 0
+            fragments_count: fullDetail.fragments?.length || 0,
+            btm_events: fullDetail.btm_events || [],
+            transitions: fullDetail.transitions || [],
+            signal_samples: fullDetail.signal_samples || []
         }
       }
       
