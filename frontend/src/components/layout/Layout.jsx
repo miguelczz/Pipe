@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { MessageSquare, FileText, Trash2, Activity } from 'lucide-react'
+import { MessageSquare, FileText, Trash2, Activity, History } from 'lucide-react'
 import { cn } from '../../utils/cn'
 import { useChatContext } from '../../contexts/ChatContext'
 import { Button } from '../ui/Button'
@@ -17,7 +17,8 @@ export function Layout({ children }) {
   const navItems = [
     { path: '/', label: 'Chat', icon: MessageSquare },
     { path: '/files', label: 'Archivos', icon: FileText },
-    { path: '/network-analysis', label: 'Pruebas de red', icon: Activity },
+    { path: '/network-analysis', label: 'Pruebas', icon: Activity },
+    { path: '/reports', label: 'Reportes', icon: History },
   ]
 
   return (

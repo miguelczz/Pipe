@@ -35,13 +35,15 @@ async def list_reports():
                     try:
                         with open(analysis_file, "r", encoding="utf-8") as f:
                             data = json.load(f)
+                            # Extraer info del dispositivo
+                            device = data.get("devices", [{}])[0]
                             reports.append({
                                 "id": data.get("analysis_id"),
-                                "filename": data.get("filename"),
+                                "filename": data.get("filename"), # Nombre original del pcap
                                 "timestamp": data.get("analysis_timestamp"),
-                                "vendor": data.get("devices", [{}])[0].get("vendor"),
-                                "verdict": data.get("verdict"),
-                                "score": data.get("overall_compliance_score")
+                                "vendor": device.get("vendor", "Unknown"),
+                                "model": device.get("device_model", "Unknown"),
+                                "verdict": data.get("verdict")
                             })
                     except Exception as e:
                         logger.warning(f"Error al leer reporte {analysis_file}: {e}")
@@ -51,6 +53,31 @@ async def list_reports():
         return reports
     except Exception as e:
         logger.error(f"Error al listar reportes: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/{analysis_id}")
+async def delete_report(analysis_id: str):
+    """
+    Elimina un reporte específico por su ID.
+    """
+    base_dir = service.base_dir
+    try:
+        # Buscar el archivo en la estructura de carpetas
+        found = False
+        for analysis_file in base_dir.glob(f"**/{analysis_id}.json"):
+            analysis_file.unlink()
+            found = True
+            logger.info(f"Reporte {analysis_id} eliminado exitosamente.")
+            break
+            
+        if not found:
+            raise HTTPException(status_code=404, detail="Reporte no encontrado")
+            
+        return {"status": "success", "message": f"Reporte {analysis_id} eliminado"}
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Error al eliminar reporte {analysis_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{analysis_id}")

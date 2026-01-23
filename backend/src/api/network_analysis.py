@@ -58,7 +58,10 @@ async def analyze_network_capture(file: UploadFile = File(...)):
         loop = asyncio.get_event_loop()
         result_pkg = await loop.run_in_executor(
             _executor,
-            lambda: asyncio.run(band_steering_service.process_capture(str(temp_path)))
+            lambda: asyncio.run(band_steering_service.process_capture(
+                str(temp_path),
+                original_filename=file.filename
+            ))
         )
 
         analysis = result_pkg["analysis"]
@@ -73,7 +76,6 @@ async def analyze_network_capture(file: UploadFile = File(...)):
                 "aidlc": {
                     "analysis_id": analysis.analysis_id,
                     "verdict": analysis.verdict,
-                    "overall_score": analysis.overall_compliance_score,
                     "device": analysis.devices[0].model_dump() if analysis.devices else {},
                     "compliance_checks": [c.model_dump() for c in analysis.compliance_checks],
                     "fragments_count": len(analysis.fragments)

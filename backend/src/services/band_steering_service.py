@@ -45,29 +45,41 @@ class BandSteeringService:
     async def process_capture(
         self, 
         file_path: str, 
-        user_metadata: Optional[Dict[str, str]] = None
+        user_metadata: Optional[Dict[str, str]] = None,
+        original_filename: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Realiza el ciclo completo de análisis AIDLC:
         Extracción -> Clasificación -> Análisis BTM -> Fragmentación -> Reporte IA -> Persistencia -> Indexación.
         """
         logger.info(f"Iniciando análisis integral de: {file_path}")
-        file_name = os.path.basename(file_path)
+        file_name = original_filename or os.path.basename(file_path)
         
         # 1. Extracción de datos crudos (WiresharkTool)
         raw_data = self.wireshark_tool._extract_basic_stats(file_path)
         
         # 2. Identificación y Clasificación del Dispositivo
         steering_events = raw_data.get("steering_events", [])
-        primary_mac = "unknown"
-        if steering_events:
-            primary_mac = steering_events[0].get("client_mac", "unknown")
         
-        device_info = self.device_classifier.classify_device(
-            primary_mac, 
-            user_metadata,
-            filename=file_name
-        )
+        def is_valid_client_mac(mac: str) -> bool:
+            if not mac or mac == "ff:ff:ff:ff:ff:ff" or mac == "00:00:00:00:00:00":
+                return False
+            try:
+                first_octet = int(mac.split(':')[0], 16)
+                if first_octet & 1: return False # Multicast
+            except: return False
+            return True
+
+        primary_mac = "unknown"
+        for event in steering_events:
+            event_mac = event.get("client_mac")
+            if is_valid_client_mac(event_mac):
+                primary_mac = event_mac
+                break
+        
+        # Si no hay eventos específicos, usar la que detectó WiresharkTool como global
+        if primary_mac == "unknown":
+            primary_mac = raw_data.get("diagnostics", {}).get("client_mac", "unknown")
         logger.info(f"Dispositivo identificado: {device_info.vendor} ({device_info.mac_address})")
 
         # 3. Análisis Especializado BTM y cumplimiento (BTMAnalyzer)
@@ -109,23 +121,50 @@ class BandSteeringService:
         )
         
         # Añadir información de cumplimiento al summary para el LLM
-        technical_summary += f"\n\n**Cumplimiento Band Steering (AIDLC):**\n"
-        technical_summary += f"- Score Global: {analysis.overall_compliance_score * 100:.2f}%\n"
-        technical_summary += f"- Veredicto AIDLC: {analysis.verdict}\n"
+        technical_summary += f"\n\n## AUDITORÍA DE CUMPLIMIENTO (AIDLC)\n\n"
+        technical_summary += f"**Veredicto Final AIDLC:** {analysis.verdict}\n\n"
         
-        # Pasar los checks técnicos para que el LLM no contradiga la tabla
-        technical_summary += "- Detalles de Auditoría:\n"
-        for check in analysis.compliance_checks:
-            status = "PASÓ" if check.passed else "FALLÓ"
-            technical_summary += f"  * {check.check_name}: {status} ({check.details})\n"
+        # Separar checks en pasados y fallidos para claridad
+        passed_checks = [c for c in analysis.compliance_checks if c.passed]
+        failed_checks = [c for c in analysis.compliance_checks if not c.passed]
+        
+        if failed_checks:
+            technical_summary += "### ❌ CHECKS QUE FALLARON (CAUSA DEL VEREDICTO):\n"
+            for check in failed_checks:
+                technical_summary += f"- **{check.check_name}**: FALLÓ\n"
+                technical_summary += f"  - Descripción: {check.description}\n"
+                technical_summary += f"  - Evidencia: {check.details}\n"
+                if check.recommendation:
+                    technical_summary += f"  - Recomendación: {check.recommendation}\n"
+                technical_summary += "\n"
+        
+        if passed_checks:
+            technical_summary += "### ✅ CHECKS QUE PASARON:\n"
+            for check in passed_checks:
+                technical_summary += f"- **{check.check_name}**: PASÓ ({check.details})\n"
+        
+        # Explicación del veredicto basada en los fallos
+        technical_summary += f"\n**CAUSA RAÍZ DEL VEREDICTO '{analysis.verdict}':**\n"
+        if analysis.verdict == "FAILED":
+            if failed_checks:
+                technical_summary += "La prueba falló debido a los siguientes problemas críticos:\n"
+                for check in failed_checks:
+                    technical_summary += f"  - {check.check_name}: {check.recommendation or 'Revisar configuración'}\n"
+            else:
+                technical_summary += "Fallo general sin checks específicos identificados.\n"
+        elif analysis.verdict == "SUCCESS":
+            technical_summary += "La prueba fue exitosa: se cumplieron los criterios de band steering.\n"
         
         analysis.analysis_text = self.wireshark_tool._ask_llm_for_analysis(technical_summary)
 
-        # 6. Organización y Persistencia por Marca
+        # 6. Guardar raw_stats en el objeto de análisis para persistencia
+        analysis.raw_stats = raw_data
+
+        # 7. Organización y Persistencia por Marca
         save_path = self._save_analysis_result(analysis, device_info)
         logger.info(f"Análisis guardado exitosamente en: {save_path}")
 
-        # 7. Indexar en RAG (Qdrant) para que el chat tenga acceso
+        # 8. Indexar en RAG (Qdrant) para que el chat tenga acceso
         self._index_analysis_for_rag(analysis)
 
         # Retornar objeto de análisis y datos crudos (para compatibilidad frontend)
@@ -148,7 +187,6 @@ class BandSteeringService:
                 f"Resultado del Análisis de Band Steering para el archivo {analysis.filename}. "
                 f"Dispositivo: {analysis.devices[0].vendor} {analysis.devices[0].device_model if analysis.devices[0].device_model else ''}. "
                 f"Veredicto Final: {analysis.verdict}. "
-                f"Puntuación de Cumplimiento: {analysis.overall_compliance_score * 100}%. "
                 f"Eventos BTM: {analysis.btm_requests} requests, {analysis.btm_responses} responses. "
                 f"Tasa de éxito BTM: {analysis.btm_success_rate * 100}%. "
                 f"Transiciones exitosas: {analysis.successful_transitions}. "

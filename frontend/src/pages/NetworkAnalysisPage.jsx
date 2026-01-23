@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import React, { useState, useRef } from 'react'
 import { networkAnalysisService } from '../services/api'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
@@ -14,6 +14,11 @@ import {
   TrendingUp,
   Server,
   Globe,
+  Smartphone,
+  ShieldCheck,
+  CheckCircle2,
+  XCircle,
+  Info
 } from 'lucide-react'
 import { MarkdownRenderer } from '../components/chat/MarkdownRenderer'
 
@@ -28,14 +33,11 @@ export function NetworkAnalysisPage() {
       if (!savedResult) return null
       
       const parsed = JSON.parse(savedResult)
-      
-      // Validar integridad de datos para evitar crash por datos viejos
-      if (parsed?.stats?.top_protocols?.some(p => typeof p.percentage === 'undefined')) {
-        console.warn('Datos persistidos inválidos detectados, limpiando...')
+      // Validar estructura básica
+      if (!parsed?.stats) {
         localStorage.removeItem('networkAnalysisResult')
         return null
       }
-      
       return parsed
     } catch (e) {
       console.error('Error parsing saved result:', e)
@@ -51,6 +53,13 @@ export function NetworkAnalysisPage() {
       return null
     }
   })
+
+  // Sincronizar persistencia cada vez que result cambia (redundancia de seguridad)
+  React.useEffect(() => {
+    if (result) {
+      localStorage.setItem('networkAnalysisResult', JSON.stringify(result))
+    }
+  }, [result])
 
   const [error, setError] = useState('')
   const fileInputRef = useRef(null)
@@ -75,7 +84,7 @@ export function NetworkAnalysisPage() {
       return
     }
 
-    // Limpiar persistencia anterior al cambiar archivo
+    // Limpiar TODA persistencia anterior al cambiar archivo
     localStorage.removeItem('networkAnalysisResult')
     localStorage.removeItem('networkAnalysisFileMeta')
     
@@ -145,13 +154,13 @@ export function NetworkAnalysisPage() {
     return clean.trim()
   }
 
-  // Función para formatear el tamaño del archivo
+  // Función para formatear el tamaño del archivo (Uso decimal para coherencia con bytes)
   const formatFileSize = (bytes) => {
     if (!bytes) return '0 Bytes'
-    const k = 1024
+    const factor = 1000 // Factor decimal para coincidir visualmente con el texto
     const sizes = ['Bytes', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+    const i = Math.floor(Math.log(bytes) / Math.log(factor))
+    return parseFloat((bytes / Math.pow(factor, i)).toFixed(2)) + ' ' + sizes[i]
   }
 
   // Función para formatear el veredicto técnico a español
@@ -172,7 +181,8 @@ export function NetworkAnalysisPage() {
       'ACCEPTABLE': 'Aceptable',
       'SLOW_BUT_SUCCESSFUL': 'Lento pero Exitoso',
       'NO_DATA': 'Sin Datos',
-      'NO_STEERING_EVENTS': 'Sin Eventos'
+      'NO_STEERING_EVENTS': 'Sin Eventos',
+      'PARTIAL': 'Éxito Parcial'
     }
 
     return mapping[verdict] || verdict.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())
@@ -318,84 +328,68 @@ export function NetworkAnalysisPage() {
 
         {result && (
           <div className="space-y-6">
-            {/* Estadísticas principales - Métricas de Band Steering */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card className="p-5 bg-gradient-to-br from-blue-500/10 to-blue-600/5 border-blue-500/20">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 rounded-lg bg-blue-500/20">
-                    <Activity className="w-5 h-5 text-blue-400" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-dark-text-muted uppercase tracking-wide">
-                      Eventos 802.11
-                    </p>
-                    <p className="text-2xl font-bold text-dark-text-primary">
-                      {result.stats?.diagnostics?.steering_events_count ?? '0'}
-                    </p>
-                  </div>
-                </div>
-              </Card>
-
-              <Card className="p-5 bg-gradient-to-br from-green-500/10 to-green-600/5 border-green-500/20">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 rounded-lg bg-green-500/20">
-                    <TrendingUp className="w-5 h-5 text-green-400" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-dark-text-muted uppercase tracking-wide">
-                      Transiciones exitosas
-                    </p>
-                    <p className="text-2xl font-bold text-dark-text-primary">
-                      {result.stats?.steering_analysis?.successful_transitions ?? '0'}
-                    </p>
-                  </div>
-                </div>
-              </Card>
-
-              <Card className="p-5 bg-gradient-to-br from-purple-500/10 to-purple-600/5 border-purple-500/20">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 rounded-lg bg-purple-500/20">
-                    <Network className="w-5 h-5 text-purple-400" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-dark-text-muted uppercase tracking-wide">
-                      BSSIDs detectados
-                    </p>
-                    <p className="text-2xl font-bold text-dark-text-primary">
-                      {Object.keys(result.stats?.diagnostics?.bssid_info || {}).length}
-                    </p>
-                  </div>
-                </div>
-              </Card>
-            </div>
 
             {/* Layout principal: Estadísticas detalladas y Análisis */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
               {/* Panel lateral: Estadísticas detalladas */}
               <div className="lg:col-span-1 space-y-4">
-                {/* Información del archivo */}
+                
+                {/* Identidad del Dispositivo*/}
+                {result.aidlc?.device && (
+                  <Card className="p-4 border-dark-accent-primary/20 bg-dark-accent-primary/5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Smartphone className="w-4 h-4 text-dark-accent-primary" />
+                      <h3 className="text-sm font-semibold text-dark-text-primary">
+                        Dispositivo Identificado
+                      </h3>
+                    </div>
+                    <div className="space-y-2">
+                       <div className="flex justify-between items-center">
+                        <p className="text-xs text-dark-text-muted">Marca</p>
+                        <p className="text-sm font-medium text-dark-text-primary">{result.aidlc.device.vendor || 'Desconocido'}</p>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <p className="text-xs text-dark-text-muted">Modelo</p>
+                        <p className="text-sm font-medium text-dark-text-primary">{result.aidlc.device.device_model || 'Genérico'}</p>
+                      </div>
+                       <div className="flex justify-between items-center">
+                        <p className="text-xs text-dark-text-muted">Categoría</p>
+                        <p className="text-sm font-medium text-dark-text-primary capitalize">{result.aidlc.device.device_category?.replace('_', ' ') || 'N/A'}</p>
+                      </div>
+                    </div>
+                  </Card>
+                )}
+                {/* MACs de Negociación */}
                 <Card className="p-4">
                   <div className="flex items-center gap-2 mb-3">
-                    <FileText className="w-4 h-4 text-dark-accent-primary" />
+                    <Network className="w-4 h-4 text-dark-accent-primary" />
                     <h3 className="text-sm font-semibold text-dark-text-primary">
-                      Información del archivo
+                      MACs de Negociación
                     </h3>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <div>
-                      <p className="text-xs text-dark-text-muted mb-1">Nombre</p>
-                      <p className="text-sm font-mono text-dark-text-primary break-all">
-                        {cleanFileName(result.file_name || selectedFile?.name || fileMetadata?.name)}
+                      <p className="text-xs text-dark-text-muted mb-1 uppercase">Cliente</p>
+                      <p className="text-sm font-mono font-bold text-dark-text-primary break-all">
+                        {result.stats?.diagnostics?.client_mac || 'Desconocido'}
                       </p>
                     </div>
-                    {(selectedFile || fileMetadata) && (
-                      <div>
-                        <p className="text-xs text-dark-text-muted mb-1">Tamaño</p>
-                        <p className="text-sm text-dark-text-primary">
-                          {formatFileSize(selectedFile?.size || fileMetadata?.size || 0)}
-                        </p>
+                    <div>
+                      <p className="text-xs text-dark-text-muted mb-1 uppercase">
+                        BSSIDs ({Object.keys(result.stats?.diagnostics?.bssid_info || {}).length})
+                      </p>
+                      <div className="space-y-1">
+                        {Object.keys(result.stats?.diagnostics?.bssid_info || {}).length > 0 ? (
+                          Object.keys(result.stats?.diagnostics?.bssid_info || {}).map((bssid, idx) => (
+                            <p key={idx} className="text-xs font-mono text-dark-text-secondary">
+                              {bssid}
+                            </p>
+                          ))
+                        ) : (
+                          <p className="text-xs text-dark-text-muted italic">No detectados</p>
+                        )}
                       </div>
-                    )}
+                    </div>
                   </div>
                 </Card>
 
@@ -412,6 +406,16 @@ export function NetworkAnalysisPage() {
                       <p className="text-xs text-dark-text-muted mb-1">Estándares KVR Identificados</p>
                       <p className="text-sm font-semibold text-dark-text-primary">
                         {(() => {
+                          const kvrCheck = result.aidlc?.compliance_checks?.find(c => c.check_name === "Estándares KVR")
+                          if (kvrCheck && kvrCheck.details) {
+                            // Extrae solo los verdaderos de los detalles (k=True, v=True, r=False)
+                            const detected = []
+                            if (kvrCheck.details.includes('k=True')) detected.push('11k')
+                            if (kvrCheck.details.includes('v=True')) detected.push('11v')
+                            if (kvrCheck.details.includes('r=True')) detected.push('11r')
+                            return detected.length > 0 ? detected.join(', ') : 'Ninguno'
+                          }
+
                           const kvr = result.stats?.diagnostics?.band_counters?.kvr_stats || {}
                           const detected = []
                           if (kvr['11k']) detected.push('11k')
@@ -423,9 +427,16 @@ export function NetworkAnalysisPage() {
                     </div>
                     <div className="p-2 rounded-lg bg-dark-bg-secondary/50">
                       <p className="text-xs text-dark-text-muted mb-1">Intentos de steering</p>
-                      <p className="text-sm font-semibold text-dark-text-primary">
-                        {result.stats?.steering_analysis?.steering_attempts ?? 0}
-                      </p>
+                      <div className="flex items-baseline gap-2">
+                        <p className="text-sm font-semibold text-dark-text-primary">
+                          {result.stats?.steering_analysis?.successful_transitions ?? 0}
+                          <span className="text-dark-text-muted mx-1">/</span>
+                          {result.stats?.steering_analysis?.steering_attempts ?? 0}
+                        </p>
+                        <p className="text-[10px] text-dark-text-muted uppercase">
+                          Exitosos
+                        </p>
+                      </div>
                     </div>
                     <div className="p-2 rounded-lg bg-dark-bg-secondary/50">
                       <p className="text-xs text-dark-text-muted mb-1">Tiempo promedio</p>
@@ -442,7 +453,7 @@ export function NetworkAnalysisPage() {
               <Card className="lg:col-span-2 p-6">
                 <div className="space-y-4">
                   {/* Header con Veredicto Visual */}
-                  <div className="flex items-start justify-between gap-4 pb-4 border-b border-dark-border-primary/30">
+                  <div className="flex items-start justify-between gap-4 pb-4 border-b border-dark-border-primary/100">
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-lg bg-dark-accent-primary/20">
                         <Activity className="w-5 h-5 text-dark-accent-primary" />
@@ -458,10 +469,10 @@ export function NetworkAnalysisPage() {
                     </div>
                     
                     {/* Badge de Veredicto */}
-                    {result.stats?.steering_analysis && (() => {
-                      const verdict = result.stats.steering_analysis.verdict || ''
+                    {(result.aidlc?.verdict || result.stats?.steering_analysis?.verdict) && (() => {
+                      const verdict = (result.aidlc?.verdict || result.stats?.steering_analysis?.verdict || '').toUpperCase()
                       // Definir explícitamente qué veredictos son "Éxito" (Verde)
-                      const successVerdicts = ['EXCELLENT', 'GOOD', 'PREVENTIVE_SUCCESS', 'ACCEPTABLE', 'SLOW_BUT_SUCCESSFUL']
+                      const successVerdicts = ['SUCCESS', 'EXCELLENT', 'GOOD', 'PREVENTIVE_SUCCESS', 'ACCEPTABLE', 'SLOW_BUT_SUCCESSFUL']
                       const isSuccess = successVerdicts.includes(verdict)
                       
                       return (
@@ -476,7 +487,62 @@ export function NetworkAnalysisPage() {
                       )
                     })()}
                   </div>
-                  
+
+                  {/* Detalle de Cumplimiento Técnico (AIDLC) - AHORA AL PRINCIPIO */}
+                  {result.aidlc?.compliance_checks && (
+                    <div className="mb-8 pb-6 border-b border-dark-border-primary/100">
+                      <h3 className="text-base font-semibold text-dark-text-primary mb-4 flex items-center gap-2">
+                        <ShieldCheck className="w-5 h-5 text-dark-accent-primary" />
+                        Detalle de Cumplimiento Técnico
+                      </h3>
+                      <div className="space-y-2.5">
+                        {result.aidlc.compliance_checks.map((check, idx) => (
+                          <div 
+                            key={idx} 
+                            className="bg-dark-bg-secondary/30 rounded-lg py-2.5 px-4 border border-dark-border-primary/10 hover:border-dark-accent-primary/20 transition-all"
+                          >
+                            <div className="flex items-center justify-between gap-4">
+                              {/* Contenido (Título + Detalles) */}
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-bold text-dark-text-primary text-base tracking-tight">
+                                  {check.check_name}
+                                </h4>
+                                
+                                {/* Detalles técnicos (Justo debajo del título) */}
+                                {check.details && (
+                                  <div className="mt-0.5">
+                                    <p className="text-[11px] text-dark-text-muted font-mono leading-tight opacity-80 uppercase tracking-tight">
+                                      {check.details}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                              
+                              {/* Badge de Estado Centrado Verticalmente */}
+                              <div className={`compliance-badge flex-shrink-0 px-3 py-1.5 rounded-md font-bold text-xs flex items-center gap-1.5 ${
+                                check.passed 
+                                  ? 'bg-green-500/15 text-green-400 border border-green-500/30' 
+                                  : 'bg-red-500/15 text-red-400 border border-red-500/30'
+                              }`}>
+                                {check.passed ? (
+                                  <>
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    <span>PASÓ</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <XCircle className="w-4 h-4" />
+                                    <span>FALLÓ</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Contenido del Análisis */}
                   <div className="prose prose-invert prose-sm max-w-none">
                     <div className="text-dark-text-primary leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
@@ -613,6 +679,53 @@ export function NetworkAnalysisPage() {
             border: 2px solid #000 !important;
             background: #f8f8f8 !important;
             padding: 8px 16px !important;
+          }
+          
+          /* NUEVO: Estilos para tabla de cumplimiento en PDF */
+          .space-y-2\\.5 > div {
+            background: #fff !important;
+            border: 1px solid #eee !important;
+            padding: 10px 15px !important;
+            margin-bottom: 5px !important;
+            page-break-inside: avoid !important;
+          }
+          
+          /* Badges de PASÓ/FALLÓ visibles en PDF */
+          .compliance-badge {
+            border: 1px solid #000 !important;
+            padding: 2px 6px !important;
+            font-weight: bold !important;
+            font-size: 9px !important;
+            text-transform: uppercase !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          
+          /* Verde para PASÓ */
+          .compliance-badge.text-green-400 {
+            color: #065f46 !important;
+            background-color: #dcfce7 !important;
+            border-color: #059669 !important;
+          }
+          
+          /* Rojo para FALLÓ */
+          .compliance-badge.text-red-400 {
+            color: #991b1b !important;
+            background-color: #fee2e2 !important;
+            border-color: #dc2626 !important;
+          }
+          
+          /* Prevenir word-break vertical en detalles técnicos */
+          .font-mono {
+            word-break: normal !important;
+            overflow-wrap: break-word !important;
+            white-space: pre-wrap !important;
+          }
+          
+          /* Asegurar que los textos no se rompan verticalmente */
+          p, span, div {
+            word-break: normal !important;
+            overflow-wrap: break-word !important;
           }
         }
       `}} />

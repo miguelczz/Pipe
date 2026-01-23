@@ -36,19 +36,19 @@ class BTMStatusCode(str, Enum):
 
     @classmethod
     def get_description(cls, code: Union[str, int]) -> str:
-        """Obtiene la descripción legible del código."""
+        """Obtiene la descripción legible del código según tabla 9-428."""
         descriptions = {
             "0": "Accept",
-            "1": "Accept with Candidate List",
-            "2": "Reject - Unspecified",
-            "3": "Reject - Insufficient Beacon",
-            "4": "Reject - Insufficient Capacity",
-            "5": "Reject - Unacceptable Termination Delay",
-            "6": "Reject - Destination Unreachable",
-            "7": "Reject - Invalid Candidate",
+            "1": "Reject - Unspecified reject reason",
+            "2": "Reject - Insufficient Beacon or Probe Response",
+            "3": "Reject - Insufficient available capacity",
+            "4": "Reject - BSS termination undesired",
+            "5": "Reject - BSS termination delay requested",
+            "6": "Reject - STA BSS Transition Candidate List provided",
+            "7": "Reject - No suitable BSS transition candidates",
             "8": "Reject - Leaving ESS",
         }
-        return descriptions.get(str(code), "Unknown Code")
+        return descriptions.get(str(code), f"Code {code}")
 
 
 class SteeringType(str, Enum):
@@ -134,7 +134,6 @@ class KVRSupport(BaseModel):
     k_support: bool = Field(False, description="Soporte 802.11k (Radio Measurement)")
     v_support: bool = Field(False, description="Soporte 802.11v (BTM/WNM)")
     r_support: bool = Field(False, description="Soporte 802.11r (Fast Transition)")
-    compliance_score: float = Field(0.0, ge=0.0, le=1.0, description="Score de cumplimiento de estándares (0-1)")
 
 
 class ComplianceCheck(BaseModel):
@@ -147,7 +146,6 @@ class ComplianceCheck(BaseModel):
     category: str = Field(..., description="Categoría: 'btm', 'kvr', 'association', 'performance'")
     passed: bool = Field(..., description="¿Pasó la prueba?")
     severity: str = Field(..., description="Severidad: 'low', 'medium', 'high', 'critical'")
-    score: float = Field(..., ge=0.0, le=1.0, description="Puntuación (0-1)")
     details: Optional[str] = Field(None, description="Detalles técnicos (ej. 'Requests: 5, Resp: 0')")
     recommendation: Optional[str] = Field(None, description="Acción sugerida si falló")
 
@@ -203,11 +201,13 @@ class BandSteeringAnalysis(BaseModel):
     # Cumplimiento y Soporte
     kvr_support: KVRSupport = Field(default_factory=KVRSupport, description="Resumen de soporte KVR")
     compliance_checks: List[ComplianceCheck] = Field(default_factory=list, description="Lista de chequeos para tabla de resumen")
-    overall_compliance_score: float = Field(0.0, ge=0.0, le=1.0, description="Score global (0-1)")
     
     # Resultado Final
     verdict: str = Field(..., description="Veredicto final: 'SUCCESS', 'PARTIAL', 'FAILED', 'NO_DATA'")
     analysis_text: Optional[str] = Field(None, description="Informe narrativo generado por la IA")
+    
+    # Datos Crudos Completos (para reconstrucción de UI)
+    raw_stats: Optional[Dict[str, Any]] = Field(None, description="Estadísticas completas de Wireshark (diagnostics, steering_analysis, etc.)")
     
     # Fragmentos
     fragments: List[CaptureFragment] = Field(default_factory=list, description="Fragmentos de pcap extraídos")

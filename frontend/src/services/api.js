@@ -288,5 +288,39 @@ export const networkAnalysisService = {
   },
 }
 
+/**
+ * Servicio para navegar el historial de reportes AIDLC
+ */
+export const reportsService = {
+  /**
+   * Obtiene la lista de todos los reportes generados
+   * @returns {Promise} - Lista de reportes resumidos
+   */
+  async getReports() {
+    const response = await apiClient.get('/reports')
+    return response.data
+  },
+
+  /**
+   * Obtiene el detalle de un reporte específico
+   * @param {string} analysisId - ID del análisis
+   * @returns {Promise} - Objeto BandSteeringAnalysis completo
+   */
+  async getReportDetail(analysisId) {
+    const response = await apiClient.get(`/reports/${analysisId}`)
+    return response.data
+  },
+
+  /**
+   * Elimina un reporte del historial
+   * @param {string} analysisId - ID del análisis
+   * @returns {Promise} - Respuesta de éxito
+   */
+  async deleteReport(analysisId) {
+    const response = await apiClient.delete(`/reports/${analysisId}`)
+    return response.data
+  },
+}
+
 export default apiClient
 

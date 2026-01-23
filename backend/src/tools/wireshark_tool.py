@@ -76,16 +76,8 @@ class WiresharkTool:
             # Campos BTM (802.11v) - Campos reales de Wireshark 4.6.2
             "-e", "wlan.fixed.category_code",                # Category (10 = WNM)
             "-e", "wlan.fixed.action_code",                  # Action (7=Req, 8=Resp)
-            "-e", "wlan.fixed.bss_transition_status_code",   # BTM Status Code
-            "-e", "wlan.fixed.publicact",                    # Public Action (para debug Cat 4)
-            # --- NUEVOS CAMPOS PRECISION STEERING (Solicitados por usuario) ---
+            "-e", "wlan.fixed.bss_transition_status_code",   # BTM Status Code (v1)
             "-e", "wlan.fixed.status_code",       # Status Code de Asociación (0=Success)
-            # COMENTADO: Campos de capabilities fallan en versión local de tshark
-            # "-e", "wlan.rm.enabled_capabilities", 
-            # "-e", "wlan.extcap.b31",              
-            # "-e", "wlan.mdie.mobility_domain",    
-            
-            # "-c", str(max_packets)   # COMENTADO: Analizar archivo completo para no perder eventos
         ]
 
         logger.info(f"Ejecutando tshark en: {file_path}")
@@ -119,6 +111,7 @@ class WiresharkTool:
         subtype_counter = Counter()  # Contador de tipos de frames
         
         # Contadores para detección de Steering Preventivo (Client Steering)
+        all_client_macs = []
         band_counters = {
             "beacon_24": 0, "beacon_5": 0,
             "probe_req": 0,
@@ -131,16 +124,20 @@ class WiresharkTool:
                 continue
 
             fields = line.split("\t")
-            # Ajustar para 20 campos (19 anteriores + 1 nuevo)
-            while len(fields) < 20:
+            # Ajustar para 19 campos (según el comando cmd corregido)
+            while len(fields) < 19:
                 fields.append("")
 
             (timestamp, protocols, ip_src, ip_dst, frame_len, tcp_r, wlan_r, 
              dns_r, subtype, bssid, wlan_sa, wlan_da, frequency, reason_code, ssid,
-             category_code, action_code, btm_status_code, public_action_code,
-             assoc_status_code) = fields
+             category_code, action_code, btm_status_code,
+             assoc_status_code) = fields[:19] # Tomar solo los campos esperados
 
             total_packets += 1
+            
+            # Registrar MACs para determinar cliente
+            if wlan_sa: all_client_macs.append(wlan_sa)
+            if wlan_da: all_client_macs.append(wlan_da)
             
             # Detectar si es paquete WLAN y actualizar contadores
             if protocols and "wlan" in protocols.lower():
@@ -170,19 +167,12 @@ class WiresharkTool:
                     
                     # Normalizar category_code (dec/hex)
                     cat_val = -1
-                    # cat_str = category_code if category_code else category_backup # Eliminado backup
-                    
                     try:
                         if category_code:
                             cat_val = int(category_code) if category_code.isdigit() else int(category_code, 16)
                     except:
                         pass
 
-                    if subtype_int == 13:
-                        # Debug explícito para ver qué está llegando
-                        # logger.debug(f"Action Frame detectado: Cat={cat_str}, Act={action_code}")
-                        pass
-                    
                     if subtype_int == 13 and cat_val == 10: # Category 10 = WNM
                         # Normalizar action_code (dec/hex)
                         ac_val = None
@@ -192,20 +182,20 @@ class WiresharkTool:
                         except: 
                             pass
 
+                        if "btm_stats" not in band_counters:
+                            band_counters["btm_stats"] = {"requests": 0, "responses": 0, "status_codes": []}
+
                         if ac_val == 7: # BTM Request
                              logger.info(f"✅ BTM REQUEST detectado")
-                             if "btm_stats" not in band_counters:
-                                band_counters["btm_stats"] = {"requests": 0, "responses": 0, "status_codes": []}
                              band_counters["btm_stats"]["requests"] += 1
                              
                         elif ac_val == 8: # BTM Response
                             logger.info(f"✅ BTM RESPONSE detectado. Status Code={btm_status_code}")
-                            if "btm_stats" not in band_counters:
-                                band_counters["btm_stats"] = {"requests": 0, "responses": 0, "status_codes": []}
                             band_counters["btm_stats"]["responses"] += 1
-                            
-                            # Guardar status code si existe
-                            if btm_status_code:
+                        
+                        # Captura universal de status code si aparece en cualquier frame WNM
+                        if btm_status_code and btm_status_code != "":
+                            if btm_status_code not in band_counters["btm_stats"]["status_codes"]:
                                 band_counters["btm_stats"]["status_codes"].append(btm_status_code)
                     # ----------------------------------
 
@@ -389,6 +379,26 @@ class WiresharkTool:
         # Evaluación de calidad de captura para band steering
         capture_quality = self._evaluate_capture_quality(steering_analysis, steering_events)
 
+        # Determinar MAC de Cliente (la más frecuente que sea UNICAST y no sea BSSID)
+        client_mac = "Desconocido"
+        
+        def is_valid_client_mac(mac: str) -> bool:
+            if not mac or mac == "ff:ff:ff:ff:ff:ff" or mac == "00:00:00:00:00:00":
+                return False
+            # Ignorar Multicast (primer octeto impar)
+            try:
+                first_octet = int(mac.split(':')[0], 16)
+                if first_octet & 1:
+                    return False
+            except:
+                return False
+            return True
+
+        potential_clients = [m for m in all_client_macs if is_valid_client_mac(m) and m not in bssid_info]
+        if potential_clients:
+            # El cliente es el que más aparece en SA/DA excluyendo infraestructura
+            client_mac = Counter(potential_clients).most_common(1)[0][0]
+
         diagnostics = {
             "tcp_retransmissions": tcp_retransmissions,
             "wlan_retries": wlan_retries,
@@ -396,6 +406,7 @@ class WiresharkTool:
             "steering_events_count": len(steering_events),
             "unique_bssid_count": len(bssid_info),
             "bssid_info": bssid_info,
+            "client_mac": client_mac,
             "capture_quality": capture_quality,
             "band_counters": band_counters,  # Nuevo: Contadores para steering preventivo
         }
@@ -671,7 +682,8 @@ class WiresharkTool:
             verdict = self._determine_verdict(
                 total_steering_attempts, successful_transitions, 
                 failed_transitions, loop_detected, avg_transition_time,
-                band_counters # Pasamos band_counters para ver BTM
+                band_counters, # Pasamos band_counters para ver BTM
+                events # NUEVO: Pasar eventos para detectar Deauth/Disassoc
             )
         
         return {
@@ -746,7 +758,8 @@ class WiresharkTool:
             return "TIMEOUT"
     
     def _determine_verdict(self, attempts: int, successful: int, failed: int,
-                          loop_detected: bool, avg_time: float, band_counters: dict = None) -> str:
+                          loop_detected: bool, avg_time: float, band_counters: dict = None,
+                          steering_events: list = None) -> str:
         """
         Determina el veredicto general con granularidad de calidad.
         
@@ -754,8 +767,20 @@ class WiresharkTool:
         - EXCELLENT: Éxito limpio (BTM o Transición rápida) SIN fallos ni bucles.
         - GOOD: Éxito estándar sin fallos graves.
         - ACCEPTABLE: Éxito (logró pasar) PERO con bucles o intentos fallidos previos ("Pasó raspando").
-        - FAILED: Sin éxito de transición ni BTM Accept.
+        - FAILED: Sin éxito de transición ni BTM Accept, O desconexiones forzadas detectadas.
         """
+        
+        # PRIORIDAD 1: Detectar desconexiones forzadas (Deauth/Disassoc)
+        # Esto es CRÍTICO y anula cualquier éxito aparente
+        deauth_count = 0
+        disassoc_count = 0
+        if steering_events:
+            deauth_count = sum(1 for e in steering_events if e.get("subtype") == 12)
+            disassoc_count = sum(1 for e in steering_events if e.get("subtype") == 10)
+        
+        if deauth_count > 0 or disassoc_count > 0:
+            logger.warning(f"⚠️ Desconexiones forzadas detectadas: {deauth_count} Deauth, {disassoc_count} Disassoc → FAILED")
+            return "FAILED"  # Fallo automático por inestabilidad
         
         # Detectar "suciedad" en la prueba (fallos previos o bucles)
         has_issues = loop_detected or (failed > 0)
@@ -1037,89 +1062,100 @@ class WiresharkTool:
         system_message = (
             "Eres un Auditor Senior de Redes Wi-Fi especializado en Band Steering (802.11k/v/r).\n\n"
             
-            "## TU TAREA\n"
-            "Analizar el resumen técnico proporcionado y emitir un veredicto final sobre la calidad del band steering.\n\n"
+            "## TU MISIÓN\n"
+            "Redactar un informe técnico profesional, completo y adaptativo sobre la auditoría de Band Steering.\n"
+            "Debes analizar los datos de la captura de Wireshark y la tabla de cumplimiento para generar un reporte que sea:\n"
+            "- **Preciso**: Basado en evidencia real de la captura\n"
+            "- **Coherente**: Respetando el veredicto de la tabla de cumplimiento\n"
+            "- **Completo**: Cubriendo todos los aspectos técnicos relevantes\n"
+            "- **Profesional**: Con estructura lógica y conclusiones claras\n\n"
             
-            "## CONTEXTO IMPORTANTE\n"
-            "- El resumen ya contiene un 'Veredicto preliminar' basado en análisis automatizado de eventos 802.11\n"
-            "- Tu trabajo es INTERPRETAR y VALIDAR ese veredicto con contexto técnico\n"
-            "- NO ignores las métricas proporcionadas\n"
-            "- NO asumas éxito si el veredicto preliminar indica fallo\n\n"
+            "## REGLA DE ORO: FIDELIDAD A LA TABLA DE CUMPLIMIENTO\n"
+            "El resumen técnico incluye una sección '❌ CHECKS QUE FALLARON' y '✅ CHECKS QUE PASARON'.\n\n"
             
-            "## INTERPRETACIÓN DE VEREDICTOS PRELIMINARES\n\n"
+            "**PARA EL VEREDICTO:**\n"
+            "- **SOLO** menciona como causas de fallo los checks que aparezcan en '❌ CHECKS QUE FALLARON'\n"
+            "- Si un check dice 'PASÓ', NO lo uses como causa de fallo, incluso si las métricas parecen subóptimas\n\n"
             
-            "⭐ **CRITERIO DE EVALUACIÓN:**\n"
-            "- **EXCELLENT/GOOD:** Transición exitosa y limpia (sin fallos previos).\n"
-            "- **ACCEPTABLE:** Transición exitosa PERO con intentos fallidos o bucles previos. (El cliente pasó, pero le costó).\n"
-            "- **FAILED:** No hubo ninguna transición exitosa ni BTM Accept.\n\n"
+            "**PARA EL ANÁLISIS TÉCNICO:**\n"
+            "- USA todos los datos disponibles: BTM, transiciones, tiempos, bucles, códigos de estado, etc.\n"
+            "- Explica el CONTEXTO de por qué algo falló usando métricas detalladas\n"
+            "- Proporciona insights técnicos profundos sobre el comportamiento del cliente\n\n"
             
-            "**EXCELLENT:**\n"
-            "- ✅ **EXITOSA** (Máxima calidad)\n"
-            "- Evidencia: BTM Status Code 0 (Accept) O Fast Transition (11r) exitosa.\n"
-            "- Interpretación: El cliente soporta y obedece gestión avanzada de red.\n\n"
+            "## EJEMPLO DE ANÁLISIS CORRECTO:\n"
+            "❌ INCORRECTO: 'El veredicto es FAILED porque solo 1 de 12 transiciones fue exitosa'\n\n"
             
-            "**GOOD / ACCEPTABLE:**\n"
-            "- ✅ **EXITOSA** (Calidad estándar)\n"
-            "- Evidencia: Transiciones exitosas con tiempos razonables.\n"
-            "- Interpretación: Steering funcional, aunque no use protocolos avanzados.\n\n"
-
-            "**PREVENTIVE_SUCCESS:**\n"
-            "- ✅ **EXITOSA** (Éxito pasivo)\n"
-            "- Evidencia: Cliente estable en 5GHz (>90% tráfico).\n"
-            "- Interpretación: Preferencia de cliente confirmada, objetivo cumplido.\n\n"
+            "✅ CORRECTO:\n"
+            "'El veredicto es FAILED debido a:\n\n"
+            "**Asociación y Reasociación: FALLÓ**\n"
+            "Se detectaron 5 desconexiones forzadas (Deauthentication) y 3 desasociaciones durante la captura.\n"
+            "Esto indica que el AP está expulsando activamente al cliente en lugar de usar mecanismos de steering\n"
+            "cooperativos. El análisis de las transiciones muestra que de 12 intentos de steering, 9 fallaron\n"
+            "precisamente por estas desconexiones abruptas, generando bucles entre bandas 2.4GHz y 5GHz.\n\n"
             
-            "**FAILED / FAILED_LOOP / FAILED_BTM_REJECT:**\n"
-            "- ❌ **FALLIDA**\n"
-            "- Evidencia: BTM Reject, bucles, o fallos de asociación.\n\n"
+            "**Estándares KVR: FALLÓ**\n"
+            "El dispositivo solo soporta 802.11v (BTM), pero carece de 802.11k (Neighbor Reports) y 802.11r\n"
+            "(Fast Transition). Aunque se detectaron 2 BTM Requests con Status Code 0 (Accept), la ausencia\n"
+            "de 11k/11r limita la capacidad del cliente para tomar decisiones informadas de roaming.\n\n"
             
-            "**NO_STEERING_EVENTS:**\n"
-            "- ⚠️ Evaluar caso por caso\n"
-            "- Si hay tráfico 5GHz: Considerar PREVENTIVE_SUCCESS.\n"
-            "- Si no hay datos: Reportar 'Datos Insuficientes'.\n\n"
+            "**NOTA IMPORTANTE:** Aunque hubo 1 transición exitosa, la prueba es FALLIDA debido a los checks\n"
+            "críticos que no se cumplieron. Las transiciones exitosas se mencionan como contexto técnico,\n"
+            "pero no cambian el veredicto.'\n\n"
             
-            "## CRITERIOS DE EVALUACIÓN (JERARQUÍA DE VALIDEZ)\n\n"
+            "## ESTRUCTURA DEL REPORTE (ADAPTATIVA)\n\n"
             
-            "### 🥇 NIVEL 1: GESTIÓN EXPLÍCITA (MÁXIMA CALIDAD)\n"
-            "- **Evidencia:** Frames BTM (802.11v) con **Status Code 0 (Accept)**.\n"
-            "- **Veredicto:** ✅ EXITOSA (El cliente soporta y obedece al AP).\n"
-            "- **Nota:** Esta es la prueba de oro que confirma funcionalidad avanzada.\n\n"
+            "Debes crear un reporte con las secciones que sean relevantes según los datos encontrados.\n"
+            "No uses una estructura rígida; adapta las secciones al contenido de la captura.\n\n"
             
-            "### 🥈 NIVEL 2: ROAMING ACTIVO\n"
-            "- **Evidencia:** Reasociación exitosa (11r FT o Standard) con cambio de BSSID/Banda.\n"
-            "- **Veredicto:** ✅ EXITOSA.\n\n"
+            "**SECCIONES OBLIGATORIAS:**\n\n"
             
-            "### 🥉 NIVEL 3: COMPORTAMIENTO PASIVO (CLIENT STEERING)\n"
-            "- **Evidencia:** Sin BTM ni Roaming, pero cliente anclado a 5GHz sólido.\n"
-            "- **Veredicto:** ✅ EXITOSA (Por comportamiento).\n"
-            "- **IMPORTANTE:** Distinguir en el texto que es éxito por 'Preferencia de Cliente', no por gestión activa.\n\n"
+            "### 1. RESUMEN EJECUTIVO\n"
+            "- Declara el veredicto (EXITOSA/FALLIDA/PARCIAL) basándote en 'CAUSA RAÍZ DEL VEREDICTO'\n"
+            "- Menciona SOLO los checks fallidos como causa del veredicto\n"
+            "- Proporciona un overview de alto nivel de los hallazgos clave\n"
+            "- Usa datos concretos (ej: '5 Deauth detectados', 'BTM Status Code 0', etc.)\n\n"
             
-            "### ❌ FALLO CONFIRMADO\n"
-            "- BTM Reject (Status != 0).\n"
-            "- Loop entre APs.\n"
-            "- Desconexión sin reconexión.\n\n"
+            "### [SECCIONES TÉCNICAS DINÁMICAS]\n"
+            "Crea las secciones que necesites para cubrir los aspectos técnicos relevantes. Ejemplos:\n\n"
             
-            "## ESTRUCTURA OBLIGATORIA DEL REPORTE (Comienza directamente aquí)\n\n"
+            "- **Análisis de Protocolos de Roaming (802.11k/v/r)**: Si hay datos de BTM, KVR, etc.\n"
+            "  * Qué protocolos se detectaron\n"
+            "  * Cómo se comportó el cliente (cooperativo, ignoró, rechazó)\n"
+            "  * Códigos de estado BTM y su significado\n\n"
             
-            "### 1. RESUMEN EJECUTIVO (EVIDENCIA CLAVE)\n"
-            "Justifica el veredicto con la evidencia de mayor jerarquía encontrada:\n"
-            "- ¿Hubo BTM Accept (Code 0)? -> ¡Menciónalo primero! Es un éxito rotundo.\n"
-            "- ¿Se detectó Roaming exitoso? -> Detalla el cambio de BSSID.\n"
-            "- ¿Se detectó PREVENTIVE_SUCCESS (Cliente estable en 5GHz)? -> Es EXITOSA. Explica que el cliente prefirió la banda óptima.\n"
-            "- ¿Hubo fallo explícito? -> Explica el loop o el rechazo.\n"
-            "- **NOTA:** No incluyas un encabezado de 'Veredicto Final' por separado, el veredicto debe estar implícito y claro en este resumen.\n\n"
+            "- **Análisis de Transiciones de Banda**: Si hay transiciones detectadas\n"
+            "  * Cantidad de intentos vs éxitos\n"
+            "  * Tiempos de transición (promedio, máximo)\n"
+            "  * Tipo de steering (agresivo con Deauth, asistido con BTM, preventivo)\n"
+            "  * Detección de bucles o patrones problemáticos\n\n"
             
-            "### 2. ANÁLISIS BTM Y KVR (802.11k/v/r)\n"
-            "Detalla el soporte de estándares:\n"
-            "- **Protocolos Detectados**: Lista si viste 11k, 11v, 11r.\n"
-            "- **Intercambio BTM**: Detalla Requests/Responses y CÓDIGOS DE ESTADO.\n"
-            "- **Interpretación**: ¿El cliente es inteligente (Smart Roaming)?\n\n"
-
-            "### 3. DETALLE DE TRANSICIONES\n"
-            "- Calidad, tiempos y estabilidad.\n"
+            "- **Estabilidad de Asociación**: Si hay eventos de Deauth/Disassoc\n"
+            "  * Cantidad de desconexiones forzadas\n"
+            "  * Impacto en la experiencia del usuario\n"
+            "  * Relación con fallos de steering\n\n"
+            
+            "- **Calidad de Red**: Si hay métricas de rendimiento\n"
+            "  * Retransmisiones TCP/WLAN\n"
+            "  * Errores DNS\n"
+            "  * Latencia observada\n\n"
+            
+            "- **Comportamiento del Cliente**: Insights sobre el dispositivo\n"
+            "  * Capacidades detectadas\n"
+            "  * Preferencias de banda observadas\n"
+            "  * Nivel de cooperación con el AP\n\n"
+            
+            "### ÚLTIMA SECCIÓN OBLIGATORIA: CONCLUSIÓN FINAL\n"
+            "- Resumen final del estado de la prueba.\n"
+            "- NO incluyas una lista de 'Próximos pasos'.\n"
+            "- Cierra el informe con un veredicto claro basado estrictamente en los hallazgos.\n\n"
             
             "## REGLAS ESTRICTAS\n"
-            "1. Si el veredicto detectó al menos una transición exitosa, reporta como EXITOSA.\n"
-            "2. USA EXCLUSIVAMENTE EL IDIOMA ESPAÑOL.\n\n"
+            "1. **FIDELIDAD AL VEREDICTO**: Las causas del veredicto SOLO pueden ser los checks de '❌ CHECKS QUE FALLARON'\n"
+            "2. **RIQUEZA TÉCNICA**: Usa TODAS las métricas disponibles para enriquecer el análisis (BTM, transiciones, tiempos, etc.)\n"
+            "3. **COHERENCIA**: Tu narrativa debe ser 100% coherente con el 'Veredicto Final AIDLC'\n"
+            "4. **PROFESIONALISMO**: Usa terminología técnica precisa y estructura clara\n"
+            "5. **IDIOMA**: USA EXCLUSIVAMENTE ESPAÑOL\n"
+            "6. **NO PRÓXIMOS PASOS**: Está prohibido incluir una sección de 'Próximos pasos sugeridos'.\n\n"
         )
 
         completion = self.client.chat.completions.create(

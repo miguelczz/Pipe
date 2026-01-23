@@ -83,10 +83,7 @@ class BTMAnalyzer:
             steering_events=steering_events
         )
         
-        # 7. Calcular score global
-        overall_score = self._calculate_overall_score(compliance_checks)
-        
-        # 8. Determinar veredicto (REGLA DE ORO: 1 éxito = SUCCESS)
+        # 7. Determinar veredicto (REGLA DE ORO: 1 éxito = SUCCESS)
         verdict = self._determine_verdict(compliance_checks, transitions, btm_success_rate, successful_transitions)
         
         # 9. Construir objeto de análisis final
@@ -119,7 +116,6 @@ class BTMAnalyzer:
             loops_detected=loops_detected,
             kvr_support=kvr_support,
             compliance_checks=compliance_checks,
-            overall_compliance_score=overall_score,
             verdict=verdict,
             fragments=[] # Se llenará después con FragmentExtractor
         )
@@ -338,8 +334,7 @@ class BTMAnalyzer:
         return KVRSupport(
             k_support=k,
             v_support=v,
-            r_support=r,
-            compliance_score=score
+            r_support=r
         )
 
     def _run_compliance_checks(
@@ -357,27 +352,24 @@ class BTMAnalyzer:
         checks = []
         
         # 1. BTM Support (802.11v)
-        # Un dispositivo solo PASA si ha demostrado cooperar (Response) 
-        # Si hubo un Request y no hubo Response, es un FALLO aunque diga que tiene la capacidad.
         btm_stats = band_counters.get("btm_stats", {})
         has_btm_responses = btm_responses > 0
         
-        # Obtener nombres legibles de los status codes detectados
+        # Recopilar todos los códigos detectados (éxitos y rechazos)
         status_codes_raw = btm_stats.get("status_codes", [])
-        status_descs = []
+        status_lines = []
         if status_codes_raw:
-            # Eliminar duplicados manteniendo orden
             unique_codes = list(dict.fromkeys(status_codes_raw))
             for code in unique_codes:
                 desc = BTMStatusCode.get_description(code)
-                status_descs.append(f"Code {code} ({desc})")
+                status_lines.append(f"Code: {code} ({desc})")
         
-        status_info = f" | {status_descs[0]}" if status_descs else ""
+        status_info = "\n" + "\n".join(status_lines) if status_lines else ""
         
-        # Si hubo peticiones pero no respuestas, es un fallo crítico de implementación
+        # Si hubo peticiones pero 0 respuestas, falla. Si hubo respuestas pero todas rechazo, también se muestran.
         if btm_requests > 0 and btm_responses == 0:
             passed_btm = False
-            details = f"Requests: {btm_requests}, Responses: {btm_responses}"
+            details = f"Request: {btm_requests}, Response: {btm_responses}{status_info}"
         else:
             passed_btm = has_btm_responses or kvr.v_support
             details = f"Requests: {btm_requests}, Responses: {btm_responses}{status_info}"
@@ -388,32 +380,41 @@ class BTMAnalyzer:
             category="btm",
             passed=passed_btm,
             severity="high",
-            score=1.0 if passed_btm else 0.0,
             details=details,
-            recommendation="El cliente ignora las solicitudes BTM. Se recomienda revisar su política de roaming." if btm_requests > 0 and btm_responses == 0 else "Habilitar 802.11v"
+            recommendation="El cliente ignora o rechaza solicitudes BTM. Revisar códigos de estado." if not passed_btm else "Habilitar 802.11v"
         ))
         
         # 2. Asociación y Reasociación
-        # Contar eventos reales de asociación y reasociación en la captura
+        # Subtypes: 0=AssocReq, 1=AssocResp, 2=ReassocReq, 3=ReassocResp, 10=Disassoc, 12=Deauth
         assoc_req = sum(1 for e in (steering_events or []) if e.get("subtype") == 0)
         assoc_resp = sum(1 for e in (steering_events or []) if e.get("subtype") == 1)
         reassoc_req = sum(1 for e in (steering_events or []) if e.get("subtype") == 2)
         reassoc_resp = sum(1 for e in (steering_events or []) if e.get("subtype") == 3)
+        disassoc = sum(1 for e in (steering_events or []) if e.get("subtype") == 10)
+        deauth = sum(1 for e in (steering_events or []) if e.get("subtype") == 12)
         
         assoc_failures = band_counters.get("association_failures", [])
         failure_count = len(assoc_failures)
         
-        # El check solo pasa si hay al menos un ciclo completo (solicitud y respuesta) y cero fallos
+        # Lógica ESTRICTA de estabilidad: 
+        # Cualquier desconexión forzada (Deauth/Disassoc) indica inestabilidad y debe fallar.
+        # Esto es crítico porque aunque el dispositivo se reconecte, la desconexión forzada
+        # demuestra que el AP está expulsando al cliente, lo cual es un fallo de steering.
+        has_forced_disconnect = (deauth > 0 or disassoc > 0)
         has_complete_handshake = (assoc_req > 0 and assoc_resp > 0) or (reassoc_req > 0 and reassoc_resp > 0)
-        assoc_passed = has_complete_handshake and failure_count == 0
         
-        # Ajustar el score: 1.0 si es óptimo, 0.5 si es legacy/incompleto, 0.0 si falló
+        # Solo pasa si: hay handshake completo, sin fallos de status code, y SIN desconexiones forzadas
+        assoc_passed = has_complete_handshake and failure_count == 0 and not has_forced_disconnect
+        
+        # Ajustar el score: 1.0 si es óptimo, 0.0 si falló
         assoc_score = 0.0
         if assoc_passed:
             assoc_score = 1.0 if btm_responses > 0 else 0.5
 
         # Recomendación técnica precisa
-        if failure_count > 0:
+        if has_forced_disconnect:
+            rec = f"Prueba FALLIDA: Se detectaron {deauth} Deauth y {disassoc} Disassoc (desconexiones forzadas por el AP)."
+        elif failure_count > 0:
             rec = "Se detectaron fallos explícitos de asociación (Status Code != 0)."
         elif not has_complete_handshake:
             rec = "Handshake incompleto o captura parcial; se detectaron respuestas sin solicitudes (o viceversa)."
@@ -428,8 +429,7 @@ class BTMAnalyzer:
             category="association",
             passed=assoc_passed,
             severity="medium",
-            score=assoc_score,
-            details=f"Assoc: {assoc_req}/{assoc_resp}, Reassoc: {reassoc_req}/{reassoc_resp}",
+            details=f"Assoc: {assoc_req}/{assoc_resp}, Reassoc: {reassoc_req}/{reassoc_resp}\nDisassoc: {disassoc}, Deauth: {deauth}",
             recommendation=rec
         ))
         
@@ -443,7 +443,6 @@ class BTMAnalyzer:
             category="performance",
             passed=steering_passed,
             severity="high",
-            score=1.0 if steering_passed else 0.0,
             details=f"Cambios de banda: {band_changes}",
             recommendation="Ajustar umbrales de RSSI para forzar steering" if not steering_passed else None
         ))
@@ -456,40 +455,47 @@ class BTMAnalyzer:
             category="kvr",
             passed=kvr_passed,
             severity="medium",
-            score=kvr.compliance_score,
             details=f"k={kvr.k_support}, v={kvr.v_support}, r={kvr.r_support}",
             recommendation="Se recomienda habilitar el estándar faltante para roaming óptimo" if not kvr_passed else None
         ))
         
         return checks
 
-    def _calculate_overall_score(self, checks: List[ComplianceCheck]) -> float:
-        if not checks: return 0.0
-        total = sum(c.score for c in checks)
-        return total / len(checks)
 
     def _determine_verdict(self, checks: List[ComplianceCheck], transitions: List[SteeringTransition], btm_rate: float, success_count: int = 0) -> str:
         """Determina el veredicto final basado en reglas de negocio."""
-        # Regla 1: Si hay fallos de asociación críticos -> FAILED
-        assoc_check = next((c for c in checks if c.check_name == "Asociación Exitosa"), None)
+        # Obtener checks por categoría para evitar problemas de matching por acentos
+        assoc_check = next((c for c in checks if c.category == "association"), None)
+        btm_check = next((c for c in checks if c.category == "btm"), None)
+        kvr_check = next((c for c in checks if c.category == "kvr"), None)
+        performance_check = next((c for c in checks if c.category == "performance"), None)
+
+        # Regla 1: Si hay fallos de asociación críticos (Deauth/Disassoc/Status Error) -> FAILED
+        # La estabilidad es lo más importante.
         if assoc_check and not assoc_check.passed:
+            logger.warning("❌ Fallo crítico en Asociación/Reasociación detectado -> FAILED")
             return "FAILED"
             
-        # Regla 2: Si hay transiciones exitosas (Criterio del usuario) -> SUCCESS
+        # Regla 2: Si el soporte BTM falló explícitamente (Solicitado pero ignorado o rechazado) -> FAILED
+        if btm_check and not btm_check.passed:
+            logger.warning("❌ Soporte BTM fallido -> FAILED")
+            return "FAILED"
+
+        # Regla 3: Si hay transiciones exitosas (Criterio del usuario)
         if success_count > 0:
+            # Si KVR no pasó, aún es FAILED (el agente explicará en texto que hubo transiciones pero faltaron protocolos)
+            if kvr_check and not kvr_check.passed:
+                logger.warning("⚠️ Transición exitosa pero sin soporte KVR adecuado -> FAILED (se explicará en el análisis)")
+                return "FAILED" 
             return "SUCCESS"
             
-        # Regla 3: Si hay soporte BTM y éxito aunque sea parcial
-        btm_check = next((c for c in checks if c.check_name == "Soporte BTM (802.11v)"), None)
-        if btm_check and btm_check.passed and (success_count > 0 or btm_rate > 0.3):
+        # Regla 4: Éxito vía BTM aunque no hayamos visto la reasociación completa
+        if btm_check and btm_check.passed and btm_rate > 0.5:
             return "SUCCESS"
             
-        # Regla 4: Si no hay transiciones pero hay steering preventivo -> SUCCESS
-        steering_check = next((c for c in checks if c.check_name == "Steering Efectivo"), None)
-        if steering_check and steering_check.passed:
+        # Regla 5: Si no hay transiciones pero hay steering preventivo confirmado
+        if performance_check and performance_check.passed:
+            # Si el check de performance pasó es porque detectó steering preventivo basado en tráfico
             return "SUCCESS"
             
-        if steering_check and not steering_check.passed:
-            return "FAILED"
-            
-        return "PARTIAL"
+        return "FAILED"

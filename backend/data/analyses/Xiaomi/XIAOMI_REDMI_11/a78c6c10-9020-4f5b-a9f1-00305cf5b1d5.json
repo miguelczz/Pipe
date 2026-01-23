@@ -1,0 +1,79 @@
+{
+    "analysis_id": "a78c6c10-9020-4f5b-a9f1-00305cf5b1d5",
+    "filename": "b6177b7f-2aaf-4a5c-8f95-844f43612aef_XIAOMI REDMI 11 .pcapng",
+    "analysis_timestamp": "2026-01-23T07:50:34.399190",
+    "total_packets": 41,
+    "wlan_packets": 41,
+    "analysis_duration_ms": 0,
+    "devices": [
+        {
+            "mac_address": "70:a7:41:6b:a9:3d",
+            "oui": "70:a7:41",
+            "vendor": "Xiaomi",
+            "device_model": "XIAOMI REDMI 11",
+            "device_category": "mobile_device",
+            "is_virtual": false,
+            "confidence_score": 1.0
+        }
+    ],
+    "btm_events": [],
+    "transitions": [],
+    "btm_requests": 31,
+    "btm_responses": 0,
+    "btm_success_rate": 0.0,
+    "successful_transitions": 0,
+    "failed_transitions": 31,
+    "loops_detected": false,
+    "kvr_support": {
+        "k_support": false,
+        "v_support": true,
+        "r_support": false,
+        "compliance_score": 0.3333333333333333
+    },
+    "compliance_checks": [
+        {
+            "check_name": "Soporte BTM (802.11v)",
+            "description": "El dispositivo debe demostrar soporte activo de BSS Transition Management",
+            "category": "btm",
+            "passed": false,
+            "severity": "high",
+            "score": 0.0,
+            "details": "Request: 31, Response: 0",
+            "recommendation": "El cliente ignora o rechaza solicitudes BTM. Revisar códigos de estado."
+        },
+        {
+            "check_name": "Asociación y Reasociación",
+            "description": "Verifica ciclos completos de asociación y reasociación",
+            "category": "association",
+            "passed": false,
+            "severity": "medium",
+            "score": 0.0,
+            "details": "Assoc: 0/1, Reassoc: 0/1\nDisassoc: 0, Deauth: 32",
+            "recommendation": "Handshake incompleto o captura parcial; se detectaron respuestas sin solicitudes (o viceversa)."
+        },
+        {
+            "check_name": "Steering Efectivo",
+            "description": "Se deben realizar cambios de banda efectivos (2.4 -> 5GHz)",
+            "category": "performance",
+            "passed": false,
+            "severity": "high",
+            "score": 0.0,
+            "details": "Cambios de banda: 0",
+            "recommendation": "Ajustar umbrales de RSSI para forzar steering"
+        },
+        {
+            "check_name": "Estándares KVR",
+            "description": "Soporte de estándares de movilidad (Mínimo 2 de 3: k, v, r)",
+            "category": "kvr",
+            "passed": false,
+            "severity": "medium",
+            "score": 0.3333333333333333,
+            "details": "k=False, v=True, r=False",
+            "recommendation": "Se recomienda habilitar el estándar faltante para roaming óptimo"
+        }
+    ],
+    "overall_compliance_score": 0.08333333333333333,
+    "verdict": "FAILED",
+    "analysis_text": "### 1. RESUMEN EJECUTIVO (EVIDENCIA CLAVE)\nEl análisis de la captura de Wireshark revela un veredicto preliminar de **FAILED** en la implementación de band steering. No se detectaron transiciones exitosas, ya que todas las 31 intentos de steering resultaron en fallos. No hubo eventos de BTM (BSS Transition Management) detectados, lo que indica que no se utilizó un mecanismo avanzado para la gestión de la transición entre bandas. Además, se registraron múltiples intentos de desautenticación (Deauth) sin éxito en la reasociación, lo que refuerza la conclusión de que no hubo una transición efectiva entre bandas. En resumen, el sistema no logró realizar un steering adecuado, y el cliente no pudo cambiar a la banda de 5GHz, lo que indica una gestión deficiente de la red.\n\n### 2. ANÁLISIS BTM Y KVR (802.11k/v/r)\nEn la captura analizada, no se detectaron protocolos de gestión de transición como 802.11k, 802.11v o 802.11r. En particular, el soporte para BTM (802.11v) falló completamente, con 31 solicitudes de BTM y ninguna respuesta positiva (Status Code 0). Esto indica que el cliente no recibió instrucciones para cambiar de banda, lo que es un indicativo de que el cliente no está utilizando un roaming inteligente. La falta de eventos BTM y la ausencia de transiciones exitosas sugieren que el cliente no está respondiendo a las señales de la red para optimizar su conexión.\n\n### 3. DETALLE DE TRANSICIONES\nSe registraron 31 intentos de transición, todos fallidos, con un tiempo promedio y máximo de transición de 0 segundos, lo que indica que no hubo tiempo de espera para una transición exitosa. Todos los intentos de desautenticación (Deauth) se realizaron en la misma banda (2.4GHz) y no se logró ninguna reasociación. Esto sugiere que el cliente no pudo cambiar a la banda de 5GHz, lo que es crítico para la calidad de la conexión. La falta de bucles detectados es un aspecto positivo, pero no compensa la total ausencia de transiciones exitosas. En conclusión, el análisis muestra que el band steering no está funcionando como se esperaba, y el cliente permanece anclado a la banda menos óptima sin posibilidad de mejora.",
+    "fragments": []
+}

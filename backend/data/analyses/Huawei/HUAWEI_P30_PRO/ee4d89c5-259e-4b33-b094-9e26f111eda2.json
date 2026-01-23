@@ -1,0 +1,79 @@
+{
+    "analysis_id": "ee4d89c5-259e-4b33-b094-9e26f111eda2",
+    "filename": "ae1db7cb-7660-434c-a80f-9a5e4e0dad29_HUAWEI P30 PRO .pcapng",
+    "analysis_timestamp": "2026-01-23T07:56:53.898011",
+    "total_packets": 14,
+    "wlan_packets": 14,
+    "analysis_duration_ms": 0,
+    "devices": [
+        {
+            "mac_address": "f8:79:28:56:f3:d5",
+            "oui": "f8:79:28",
+            "vendor": "Huawei",
+            "device_model": "HUAWEI P30 PRO",
+            "device_category": "mobile_device",
+            "is_virtual": false,
+            "confidence_score": 1.0
+        }
+    ],
+    "btm_events": [],
+    "transitions": [],
+    "btm_requests": 5,
+    "btm_responses": 0,
+    "btm_success_rate": 0.0,
+    "successful_transitions": 0,
+    "failed_transitions": 5,
+    "loops_detected": true,
+    "kvr_support": {
+        "k_support": false,
+        "v_support": true,
+        "r_support": false,
+        "compliance_score": 0.3333333333333333
+    },
+    "compliance_checks": [
+        {
+            "check_name": "Soporte BTM (802.11v)",
+            "description": "El dispositivo debe demostrar soporte activo de BSS Transition Management",
+            "category": "btm",
+            "passed": false,
+            "severity": "high",
+            "score": 0.0,
+            "details": "Request: 5, Response: 0",
+            "recommendation": "El cliente ignora o rechaza solicitudes BTM. Revisar códigos de estado."
+        },
+        {
+            "check_name": "Asociación y Reasociación",
+            "description": "Verifica ciclos completos de asociación y reasociación",
+            "category": "association",
+            "passed": false,
+            "severity": "medium",
+            "score": 0.0,
+            "details": "Assoc: 0/5, Reassoc: 0/0\nDisassoc: 0, Deauth: 5",
+            "recommendation": "Prueba interrumpida por desconexión forzada (Deauth/Disassoc detectada)."
+        },
+        {
+            "check_name": "Steering Efectivo",
+            "description": "Se deben realizar cambios de banda efectivos (2.4 -> 5GHz)",
+            "category": "performance",
+            "passed": false,
+            "severity": "high",
+            "score": 0.0,
+            "details": "Cambios de banda: 0",
+            "recommendation": "Ajustar umbrales de RSSI para forzar steering"
+        },
+        {
+            "check_name": "Estándares KVR",
+            "description": "Soporte de estándares de movilidad (Mínimo 2 de 3: k, v, r)",
+            "category": "kvr",
+            "passed": false,
+            "severity": "medium",
+            "score": 0.3333333333333333,
+            "details": "k=False, v=True, r=False",
+            "recommendation": "Se recomienda habilitar el estándar faltante para roaming óptimo"
+        }
+    ],
+    "overall_compliance_score": 0.08333333333333333,
+    "verdict": "FAILED",
+    "analysis_text": "### 1. RESUMEN EJECUTIVO (EVIDENCIA CLAVE)\nEl análisis de la captura de Wireshark revela un veredicto preliminar de **FAILED_LOOP**, lo que indica que no hubo transiciones exitosas y se detectaron bucles en el proceso de steering. A pesar de que se realizaron 5 intentos de steering, todos resultaron en fallos, con un tiempo promedio de transición de 0.115s. No se registraron eventos de BTM (BSS Transition Management), lo que sugiere que no se utilizó un mecanismo de steering avanzado. La ausencia de transiciones exitosas y la presencia de bucles confirman que el band steering no funcionó adecuadamente en esta captura.\n\n### 2. ANÁLISIS BTM Y KVR (802.11k/v/r)\n- **Protocolos Detectados**: No se detectaron eventos BTM, lo que indica que el cliente no participó en la gestión de transición de bandas a través de 802.11v. \n- **Intercambio BTM**: No hubo Requests ni Responses, lo que significa que el cliente no recibió instrucciones para cambiar de banda.\n- **Interpretación**: El cliente no parece ser inteligente en términos de roaming, ya que no se registraron intentos de transición exitosos ni se utilizó el protocolo de gestión de transición de bandas.\n\n### 3. DETALLE DE TRANSICIONES\nLas transiciones fueron completamente fallidas, con 5 intentos de deautenticación que resultaron en bucles, donde el cliente intentó conectarse repetidamente al mismo BSSID en la misma banda (5GHz). No se registraron cambios de BSSID ni de banda, lo que indica que el cliente no pudo realizar una transición efectiva. La falta de éxito en la reasociación y la presencia de bucles son indicativos de un fallo en el proceso de steering.\n\nEn conclusión, el análisis confirma que el band steering en esta red ha fallado, evidenciado por la ausencia de transiciones exitosas y la presencia de bucles en el proceso de conexión.",
+    "fragments": []
+}

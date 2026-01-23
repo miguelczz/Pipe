@@ -12,25 +12,28 @@ import { cn } from '../../utils/cn'
 export function MarkdownRenderer({ content, className }) {
   return (
     <div className={cn('w-full max-w-full overflow-hidden', className)}>
-      <div className="space-y-3 break-words text-white">
+      <div className="space-y-3 text-white" style={{ overflowWrap: 'break-word', wordBreak: 'normal' }}>
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={{
             h1: ({ ...props }) => (
               <h1
                 className="text-2xl font-bold text-white mt-8 mb-4 border-b border-dark-border-primary/50 pb-2 first:mt-0"
+                style={{ wordBreak: 'normal', overflowWrap: 'break-word' }}
                 {...props}
               />
             ),
             h2: ({ ...props }) => (
               <h2
                 className="text-xl font-bold text-white mt-8 mb-4 first:mt-0 items-center flex gap-2"
+                style={{ wordBreak: 'normal', overflowWrap: 'break-word' }}
                 {...props}
               />
             ),
             h3: ({ ...props }) => (
               <h3
                 className="text-lg font-semibold text-white mt-6 mb-3"
+                style={{ wordBreak: 'normal', overflowWrap: 'break-word' }}
                 {...props}
               />
             ),
@@ -38,6 +41,7 @@ export function MarkdownRenderer({ content, className }) {
             p: ({ ...props }) => (
               <p
                 className="text-[15px] text-gray-200 leading-relaxed mb-4 last:mb-0"
+                style={{ wordBreak: 'normal', overflowWrap: 'break-word' }}
                 {...props}
               />
             ),
