@@ -80,6 +80,12 @@ class BandSteeringService:
         # Si no hay eventos específicos, usar la que detectó WiresharkTool como global
         if primary_mac == "unknown":
             primary_mac = raw_data.get("diagnostics", {}).get("client_mac", "unknown")
+            
+        device_info = self.device_classifier.classify_device(
+            primary_mac, 
+            user_metadata,
+            filename=file_name
+        )
         logger.info(f"Dispositivo identificado: {device_info.vendor} ({device_info.mac_address})")
 
         # 3. Análisis Especializado BTM y cumplimiento (BTMAnalyzer)
