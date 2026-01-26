@@ -72,30 +72,28 @@ graph TD
 
 ---
 
-## 📦 Instalación y Despliegue
+## 📦 Instalación (Desarrollo local)
 
 ### Prerrequisitos
-*   Docker & Docker Compose.
-*   Python 3.10+ (si se corre local).
+*   Python 3.10+.
 *   OpenAI API Key habilitada.
 
-### Pasos de Instalación Rapida
-1.  **Clonar e Iniciar Infraestructura**:
+### Pasos de Desarrollo Rápido
+1.  Clonar y levantar el backend (desarrollo local):
     ```bash
     git clone https://github.com/tu-repo/netmind.git
-    cd netmind
-    docker-compose -f docker-compose.dev.yml up -d
-    ```
-2.  **Configurar Backend**:
-    ```bash
-    cd backend
+    cd netmind/backend
     python -m venv venv
-    source venv/bin/activate  # o venv\Scripts\activate en Windows
+    venv\Scripts\activate   # Windows
     pip install -r requirements.txt
+    uvicorn main:app --reload --port 8000
     ```
-3.  **Iniciar Servicios**:
-    *   **Backend**: `uvicorn main:app --reload --port 8000`
-    *   **Frontend**: `cd ../frontend && npm install && npm run dev`
+2.  Frontend (opcional):
+    ```bash
+    cd ../frontend
+    npm install
+    npm run dev
+    ```
 
 ---
 

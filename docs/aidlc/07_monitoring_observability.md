@@ -673,13 +673,13 @@ async def health_check():
 
 @health_router.get("/ready")
 async def readiness_check():
-    """Readiness check para Kubernetes"""
+    """Readiness / health check (platform-neutral)"""
     # Verificar que el sistema esté listo para recibir tráfico
     return {"status": "ready", "timestamp": time.time()}
 
 @health_router.get("/live")
 async def liveness_check():
-    """Liveness check para Kubernetes"""
+    """Liveness / health check (platform-neutral)"""
     # Verificar que el proceso esté vivo
     return {"status": "alive", "timestamp": time.time()}
 ```

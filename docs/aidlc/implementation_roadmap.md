@@ -500,12 +500,7 @@ Compliance Checks:
 - [ ] User acceptance testing
 
 ### Deployment
-- [ ] Migración de base de datos
-- [ ] Deployment en staging
-- [ ] Validación en staging
-- [ ] Deployment en producción
-- [ ] Monitoreo post-deployment
-- [ ] Documentación de usuario actualizada
+Deployment-related tasks and infrastructure configuration have been removed from the repository and from these documents. The project documentation now focuses on development, testing and internal operations. See the repository root README for local development instructions.
 
 ---
 
