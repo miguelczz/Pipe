@@ -78,6 +78,7 @@ class WiresharkTool:
             "-e", "wlan.fixed.action_code",                  # Action (7=Req, 8=Resp)
             "-e", "wlan.fixed.bss_transition_status_code",   # BTM Status Code (v1)
             "-e", "wlan.fixed.status_code",       # Status Code de Asociación (0=Success)
+            "-e", "wlan_radio.signal_dbm",        # RSSI / Intensidad de Señal
         ]
 
         logger.info(f"Ejecutando tshark en: {file_path}")
@@ -119,19 +120,22 @@ class WiresharkTool:
             "data_24": 0, "data_5": 0,
         }
 
+        # Lista temporal para muestras de señal (para gráfica continua)
+        temp_signal_samples = []
+
         for line in lines:
             if not line.strip():
                 continue
 
             fields = line.split("\t")
-            # Ajustar para 19 campos (según el comando cmd corregido)
-            while len(fields) < 19:
+            # Ajustar para 20 campos (según el comando cmd corregido)
+            while len(fields) < 20:
                 fields.append("")
 
             (timestamp, protocols, ip_src, ip_dst, frame_len, tcp_r, wlan_r, 
              dns_r, subtype, bssid, wlan_sa, wlan_da, frequency, reason_code, ssid,
              category_code, action_code, btm_status_code,
-             assoc_status_code) = fields[:19] # Tomar solo los campos esperados
+             assoc_status_code, signal_strength) = fields[:20] # Tomar solo los campos esperados
 
             total_packets += 1
             
@@ -189,15 +193,48 @@ class WiresharkTool:
                              logger.info(f"✅ BTM REQUEST detectado")
                              band_counters["btm_stats"]["requests"] += 1
                              
+                             # Registrar evento para gráfica
+                             steering_events.append({
+                                 "timestamp": float(timestamp) if timestamp else 0,
+                                 "type": "btm",
+                                 "event_type": "request",
+                                 "subtype": subtype_int,
+                                 "bssid": bssid, # Source BSSID (usualmente wlan_sa)
+                                 "client_mac": wlan_da, # En Request, el cliente es el destino
+                                 "ap_bssid": wlan_sa,   # En Request, el AP es el origen
+                                 "wlan_sa": wlan_sa,
+                                 "wlan_da": wlan_da,
+                                 "band": current_band,
+                                 "frequency": int(frequency) if frequency else 0,
+                                 "rssi": int(signal_strength) if signal_strength else None,
+                                 "status_code": None
+                             })
+                             
                         elif ac_val == 8: # BTM Response
                             logger.info(f"✅ BTM RESPONSE detectado. Status Code={btm_status_code}")
                             band_counters["btm_stats"]["responses"] += 1
+                            
+                            # Registrar evento para gráfica
+                            steering_events.append({
+                                 "timestamp": float(timestamp) if timestamp else 0,
+                                 "type": "btm",
+                                 "event_type": "response",
+                                 "subtype": subtype_int,
+                                 "bssid": bssid,
+                                 "client_mac": wlan_sa, # En Response, el cliente es el origen
+                                 "ap_bssid": wlan_da,   # En Response, el AP es el destino
+                                 "wlan_sa": wlan_sa,
+                                 "wlan_da": wlan_da,
+                                 "band": current_band,
+                                 "frequency": int(frequency) if frequency else 0,
+                                 "rssi": int(signal_strength) if signal_strength else None,
+                                 "status_code": int(btm_status_code) if btm_status_code and btm_status_code.isdigit() else None
+                             })
                         
-                        # Captura universal de status code si aparece en cualquier frame WNM
+                        # Captura universal de status code
                         if btm_status_code and btm_status_code != "":
                             if btm_status_code not in band_counters["btm_stats"]["status_codes"]:
                                 band_counters["btm_stats"]["status_codes"].append(btm_status_code)
-                    # ----------------------------------
 
                     # --- LÓGICA DE STEERING PREVENTIVO ---
                     # Determinar banda del paquete actual
@@ -234,6 +271,23 @@ class WiresharkTool:
                         elif current_band == "5GHz":
                             band_counters["data_5"] += 1
                     # -------------------------------------
+
+                    # --- RECOLECCIÓN DE MUESTRAS DE SEÑAL ---
+                    # Guardar una muestra si tenemos RSSI y banda válida
+                    if signal_strength and current_band:
+                         try:
+                             rssi_val = int(signal_strength)
+                             # Solo guardar si el valor es realista y tenemos MACs
+                             if -120 < rssi_val < 0 and (wlan_sa or wlan_da):
+                                 temp_signal_samples.append({
+                                     "timestamp": float(timestamp) if timestamp else 0,
+                                     "rssi": rssi_val,
+                                     "band": current_band,
+                                     "frequency": int(frequency) if frequency else 0,
+                                     "sa": wlan_sa,
+                                     "da": wlan_da
+                                 })
+                         except: pass
 
                     # --- DETECCIÓN DE SOPORTE KVR (802.11k/v/r) ---
                     # 11v (WNM) y 11k (Radio Measurement) operan sobre Action Frames (Subtype 13)
@@ -322,7 +376,8 @@ class WiresharkTool:
                             "band": band,
                             "frequency": frequency,
                             "reason_code": reason_code,
-                            "assoc_status_code": assoc_status_code
+                            "assoc_status_code": assoc_status_code,
+                            "signal_strength": signal_strength
                         }
                         steering_events.append(event)
                         
@@ -406,6 +461,20 @@ class WiresharkTool:
             "band_counters": band_counters,  # Nuevo: Contadores para steering preventivo
         }
 
+        # 4. Filtrar muestras de señal para gráfica continua
+        final_signal_samples = []
+        if client_mac and client_mac != "Desconocido":
+            # Usar paquetes donde el cliente es el emisor (SA) para ver su RSSI
+            client_samples = [s for s in temp_signal_samples if s["sa"] == client_mac]
+            
+            # Muestreo simple para no saturar UI (max ~500 puntos)
+            if len(client_samples) > 500:
+                 step = len(client_samples) // 500
+                 if step < 1: step = 1
+                 final_signal_samples = client_samples[::step]
+            else:
+                 final_signal_samples = client_samples
+
         return {
             "total_packets": total_packets,
             "total_tcp_packets": total_tcp_packets,
@@ -414,6 +483,7 @@ class WiresharkTool:
             "diagnostics": diagnostics,
             "steering_analysis": steering_analysis,
             "steering_events": steering_events,
+            "signal_samples": final_signal_samples, # NUEVO
             "top_protocols": protocol_counter.most_common(10),
             "top_sources": src_counter.most_common(10),
             "top_destinations": dst_counter.most_common(10),

@@ -78,7 +78,11 @@ async def analyze_network_capture(file: UploadFile = File(...)):
                     "verdict": analysis.verdict,
                     "device": analysis.devices[0].model_dump() if analysis.devices else {},
                     "compliance_checks": [c.model_dump() for c in analysis.compliance_checks],
-                    "fragments_count": len(analysis.fragments)
+                    "fragments_count": len(analysis.fragments),
+                    # Agregar datos para la gráfica de Band Steering
+                    "btm_events": [e.model_dump() for e in analysis.btm_events],
+                    "transitions": [t.model_dump() for t in analysis.transitions],
+                    "signal_samples": [s.model_dump() for s in analysis.signal_samples]
                 }
             }
         )

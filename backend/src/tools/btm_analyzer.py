@@ -17,7 +17,8 @@ from ..models.btm_schemas import (
     KVRSupport,
     DeviceInfo,
     DeviceCategory,
-    CaptureFragment
+    CaptureFragment,
+    SignalSample
 )
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,8 @@ class BTMAnalyzer:
         steering_events: List[Dict[str, Any]], 
         band_counters: Dict[str, Any],
         filename: str = "unknown.pcap",
-        device_info: Optional[DeviceInfo] = None
+        device_info: Optional[DeviceInfo] = None,
+        signal_samples: List[Dict[str, Any]] = None
     ) -> BandSteeringAnalysis:
         """
         Punto de entrada principal.
@@ -109,6 +111,7 @@ class BTMAnalyzer:
             devices=devices,
             btm_events=btm_events_list,
             transitions=transitions,
+            signal_samples=signal_samples or [],
             btm_requests=btm_requests,
             btm_responses=btm_responses,
             btm_success_rate=btm_success_rate,
@@ -125,51 +128,18 @@ class BTMAnalyzer:
         """Convierte eventos crudos de Wireshark en objetos BTMEvent Pydantic."""
         schemas = []
         for e in raw_events:
-            # Identificar eventos BTM WNM (Category 10)
-            # WiresharkTool ya normaliza subtype=13 para Action Frames
-            # Pero necesitamos asegurarnos de que es BTM
+            is_btm = False
+            evt_type = "unknown"
+            status = None
             
-            # Nota: raw_events viene de WiresharkTool._extract_basic_stats -> steering_events
-            # WiresharkTool no pone explicitamente 'category_code' en el dict final de steering_events
-            # a menos que lo agreguemos. 
-            # POR AHORA: Asumiremos que BTMAnalyzer pueda recibir logicamente eventos 'tipo BTM'
-            # O mejor, filtraremos por descripciones si ya están procesadas, 
-            # O idealmente, WiresharkTool debería pasar los campos crudos necesarios.
+            # 1. Nuevo formato explícito (WiresharkTool actualizado)
+            if e.get("type") == "btm":
+                is_btm = True
+                evt_type = e.get("event_type", "unknown")
+                status = e.get("status_code")
             
-            # Mirando WiresharkTool actual:
-            # steering_events tiene: type="BTM Request" (si modificamos WiresharkTool para poner ese type)
-            # PERO WiresharkTool actual pone type="Action" y subtype=13.
-            # Necesitamos mejorar la data que llega o parsear mejor aquí.
-            
-            # SUPOSICIÓN CRÍTICA: Asumimos que raw_events trae la info necesaria.
-            # En el refactor, WiresharkTool pasará eventos enriquecidos.
-            # Aquí implemento la lógica robusta asumiendo campos disponibles.
-            
-            # Si el evento tiene 'btm_status_code' o es Action frame cat 10 (lo inferimos por contexto o tags)
-            pass 
-            
-            # Implementación simulada basada en estructura actual de WiresharkTool
-            # Si type es "Action" y tiene info BTM
-            # En el roadmap, WiresharkTool se modifica para delegar.
-            
-            # Usaré una heurística basada en los campos que veo en wireshark_tool.py:
-            # subtype 13 es Action. Pero wireshark_tool no guarda category/action en el dict final 'event'.
-            # NECESITAMOS que WiresharkTool incluya 'category_code' y 'action_code' en el dict del evento.
-            # Asumiré que eso se hará.
-            
-            if e.get("subtype") == 13:
-                # Verificación defensiva
-                cat = e.get("category_code")
-                act = e.get("action_code")
-                
-                # Normalizar values 
-                # (Asumiendo que WiresharkTool pasará estos campos en el futuro inmediato)
-                
-                is_btm = False
-                evt_type = "unknown"
-                status = None
-                
-                # Detectar por textos si no hay códigos (Legacy support)
+            # 2. Formato Legacy / Fallback (basado en subtype 13 y nombres antiguos)
+            elif e.get("subtype") == 13:
                 if e.get("type") == "BTM Request": 
                     is_btm = True
                     evt_type = "request"
@@ -177,17 +147,26 @@ class BTMAnalyzer:
                     is_btm = True
                     evt_type = "response"
                     status = e.get("btm_status_code")
+            
+            if is_btm:
+                # Normalizar RSSI (puede venir como 'rssi' o 'signal_strength')
+                rssi_val = e.get("rssi")
+                if rssi_val is None:
+                    s = e.get("signal_strength")
+                    if s:
+                        try: rssi_val = int(s)
+                        except: pass
                 
-                if is_btm:
-                    schemas.append(BTMEvent(
-                        timestamp=e.get("timestamp", 0.0),
-                        event_type=evt_type,
-                        client_mac=e.get("client_mac", "unknown"),
-                        ap_bssid=e.get("bssid", "unknown"),
-                        status_code=int(status) if status is not None and str(status).isdigit() else None,
-                        band=e.get("band"),
-                        frequency=int(e.get("frequency")) if e.get("frequency") else None
-                    ))
+                schemas.append(BTMEvent(
+                    timestamp=float(e.get("timestamp", 0.0)),
+                    event_type=evt_type,
+                    client_mac=e.get("client_mac", "unknown"),
+                    ap_bssid=e.get("ap_bssid") or e.get("bssid", "unknown"),
+                    status_code=int(status) if status is not None and str(status).isdigit() else None,
+                    band=e.get("band"),
+                    frequency=int(e.get("frequency")) if e.get("frequency") else None,
+                    rssi=rssi_val
+                ))
         return schemas
 
     def _analyze_transitions(self, raw_events: List[Dict[str, Any]], btm_events: List[BTMEvent]) -> List[SteeringTransition]:

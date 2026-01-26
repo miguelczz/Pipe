@@ -60,6 +60,7 @@ class BandSteeringService:
         
         # 2. Identificación y Clasificación del Dispositivo
         steering_events = raw_data.get("steering_events", [])
+        signal_samples = raw_data.get("signal_samples", [])
         
         def is_valid_client_mac(mac: str) -> bool:
             if not mac or mac == "ff:ff:ff:ff:ff:ff" or mac == "00:00:00:00:00:00":
@@ -98,7 +99,8 @@ class BandSteeringService:
             steering_events=steering_events,
             band_counters=combined_stats,
             filename=file_name,
-            device_info=device_info
+            device_info=device_info,
+            signal_samples=signal_samples
         )
         
         # Completar datos globales que BTMAnalyzer no tiene

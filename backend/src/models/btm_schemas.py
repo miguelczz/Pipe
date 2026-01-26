@@ -97,6 +97,7 @@ class BTMEvent(BaseModel):
     status_code: Optional[int] = Field(None, description="Código de estado BTM (solo para responses)")
     band: Optional[str] = Field(None, description="Banda de frecuencia (2.4GHz/5GHz)")
     frequency: Optional[int] = Field(None, description="Frecuencia en MHz")
+    rssi: Optional[int] = Field(None, description="Intensidad de señal (dBm)")
     # Campos adicionales para contexto
     frame_number: Optional[int] = Field(None, description="Número de frame en Wireshark")
 
@@ -168,6 +169,13 @@ class CaptureFragment(BaseModel):
 # Modelo Principal de Análisis
 # ============================================================================
 
+class SignalSample(BaseModel):
+    timestamp: float = Field(..., description="Timestamp del paquete")
+    rssi: int = Field(..., description="Intensidad de señal (dBm)")
+    band: str = Field(..., description="Banda (2.4GHz/5GHz)")
+    frequency: int = Field(..., description="Frecuencia en MHz")
+
+
 class BandSteeringAnalysis(BaseModel):
     """
     Objeto raiz que contiene TODO el resultado del análisis de una captura.
@@ -187,6 +195,7 @@ class BandSteeringAnalysis(BaseModel):
     # Eventos y Transiciones
     btm_events: List[BTMEvent] = Field(default_factory=list, description="Lista plana de eventos BTM")
     transitions: List[SteeringTransition] = Field(default_factory=list, description="Lista de transiciones detectadas")
+    signal_samples: List[SignalSample] = Field(default_factory=list, description="Muestras de señal en el tiempo")
     
     # Métricas Agregadas
     btm_requests: int = Field(0, description="Total Requests")
