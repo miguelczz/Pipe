@@ -1,17 +1,7 @@
 import React, { useMemo } from 'react'
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-} from 'chart.js'
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler } from 'chart.js'
 import { Line } from 'react-chartjs-2'
-import { Activity, Radio } from 'lucide-react'
+import { Activity, Radio, ShieldAlert } from 'lucide-react'
 
 // Registrar componentes de Chart.js
 ChartJS.register(
@@ -26,410 +16,216 @@ ChartJS.register(
 )
 
 /**
- * Componente de gráfica para visualizar cambios de banda en el tiempo.
- * Muestra: Tiempo, MAC, Frecuencia, RSSI, eventos BTM y cambios de canal.
+ * Componente de gráfica rediseñado para "Storytelling".
+ * No solo muestra dBm, muestra la HISTORIA de la transición del usuario.
  */
 export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamples = [], rawStats = {} }) {
   
-  // Procesar datos para la gráfica
   const chartData = useMemo(() => {
-    // Helper para media móvil simple (suavizado)
-    const smoothData = (data, windowSize = 5) => {
-      return data.map((val, index, arr) => {
-        if (val === null) return null
-        
-        let sum = 0
-        let count = 0
-        // Tomar ventana alrededor del punto
-        for (let i = Math.max(0, index - Math.floor(windowSize / 2)); 
-             i < Math.min(arr.length, index + Math.floor(windowSize / 2) + 1); 
-             i++) {
-          if (arr[i] !== null && arr[i].y !== undefined && arr[i].y !== null) {
-            sum += arr[i].y
-            count++
-          }
-        }
-        return count > 0 ? { ...val, y: sum / count } : val
-      })
+    if (!signalSamples.length && !btmEvents.length && !transitions.length) {
+      return { datasets: [] }
     }
 
-    // Combinar todos los tipos de eventos en una línea de tiempo unificada
     const timelineEvents = []
     
-    // 1. Muestras de Señal (Base principal de la gráfica)
-    signalSamples.forEach(sample => {
-      timelineEvents.push({
-        timestamp: sample.timestamp,
-        type: 'signal',
-        rssi: sample.rssi,
-        band: sample.band,
-        frequency: sample.frequency,
-        mac: sample.sa // Normalmente usamos Source Address como referencia
-      })
+    // Inyectar muestras de señal
+    signalSamples.forEach(s => timelineEvents.push({ 
+        timestamp: s.timestamp, type: 'signal', rssi: s.rssi, band: s.band 
+    }))
+
+    // Inyectar eventos BTM
+    btmEvents.forEach(e => timelineEvents.push({
+        timestamp: e.timestamp, type: 'btm', label: e.event_type === 'request' ? 'Sugerencia AP 📡' : 'Respuesta Cliente 📱',
+        sub: e.status_code === 0 ? 'Aceptado ✅' : (e.status_code ? `Rechazo (Code ${e.status_code}) ❌` : ''),
+        rssi: e.rssi
+    }))
+
+    // Inyectar Transiciones (El "Salto")
+    transitions.forEach(t => {
+        timelineEvents.push({
+            timestamp: t.start_time, type: 'transition', 
+            label: t.steering_type === 'aggressive' ? 'Destierro AP (Deauth) ⚠️' : 'Inicio Salto 🚀',
+            band: t.from_band
+        })
+        if (t.end_time) {
+            timelineEvents.push({
+                timestamp: t.end_time, type: 'connected', 
+                label: 'Conectado ✅', 
+                sub: `A ${t.to_band}`,
+                band: t.to_band
+            })
+        }
     })
 
-    // 2. Eventos BTM
-    btmEvents.forEach(event => {
-      // Intentar encontrar una muestra de señal cercana para asignar RSSI si no tiene
-      const fallbackRssi = event.rssi || null
-      
-      timelineEvents.push({
-        timestamp: event.timestamp,
-        type: 'btm',
-        eventType: event.event_type,
-        frequency: event.frequency,
-        band: event.band,
-        mac: event.client_mac,
-        bssid: event.ap_bssid,
-        statusCode: event.status_code,
-        rssi: fallbackRssi 
-      })
-    })
+    timelineEvents.sort((a, b) => a.timestamp - b.timestamp)
+    const firstTimestamp = timelineEvents[0]?.timestamp || 0
     
-    // 3. Transiciones
-    transitions.forEach(transition => {
-      timelineEvents.push({
-        timestamp: transition.start_time,
-        type: 'transition_start',
-        frequency: null,
-        band: transition.from_band,
-        mac: transition.client_mac,
-        bssid: transition.from_bssid,
-        steeringType: transition.steering_type,
-        rssi: null // Se interpolará o usará default
-      })
+    const band24Data = []
+    const band5Data = []
+    const milestoneMarkers = []
+    
+    // Lógica de "Connected Band" para el sombreado de fondo
+    let currentBand = null
+    const backgrounds = []
+
+    timelineEvents.forEach((ev, idx) => {
+      const relX = parseFloat((ev.timestamp - firstTimestamp).toFixed(2))
       
-      if (transition.end_time) {
-        timelineEvents.push({
-          timestamp: transition.end_time,
-          type: 'transition_end',
-          frequency: null,
-          band: transition.to_band,
-          mac: transition.client_mac,
-          bssid: transition.to_bssid,
-          isSuccess: transition.is_successful,
-          duration: transition.duration,
-          steeringType: transition.steering_type,
-          rssi: null
+      // Actualizar banda actual
+      if (ev.band) currentBand = ev.band
+      
+      // Crear punto de datos
+      const point = { x: relX, y: ev.rssi || -60, band: ev.band || currentBand }
+
+      if (point.band?.includes('2.4')) {
+        band24Data.push(point)
+      } else {
+        band5Data.push(point)
+      }
+
+      // Si es un hito importante (BTM, Transition, Deauth), crear marcador
+      if (ev.type !== 'signal') {
+        milestoneMarkers.push({
+          x: relX,
+          y: ev.rssi || -40, // Colocar arriba para visibilidad
+          label: ev.label,
+          sub: ev.sub,
+          type: ev.type
         })
       }
     })
-    
-    // Ordenar por timestamp
-    timelineEvents.sort((a, b) => a.timestamp - b.timestamp)
-    
-    // Si no hay eventos, retornar datos vacíos
-    if (timelineEvents.length === 0) {
-      return { labels: [], datasets: [] }
-    }
-    
-    // Normalizar timestamps
-    const firstTimestamp = timelineEvents[0].timestamp
-    
-    // Crear labels (tiempo relativo)
-    const labels = timelineEvents.map(event => (event.timestamp - firstTimestamp).toFixed(3) + 's')
-    
-    // Helper de frecuencia
-    const frequencyToValue = (freq, band) => {
-      if (freq) return freq
-      if (band) {
-        if (band.includes('2.4')) return 2437
-        if (band.includes('5')) return 5180
-      }
-      return 2437
-    }
-    
-    const band24DataRaw = []
-    const band5DataRaw = []
-    const btmMarkers = []
-    
-    timelineEvents.forEach((event, index) => {
-      const freqValue = frequencyToValue(event.frequency, event.band)
-      
-      // Lógica de RSSI robusta
-      let rssiValue = event.rssi
-      
-      // Si el evento no tiene RSSI (ej. una transición), intentar usar el valor anterior (Hold)
-      // o simular si no hay nada.
-      if (!rssiValue) {
-         // Buscar el RSSI más cercano anterior
-         for (let i = index - 1; i >= 0; i--) {
-             if (timelineEvents[i].rssi) {
-                 rssiValue = timelineEvents[i].rssi
-                 break
-             }
-         }
-      }
-      
-      // Si aún no hay RSSI (ej. al inicio), usar default visual
-      if (!rssiValue) {
-          const noise = (index % 5) * 2 
-          rssiValue = -60 + noise 
-      }
-      
-      // Clasificar banda
-      const is24GHz = (event.band && event.band.includes('2.4')) || (freqValue >= 2400 && freqValue < 2500)
-      const is5GHz = (event.band && event.band.includes('5')) || (freqValue >= 5000 && freqValue < 6000)
-      
-      const dataPoint = {
-          x: index,
-          y: rssiValue,
-          timestamp: event.timestamp,
-          relativeTime: (event.timestamp - firstTimestamp).toFixed(3),
-          mac: event.mac,
-          bssid: event.bssid,
-          band: is24GHz ? '2.4GHz' : (is5GHz ? '5GHz' : 'Unknown'),
-          frequency: freqValue,
-          eventType: event.type,
-          statusCode: event.statusCode,
-          rssi: event.rssi,
-          duration: event.duration,
-          steeringType: event.steeringType
-      }
-      
-      // Asignar al dataset correcto
-      if (is24GHz) {
-        band24DataRaw.push(dataPoint)
-        band5DataRaw.push(null)
-      } else if (is5GHz) {
-        band5DataRaw.push(dataPoint)
-        band24DataRaw.push(null)
-      } else {
-        band24DataRaw.push(dataPoint)
-        band5DataRaw.push(null)
-      }
-      
-      // Marcadores especiales
-      if (event.type === 'btm' && event.eventType === 'request') {
-        btmMarkers.push({ ...dataPoint, eventType: 'BTM Request' })
-      }
-    })
-    
-    // Aplicar suavizado a los datos (reduce ruido visual)
-    const band24Data = smoothData(band24DataRaw)
-    const band5Data = smoothData(band5DataRaw)
-    
+
     return {
-      labels,
       datasets: [
         {
-          label: '2.4 GHz (RSSI)',
+          label: 'Señal 2.4 GHz',
           data: band24Data,
-          borderColor: 'rgb(59, 130, 246)',
+          borderColor: '#3b82f6',
           backgroundColor: 'rgba(59, 130, 246, 0.1)',
-          pointBackgroundColor: 'rgb(59, 130, 246)',
-          pointBorderColor: '#fff',
-          pointBorderWidth: 1,
-          pointRadius: 0, // Ocultar puntos para línea limpia
-          pointHoverRadius: 6,
-          borderWidth: 2,
-          tension: 0.4, // Curvas más suaves
-          spanGaps: true,
-          fill: false
-        },
-        {
-          label: '5 GHz (RSSI)',
-          data: band5Data,
-          borderColor: 'rgb(16, 185, 129)',
-          backgroundColor: 'rgba(16, 185, 129, 0.1)',
-          pointBackgroundColor: 'rgb(16, 185, 129)',
-          pointBorderColor: '#fff',
-          pointBorderWidth: 1,
-          pointRadius: 0, // Ocultar puntos
-          pointHoverRadius: 6,
-          borderWidth: 2,
+          pointRadius: 0,
+          borderWidth: 3,
           tension: 0.4,
-          spanGaps: true,
-          fill: false
+          fill: 'origin',
         },
         {
-          label: 'Eventos BTM',
-          data: btmMarkers,
-          borderColor: 'rgb(239, 68, 68)',
-          backgroundColor: 'rgba(239, 68, 68, 0.9)',
-          pointBackgroundColor: 'rgb(239, 68, 68)',
-          pointBorderColor: '#fff',
-          pointBorderWidth: 2,
+          label: 'Señal 5 GHz',
+          data: band5Data,
+          borderColor: '#10b981',
+          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+          pointRadius: 0,
+          borderWidth: 3,
+          tension: 0.4,
+          fill: 'origin',
+        },
+        {
+          label: 'Hitos del Flujo',
+          data: milestoneMarkers,
+          showLine: false,
           pointRadius: 8,
-          pointHoverRadius: 10,
-          pointStyle: 'triangle',
-          showLine: false
+          pointHoverRadius: 12,
+          pointStyle: 'rectRounded',
+          backgroundColor: (context) => {
+            const type = context.raw?.type
+            if (type === 'btm') return '#f59e0b'
+            if (type === 'transition') return '#ef4444'
+            return '#10b981'
+          }
         }
       ]
     }
   }, [btmEvents, transitions, signalSamples])
-  
-  // Opciones de configuración de la gráfica
+
   const options = {
     responsive: true,
     maintainAspectRatio: false,
-    interaction: {
-      mode: 'index',
-      intersect: false,
-    },
-    plugins: {
-      legend: {
-        position: 'top',
-        labels: {
-          color: '#e5e7eb',
-          font: {
-            size: 12,
-            weight: '600'
-          },
-          padding: 15,
-          usePointStyle: true
-        }
-      },
-      title: {
-        display: true,
-        text: 'Evolución de Intensidad de Señal (RSSI) y Band Steering',
-        color: '#f9fafb',
-        font: {
-          size: 16,
-          weight: 'bold'
-        },
-        padding: {
-          top: 10,
-          bottom: 20
-        }
-      },
-      tooltip: {
-        backgroundColor: 'rgba(17, 24, 39, 0.95)',
-        titleColor: '#f9fafb',
-        bodyColor: '#e5e7eb',
-        borderColor: '#4b5563',
-        borderWidth: 1,
-        padding: 12,
-        displayColors: true,
-        callbacks: {
-          title: (context) => {
-            const dataPoint = context[0].raw
-            if (!dataPoint) return ''
-            return `⏱️ Tiempo: +${dataPoint.relativeTime}s`
-          },
-          label: (context) => {
-            const dataPoint = context.raw
-            if (!dataPoint) return ''
-            
-            const labels = []
-            
-            // Información Principal: Signal Strength
-            labels.push(`📊 RSSI: ${dataPoint.y} dBm`)
-            
-            // Banda y Frecuencia
-            labels.push(`📡 Banda: ${dataPoint.band || 'Desconocida'}`)
-            if (dataPoint.frequency) {
-               labels.push(`📶 Frecuencia: ${dataPoint.frequency} MHz`)
-            }
-            
-            // MAC addresses
-            if (dataPoint.mac) {
-              labels.push(`💻 MAC Cliente: ${dataPoint.mac}`)
-            }
-            
-            if (dataPoint.bssid) {
-              labels.push(`🔌 BSSID AP: ${dataPoint.bssid}`)
-            }
-            
-            // Tipo de evento
-            if (dataPoint.eventType === 'BTM Request') {
-              labels.push(`🔔 Evento: BTM Request enviado`)
-            } else if (dataPoint.eventType === 'transition_start') {
-              labels.push(`🚀 Inicio de transición`)
-              if (dataPoint.steeringType) {
-                const typeLabels = {
-                  'aggressive': 'Agresivo (Deauth/Disassoc)',
-                  'assisted': 'Asistido (BTM/802.11v)',
-                  'preventive': 'Preventivo',
-                  'unknown': 'Desconocido'
-                }
-                labels.push(`   Tipo: ${typeLabels[dataPoint.steeringType] || dataPoint.steeringType}`)
-              }
-            } else if (dataPoint.eventType === 'transition_end') {
-              labels.push(`✅ Fin de transición`)
-            }
-            
-            return labels
-          }
-        }
-      }
-    },
+    layout: { padding: { top: 20, bottom: 10 } },
     scales: {
       x: {
-        display: true,
-        title: {
-          display: true,
-          text: 'Tiempo Relativo (s)',
-          color: '#9ca3af',
-          font: {
-            size: 13,
-            weight: '600'
-          }
-        },
-        ticks: {
-          color: '#9ca3af',
-          maxRotation: 45,
-          minRotation: 45,
-          autoSkip: true,
-          maxTicksLimit: 15
-        },
-        grid: {
-          color: 'rgba(75, 85, 99, 0.2)',
-          drawBorder: false
-        }
+        type: 'linear',
+        title: { display: true, text: 'Segundos del análisis', color: '#9ca3af', font: { weight: 'bold' } },
+        ticks: { color: '#6b7280' },
+        grid: { display: false }
       },
       y: {
-        display: true,
-        title: {
-          display: true,
-          text: 'Intensidad de Señal (dBm)',
-          color: '#9ca3af',
-          font: {
-            size: 13,
-            weight: '600'
-          }
-        },
-        ticks: {
-          color: '#9ca3af',
-          callback: function(value) {
-            return `${value} dBm`
-          }
-        },
-        grid: {
-          color: 'rgba(75, 85, 99, 0.2)',
-          drawBorder: false
-        },
-        // Escala típica de WiFi RSSI: -30 (excelente) a -90 (muy mala)
         min: -95,
-        max: -30,
-        reverse: false // RSSI es negativo, -30 es "más alto" visualmente en chartjs si no inverse? 
-        // En chartjs lineal, -30 está arriba y -95 abajo por defecto (mayor valor arriba). 
-        // Como -30 > -95, esto está correcto para mostrar "mejor señal" arriba.
+        max: -25,
+        title: { display: true, text: 'Calidad de Señal (dBm)', color: '#9ca3af' },
+        ticks: { color: '#6b7280' },
+        grid: { color: 'rgba(255, 255, 255, 0.05)' }
+      }
+    },
+    plugins: {
+      legend: { position: 'bottom', labels: { color: '#e5e7eb', usePointStyle: true, padding: 20 } },
+      tooltip: {
+        enabled: true,
+        backgroundColor: '#1f2937',
+        titleFont: { size: 14, weight: 'bold' },
+        padding: 12,
+        cornerRadius: 8,
+        callbacks: {
+          label: (ctx) => {
+            const p = ctx.raw
+            if (p.label) return [`📢 ${p.label}`, `📝 ${p.sub || ''}`]
+            return `📊 Señal: ${p.y} dBm (${p.band})`
+          }
+        }
       }
     }
   }
-  
-  // Si no hay datos, mostrar mensaje
-  if (chartData.labels.length === 0) {
+
+  if (!chartData.datasets || chartData.datasets.length === 0 || 
+     (chartData.datasets[0].data.length === 0 && chartData.datasets[1].data.length === 0)) {
     return (
-      <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center p-8">
-        <div className="p-4 rounded-full bg-dark-accent-primary/10 mb-4">
-          <Radio className="w-12 h-12 text-dark-accent-primary opacity-50" />
-        </div>
-        <h3 className="text-lg font-semibold text-dark-text-primary mb-2">
-          Sin datos de banda disponibles
-        </h3>
-        <p className="text-sm text-dark-text-secondary max-w-md">
-          No se detectaron eventos BTM o transiciones de banda en esta captura.
-          La gráfica se mostrará cuando haya datos disponibles.
-        </p>
+      <div className="flex flex-col items-center justify-center min-h-[300px] text-dark-text-secondary">
+        <Activity className="w-12 h-12 mb-2 opacity-20" />
+        <p>No hay eventos de steering para graficar</p>
       </div>
     )
   }
-  
+
   return (
-    <div className="w-full h-full min-h-[400px]">
-      <Line data={chartData} options={options} />
+    <div className="space-y-4">
+      {/* Mini Dashboard de la Gráfica */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
+        <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20">
+          <p className="text-[10px] text-blue-400 uppercase font-bold tracking-wider mb-1">Zona Estabilidad</p>
+          <p className="text-sm font-semibold text-dark-text-primary">&gt; -65 dBm</p>
+        </div>
+        <div className="p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
+          <p className="text-[10px] text-yellow-400 uppercase font-bold tracking-wider mb-1">Zona Steering</p>
+          <p className="text-sm font-semibold text-dark-text-primary">-65 a -75 dBm</p>
+        </div>
+        <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+          <p className="text-[10px] text-red-400 uppercase font-bold tracking-wider mb-1">Zona Crítica</p>
+          <p className="text-sm font-semibold text-dark-text-primary">&lt; -80 dBm</p>
+        </div>
+        <div className="p-3 rounded-xl bg-green-500/10 border border-green-500/20">
+          <p className="text-[10px] text-green-400 uppercase font-bold tracking-wider mb-1">Resultado</p>
+          <p className="text-sm font-semibold text-dark-text-primary">Salto Exitoso ✅</p>
+        </div>
+      </div>
+
+      <div className="relative w-full h-[450px] bg-dark-bg-secondary/30 rounded-2xl p-4 border border-dark-border-primary/50 overflow-hidden">
+        {/* Línea de umbral crítica visual (SVG superpuesto para máxima nitidez) */}
+        <div className="absolute left-0 right-0 border-t border-dashed border-red-500/30 z-0" style={{ top: '75%' }}>
+            <span className="absolute right-4 -top-5 text-[10px] text-red-500/50 font-bold uppercase">Umbral Crítico (-75dBm)</span>
+        </div>
+        
+        <Line 
+          key={rawStats?.diagnostics?.client_mac || 'initial'} 
+          data={chartData} 
+          options={options} 
+        />
+      </div>
+
+      <div className="flex items-start gap-3 p-4 rounded-xl bg-dark-accent-primary/5 border border-dark-accent-primary/20">
+          <ShieldAlert className="w-5 h-5 text-dark-accent-primary flex-shrink-0 mt-0.5" />
+          <div className="text-xs text-dark-text-secondary leading-relaxed">
+              <span className="text-dark-text-primary font-bold">Interpretación del flujo:</span> Las burbujas de colores indican eventos de red. 
+              Si ves un marcador <span className="text-red-400 font-bold">rojo</span> seguido de uno <span className="text-green-400 font-bold">verde</span>, 
+              significa que el equipo de red intervino para mejorar tu conexión moviéndote de banda.
+          </div>
+      </div>
     </div>
   )
 }

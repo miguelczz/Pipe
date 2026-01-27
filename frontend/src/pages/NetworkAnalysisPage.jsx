@@ -21,7 +21,7 @@ import {
   Info
 } from 'lucide-react'
 import { MarkdownRenderer } from '../components/chat/MarkdownRenderer'
-import { BandSteeringChart } from '../components/charts/BandSteeringChart'
+import { BandSteeringChart } from '../components/charts/BandSteeringChart_v2'
 
 export function NetworkAnalysisPage() {
   const [selectedFile, setSelectedFile] = useState(null)
@@ -336,7 +336,7 @@ export function NetworkAnalysisPage() {
               <div className="lg:col-span-1 space-y-4">
                 
                 {/* Identidad del Dispositivo*/}
-                {result.aidlc?.device && (
+                {result.band_steering?.device && (
                   <Card className="p-4 border-dark-accent-primary/20 bg-dark-accent-primary/5">
                     <div className="flex items-center gap-2 mb-3">
                       <Smartphone className="w-4 h-4 text-dark-accent-primary" />
@@ -347,15 +347,15 @@ export function NetworkAnalysisPage() {
                     <div className="space-y-2">
                        <div className="flex justify-between items-center">
                         <p className="text-xs text-dark-text-muted">Marca</p>
-                        <p className="text-sm font-medium text-dark-text-primary">{result.aidlc.device.vendor || 'Desconocido'}</p>
+                        <p className="text-sm font-medium text-dark-text-primary">{result.band_steering.device.vendor || 'Desconocido'}</p>
                       </div>
                       <div className="flex justify-between items-center">
                         <p className="text-xs text-dark-text-muted">Modelo</p>
-                        <p className="text-sm font-medium text-dark-text-primary">{result.aidlc.device.device_model || 'Genérico'}</p>
+                        <p className="text-sm font-medium text-dark-text-primary">{result.band_steering.device.device_model || 'Genérico'}</p>
                       </div>
                        <div className="flex justify-between items-center">
                         <p className="text-xs text-dark-text-muted">Categoría</p>
-                        <p className="text-sm font-medium text-dark-text-primary capitalize">{result.aidlc.device.device_category?.replace('_', ' ') || 'N/A'}</p>
+                        <p className="text-sm font-medium text-dark-text-primary capitalize">{result.band_steering.device.device_category?.replace('_', ' ') || 'N/A'}</p>
                       </div>
                     </div>
                   </Card>
@@ -407,7 +407,7 @@ export function NetworkAnalysisPage() {
                       <p className="text-xs text-dark-text-muted mb-1">Estándares KVR Identificados</p>
                       <p className="text-sm font-semibold text-dark-text-primary">
                         {(() => {
-                          const kvrCheck = result.aidlc?.compliance_checks?.find(c => c.check_name === "Estándares KVR")
+                          const kvrCheck = result.band_steering?.compliance_checks?.find(c => c.check_name === "Estándares KVR")
                           if (kvrCheck && kvrCheck.details) {
                             // Extrae solo los verdaderos de los detalles (k=True, v=True, r=False)
                             const detected = []
@@ -459,9 +459,9 @@ export function NetworkAnalysisPage() {
                   </h3>
                 </div>
                 <BandSteeringChart 
-                  btmEvents={result.aidlc?.btm_events || []}
-                  transitions={result.aidlc?.transitions || []}
-                  signalSamples={result.aidlc?.signal_samples || []}
+                  btmEvents={result.band_steering?.btm_events || []}
+                  transitions={result.band_steering?.transitions || []}
+                  signalSamples={result.band_steering?.signal_samples || []}
                   rawStats={result.stats || {}}
                 />
               </Card>
@@ -488,8 +488,8 @@ export function NetworkAnalysisPage() {
                   </div>
                   
                   {/* Badge de Veredicto */}
-                  {(result.aidlc?.verdict || result.stats?.steering_analysis?.verdict) && (() => {
-                    const verdict = (result.aidlc?.verdict || result.stats?.steering_analysis?.verdict || '').toUpperCase()
+                  {(result.band_steering?.verdict || result.stats?.steering_analysis?.verdict) && (() => {
+                    const verdict = (result.band_steering?.verdict || result.stats?.steering_analysis?.verdict || '').toUpperCase()
                     // Definir explícitamente qué veredictos son "Éxito" (Verde)
                     const successVerdicts = ['SUCCESS', 'EXCELLENT', 'GOOD', 'PREVENTIVE_SUCCESS', 'ACCEPTABLE', 'SLOW_BUT_SUCCESSFUL']
                     const isSuccess = successVerdicts.includes(verdict)
@@ -507,15 +507,71 @@ export function NetworkAnalysisPage() {
                   })()}
                 </div>
 
+                {/* Tabla de Resumen de Eventos BTM */}
+                {result.band_steering?.btm_events?.length > 0 && (
+                  <div className="mb-8 pb-6 border-b border-dark-border-primary/100">
+                    <h3 className="text-base font-semibold text-dark-text-primary mb-4 flex items-center gap-2">
+                      <TrendingUp className="w-5 h-5 text-dark-accent-primary" />
+                      Resumen de Eventos BTM
+                    </h3>
+                    <div className="overflow-x-auto rounded-lg border border-dark-border-primary/50 bg-dark-bg-secondary/20">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-dark-bg-secondary/50 text-[10px] uppercase tracking-wider text-dark-text-muted">
+                            <th className="px-4 py-3 font-semibold">Tiempo</th>
+                            <th className="px-4 py-3 font-semibold">Evento</th>
+                            <th className="px-4 py-3 font-semibold">Banda/Freq</th>
+                            <th className="px-4 py-3 font-semibold">RSSI</th>
+                            <th className="px-4 py-3 font-semibold">Estado/Resultado</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-dark-border-primary/10">
+                          {result.band_steering.btm_events.map((event, idx) => (
+                            <tr key={idx} className="hover:bg-dark-accent-primary/5 transition-colors">
+                              <td className="px-4 py-2 text-xs font-mono text-dark-text-secondary">
+                                {event.timestamp.toFixed(2)}s
+                              </td>
+                              <td className="px-4 py-2">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                  event.event_type === 'request' 
+                                    ? 'bg-amber-500/20 text-amber-400' 
+                                    : 'bg-blue-500/20 text-blue-400'
+                                }`}>
+                                  {event.event_type === 'request' ? 'Request (AP)' : 'Response (CLI)'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-2 text-xs text-dark-text-primary">
+                                {event.band || 'N/A'} <span className="text-dark-text-muted">({event.frequency || '--'} MHz)</span>
+                              </td>
+                              <td className="px-4 py-2 text-xs font-semibold text-dark-text-primary">
+                                {event.rssi} dBm
+                              </td>
+                              <td className="px-4 py-2 text-xs">
+                                {event.event_type === 'response' ? (
+                                  <span className={event.status_code === 0 ? 'text-green-400' : 'text-red-400'}>
+                                    {event.status_code === 0 ? 'Aceptada' : `Rechazada (${event.status_code})`}
+                                  </span>
+                                ) : (
+                                  <span className="text-dark-text-muted italic opacity-60 text-[11px]">Sugerencia AP</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
                 {/* Detalle de Cumplimiento Técnico (AIDLC) - AHORA AL PRINCIPIO */}
-                {result.aidlc?.compliance_checks && (
+                {result.band_steering?.compliance_checks && (
                   <div className="mb-8 pb-6 border-b border-dark-border-primary/100">
                     <h3 className="text-base font-semibold text-dark-text-primary mb-4 flex items-center gap-2">
                       <ShieldCheck className="w-5 h-5 text-dark-accent-primary" />
                       Detalle de Cumplimiento Técnico
                     </h3>
                     <div className="space-y-2.5">
-                      {result.aidlc.compliance_checks.map((check, idx) => (
+                      {result.band_steering.compliance_checks.map((check, idx) => (
                         <div 
                           key={idx} 
                           className="bg-dark-bg-secondary/30 rounded-lg py-2.5 px-4 border border-dark-border-primary/10 hover:border-dark-accent-primary/20 transition-all"

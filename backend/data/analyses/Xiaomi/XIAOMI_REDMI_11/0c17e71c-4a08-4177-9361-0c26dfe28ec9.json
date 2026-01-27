@@ -1,0 +1,1131 @@
+{
+    "analysis_id": "0c17e71c-4a08-4177-9361-0c26dfe28ec9",
+    "filename": "XIAOMI REDMI 11 .pcapng",
+    "analysis_timestamp": "2026-01-26T15:46:01.259788",
+    "total_packets": 41,
+    "wlan_packets": 41,
+    "analysis_duration_ms": 0,
+    "devices": [
+        {
+            "mac_address": "70:a7:41:6b:a9:3d",
+            "oui": "70:a7:41",
+            "vendor": "Xiaomi",
+            "device_model": "XIAOMI REDMI 11",
+            "device_category": "mobile_device",
+            "is_virtual": false,
+            "confidence_score": 1.0
+        }
+    ],
+    "btm_events": [],
+    "transitions": [
+        {
+            "client_mac": "74:a2:e6:d4:0a:31",
+            "steering_type": "unknown",
+            "start_time": 1726590936.012716,
+            "end_time": 1726590936.012716,
+            "duration": 0.0,
+            "from_bssid": "74:a2:e6:d4:0a:31",
+            "to_bssid": "74:a2:e6:d4:0a:31",
+            "from_band": "2.4GHz",
+            "to_band": "2.4GHz",
+            "is_successful": true,
+            "is_band_change": false,
+            "returned_to_original": false,
+            "btm_status_code": null,
+            "failure_reason": null
+        },
+        {
+            "client_mac": "ea:6b:a7:0f:0d:1a",
+            "steering_type": "unknown",
+            "start_time": 1726590977.102595,
+            "end_time": 1726590977.102595,
+            "duration": 0.0,
+            "from_bssid": "ea:6b:a7:0f:0d:1a",
+            "to_bssid": "ea:6b:a7:0f:0d:1a",
+            "from_band": "2.4GHz",
+            "to_band": "2.4GHz",
+            "is_successful": true,
+            "is_band_change": false,
+            "returned_to_original": false,
+            "btm_status_code": null,
+            "failure_reason": null
+        }
+    ],
+    "signal_samples": [
+        {
+            "timestamp": 1726590910.073322,
+            "rssi": -86,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.073355,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.073362,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.074437,
+            "rssi": -86,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.074453,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.074473,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.074478,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.07568,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.075693,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.0757,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.075717,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.076783,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.084915,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.084929,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.086183,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.086196,
+            "rssi": -90,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.086204,
+            "rssi": -90,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.086224,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.08728,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.093559,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.093575,
+            "rssi": -90,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.093592,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.094789,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.094803,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.096052,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.096065,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.096072,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.096078,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.097296,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.097309,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1726590910.097315,
+            "rssi": -88,
+            "band": "5GHz",
+            "frequency": 5180
+        }
+    ],
+    "btm_requests": 2,
+    "btm_responses": 0,
+    "btm_success_rate": 1.0,
+    "successful_transitions": 2,
+    "failed_transitions": 0,
+    "loops_detected": false,
+    "kvr_support": {
+        "k_support": false,
+        "v_support": true,
+        "r_support": false
+    },
+    "compliance_checks": [
+        {
+            "check_name": "Soporte BTM (802.11v)",
+            "description": "El dispositivo debe demostrar soporte activo de BSS Transition Management",
+            "category": "btm",
+            "passed": false,
+            "severity": "high",
+            "details": "Request: 2, Response: 0",
+            "recommendation": "El cliente ignora o rechaza solicitudes BTM. Revisar códigos de estado."
+        },
+        {
+            "check_name": "Asociación y Reasociación",
+            "description": "Verifica ciclos completos de asociación y reasociación",
+            "category": "association",
+            "passed": false,
+            "severity": "medium",
+            "details": "Assoc: 0/1, Reassoc: 0/1\nDisassoc: 0, Deauth: 0",
+            "recommendation": "Handshake incompleto o captura parcial; no se detectó el ciclo completo de asociación."
+        },
+        {
+            "check_name": "Steering Efectivo",
+            "description": "Se deben realizar cambios de banda estables (2.4 -> 5GHz)",
+            "category": "performance",
+            "passed": true,
+            "severity": "high",
+            "details": "Cambios detectados: 2",
+            "recommendation": null
+        },
+        {
+            "check_name": "Estándares KVR",
+            "description": "Soporte de estándares de movilidad (Mínimo 2 de 3: k, v, r)",
+            "category": "kvr",
+            "passed": false,
+            "severity": "medium",
+            "details": "k=False, v=True, r=False",
+            "recommendation": "Se recomienda habilitar el estándar faltante para roaming óptimo"
+        }
+    ],
+    "verdict": "FAILED",
+    "analysis_text": "# INFORME TÉCNICO DE AUDITORÍA DE BAND STEERING\n\n## 1. RESUMEN EJECUTIVO\n**Veredicto Final:** FALLIDA\n\nLa auditoría de Band Steering para el dispositivo **XIAOMI REDMI 11** ha resultado en un veredicto FALLIDO. Las principales causas de este resultado se deben a la falta de soporte para BSS Transition Management (802.11v), la ausencia de un ciclo completo de asociación y reasociación, y la no implementación de estándares de movilidad (802.11k/r). Durante la captura, se registraron 41 paquetes WLAN, pero no se detectaron intentos de steering, lo que indica una falta de interacción efectiva entre el cliente y los puntos de acceso.\n\n### Hallazgos Clave:\n- **Soporte BTM (802.11v):** 0 respuestas a solicitudes BTM.\n- **Asociación y Reasociación:** No se completaron ciclos de asociación.\n- **Estándares KVR:** Solo se soporta 802.11v, faltando 802.11k y 802.11r.\n\n---\n\n## 2. ANÁLISIS TÉCNICO\n\n### Análisis de Protocolos de Roaming (802.11k/v/r)\nDurante la captura, no se detectaron eventos relacionados con BSS Transition Management (BTM). El dispositivo no respondió a las solicitudes BTM, lo que indica que no está utilizando mecanismos cooperativos para el steering. Esto se evidencia por la falta de eventos BTM, donde se registraron 2 solicitudes sin respuesta. La ausencia de 802.11k y 802.11r limita aún más la capacidad del cliente para realizar transiciones de banda efectivas.\n\n### Estabilidad de Asociación\nNo se registraron eventos de asociación o reasociación durante la captura. Esto sugiere que el cliente no completó el ciclo de asociación necesario para establecer una conexión estable con los puntos de acceso. La falta de eventos de disasociación y deautenticación también indica que el cliente no está interactuando adecuadamente con la red, lo que puede ser un indicativo de un problema en la configuración del dispositivo o en la red misma.\n\n### Estándares KVR\nEl análisis de los estándares de movilidad revela que el dispositivo solo soporta 802.11v, mientras que no se detectó soporte para 802.11k y 802.11r. Esto es crítico, ya que la falta de estos estándares limita la capacidad del cliente para realizar transiciones rápidas y eficientes entre bandas, afectando negativamente la experiencia del usuario en entornos con múltiples puntos de acceso.\n\n### Calidad de Red\nA pesar de la falta de actividad en el steering, los indicadores de red muestran que no hubo retransmisiones TCP, reintentos WLAN ni errores DNS. Esto sugiere que, aunque el cliente no está utilizando los mecanismos de steering, la calidad de la conexión en términos de errores de red es aceptable. Sin embargo, esto no compensa la falta de funcionalidad en el steering.\n\n### Comportamiento del Cliente\nEl análisis del comportamiento del cliente indica que el dispositivo no está cooperando con el acceso a la red para realizar transiciones de banda. La falta de respuestas a las solicitudes BTM y la ausencia de eventos de asociación sugieren que el cliente podría estar configurado incorrectamente o que no es compatible con los estándares necesarios para un rendimiento óptimo en entornos de múltiples bandas.\n\n---\n\n## 3. CONCLUSIÓN FINAL\nLa auditoría de Band Steering para el **XIAOMI REDMI 11** ha sido calificada como FALLIDA debido a la falta de soporte para BSS Transition Management (802.11v), la ausencia de un ciclo completo de asociación y la no implementación de estándares de movilidad (802.11k/r). Estos problemas críticos impiden que el dispositivo aproveche las capacidades de steering de la red, lo que podría resultar en una experiencia de usuario subóptima. Se recomienda revisar la configuración del dispositivo y considerar la actualización de firmware o hardware para cumplir con los estándares necesarios para un rendimiento óptimo en redes Wi-Fi.",
+    "raw_stats": {
+        "total_packets": 41,
+        "total_tcp_packets": 0,
+        "total_wlan_packets": 41,
+        "approx_total_bytes": 0,
+        "diagnostics": {
+            "tcp_retransmissions": 0,
+            "wlan_retries": 0,
+            "dns_errors": 0,
+            "steering_events_count": 34,
+            "unique_bssid_count": 4,
+            "bssid_info": {
+                "70:a7:41:6b:a9:3d": {
+                    "band": "2.4GHz",
+                    "ssid": "",
+                    "frequency": "2462"
+                },
+                "d8:10:9f:99:3e:b2": {
+                    "band": "5GHz",
+                    "ssid": "",
+                    "frequency": "5180"
+                },
+                "74:a2:e6:d4:0a:31": {
+                    "band": "2.4GHz",
+                    "ssid": "",
+                    "frequency": "2462"
+                },
+                "ea:6b:a7:0f:0d:1a": {
+                    "band": "2.4GHz",
+                    "ssid": "",
+                    "frequency": "2462"
+                }
+            },
+            "client_mac": "fa:dd:fb:bd:3f:17",
+            "capture_quality": "INSUFICIENTE - No se detectaron intentos de steering",
+            "band_counters": {
+                "beacon_24": 0,
+                "beacon_5": 0,
+                "probe_req": 0,
+                "probe_resp_24": 0,
+                "probe_resp_5": 0,
+                "data_24": 0,
+                "data_5": 0
+            }
+        },
+        "steering_analysis": {
+            "transitions": [],
+            "steering_attempts": 0,
+            "successful_transitions": 0,
+            "failed_transitions": 0,
+            "loop_detected": false,
+            "avg_transition_time": 0,
+            "max_transition_time": 0,
+            "transition_times": [],
+            "verdict": "NO_STEERING_EVENTS",
+            "clients_analyzed": 4,
+            "preventive_steering": false
+        },
+        "steering_events": [
+            {
+                "timestamp": 1726590887.110342,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "70:a7:41:6b:a9:3d",
+                "da": "1e:67:af:62:83:25",
+                "client_mac": "70:a7:41:6b:a9:3d",
+                "bssid": "70:a7:41:6b:a9:3d",
+                "ssid": "",
+                "band": "2.4GHz",
+                "frequency": "2462",
+                "reason_code": "0x0008",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.073322,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-86"
+            },
+            {
+                "timestamp": 1726590910.073355,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.073362,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.074437,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-86"
+            },
+            {
+                "timestamp": 1726590910.074453,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.074473,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.074478,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.07568,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.075693,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.0757,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.075717,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.076783,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.084915,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.084929,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.086183,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.086196,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-90"
+            },
+            {
+                "timestamp": 1726590910.086204,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-90"
+            },
+            {
+                "timestamp": 1726590910.086224,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.08728,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.093559,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.093575,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-90"
+            },
+            {
+                "timestamp": 1726590910.093592,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.094789,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.094803,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.096052,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.096065,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.096072,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.096078,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.097296,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.097309,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590910.097315,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2",
+                "client_mac": "fa:dd:fb:bd:3f:17",
+                "bssid": "d8:10:9f:99:3e:b2",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0003",
+                "assoc_status_code": "",
+                "signal_strength": "-88"
+            },
+            {
+                "timestamp": 1726590936.012716,
+                "type": "Reassociation Response",
+                "subtype": 3,
+                "sa": "74:a2:e6:d4:0a:31",
+                "da": "0e:d2:1e:ec:8a:a8",
+                "client_mac": "74:a2:e6:d4:0a:31",
+                "bssid": "74:a2:e6:d4:0a:31",
+                "ssid": "",
+                "band": "2.4GHz",
+                "frequency": "2462",
+                "reason_code": "",
+                "assoc_status_code": "0x0000",
+                "signal_strength": "-74"
+            },
+            {
+                "timestamp": 1726590977.102595,
+                "type": "Association Response",
+                "subtype": 1,
+                "sa": "ea:6b:a7:0f:0d:1a",
+                "da": "4e:87:95:98:d5:33",
+                "client_mac": "ea:6b:a7:0f:0d:1a",
+                "bssid": "ea:6b:a7:0f:0d:1a",
+                "ssid": "",
+                "band": "2.4GHz",
+                "frequency": "2462",
+                "reason_code": "",
+                "assoc_status_code": "0x0000",
+                "signal_strength": "-76"
+            }
+        ],
+        "signal_samples": [
+            {
+                "timestamp": 1726590910.073322,
+                "rssi": -86,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.073355,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.073362,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.074437,
+                "rssi": -86,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.074453,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.074473,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.074478,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.07568,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.075693,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.0757,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.075717,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.076783,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.084915,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.084929,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.086183,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.086196,
+                "rssi": -90,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.086204,
+                "rssi": -90,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.086224,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.08728,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.093559,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.093575,
+                "rssi": -90,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.093592,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.094789,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.094803,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.096052,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.096065,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.096072,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.096078,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.097296,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.097309,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            },
+            {
+                "timestamp": 1726590910.097315,
+                "rssi": -88,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "fa:dd:fb:bd:3f:17",
+                "da": "d8:10:9f:99:3e:b2"
+            }
+        ],
+        "top_protocols": [
+            [
+                "radiotap",
+                41
+            ],
+            [
+                "wlan_radio",
+                41
+            ],
+            [
+                "wlan",
+                41
+            ]
+        ],
+        "top_sources": [],
+        "top_destinations": []
+    },
+    "fragments": []
+}

@@ -34,7 +34,7 @@ __all__ = [
     "Document",
     "Session",
     
-    # AIDLC Band Steering Models
+    # Band Steering Models
     "BTMStatusCode",
     "SteeringType",
     "DeviceCategory",

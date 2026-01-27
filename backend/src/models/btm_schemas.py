@@ -1,5 +1,5 @@
 """
-Schemas Pydantic para el análisis de Band Steering (AIDLC).
+Schemas Pydantic para el análisis de Band Steering.
 Definiciones de estructuras de datos para eventos 802.11, BTM, métricas y reportes.
 """
 from enum import Enum

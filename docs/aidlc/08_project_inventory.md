@@ -19,7 +19,7 @@ Este archivo resume los componentes reales presentes en el repositorio (backend,
     - `repositories/` — Integración con Qdrant/Postgres (`document_repository.py`, `qdrant_repository.py`, `session_repository.py`).
     - `services/` — Servicios de alto nivel (`band_steering_service.py`, `embeddings_service.py`, `fragment_extractor.py`).
     - `tools/` — Herramientas especializadas (`btm_analyzer.py`, `device_classifier.py`, `dns_tool.py`, `ip_tool.py`, `rag_tool.py`, `wireshark_tool.py`).
-    - `utils/` — Utilidades (`embeddings.py`, `oui_lookup.py`, `ragas_callback.py`, `ragas_evaluator.py`, `text_processing.py`).
+    - `utils/` — Utilidades (`embeddings.py`, `oui_lookup.py`, `ragas_callback.py`, `ragas_evaluator.py`, `text_processing.py`, `deauth_validator.py`).
 
 - **data/**: Contiene `analyses/`, `fragments/` y datos de entrada/salida organizados por fabricante.
 - **docs/**: Documentación del proyecto; incluye AIDLC y PDFs técnicos.

@@ -1,0 +1,368 @@
+{
+    "analysis_id": "0364a39c-9122-4ebd-ba7a-67924c3b3d42",
+    "filename": "HUAWEI P30 PRO .pcapng",
+    "analysis_timestamp": "2026-01-26T14:52:51.836336",
+    "total_packets": 14,
+    "wlan_packets": 14,
+    "analysis_duration_ms": 0,
+    "devices": [
+        {
+            "mac_address": "f8:79:28:56:f3:d5",
+            "oui": "f8:79:28",
+            "vendor": "Huawei",
+            "device_model": "HUAWEI P30 PRO",
+            "device_category": "mobile_device",
+            "is_virtual": false,
+            "confidence_score": 1.0
+        }
+    ],
+    "btm_events": [],
+    "transitions": [],
+    "signal_samples": [],
+    "btm_requests": 5,
+    "btm_responses": 0,
+    "btm_success_rate": 0.0,
+    "successful_transitions": 0,
+    "failed_transitions": 5,
+    "loops_detected": true,
+    "kvr_support": {
+        "k_support": false,
+        "v_support": true,
+        "r_support": false
+    },
+    "compliance_checks": [
+        {
+            "check_name": "Soporte BTM (802.11v)",
+            "description": "El dispositivo debe demostrar soporte activo de BSS Transition Management",
+            "category": "btm",
+            "passed": false,
+            "severity": "high",
+            "details": "Request: 5, Response: 0",
+            "recommendation": "El cliente ignora o rechaza solicitudes BTM. Revisar códigos de estado."
+        },
+        {
+            "check_name": "Asociación y Reasociación",
+            "description": "Verifica ciclos completos de asociación y reasociación",
+            "category": "association",
+            "passed": false,
+            "severity": "medium",
+            "details": "Assoc: 0/5, Reassoc: 0/0\nDisassoc: 0, Deauth: 5",
+            "recommendation": "Prueba FALLIDA: Se detectaron 5 Deauth y 0 Disassoc DIRIGIDOS al cliente, indicando inestabilidad forzada."
+        },
+        {
+            "check_name": "Steering Efectivo",
+            "description": "Se deben realizar cambios de banda efectivos (2.4 -> 5GHz)",
+            "category": "performance",
+            "passed": false,
+            "severity": "high",
+            "details": "Cambios de banda: 0",
+            "recommendation": "Ajustar umbrales de RSSI para forzar steering"
+        },
+        {
+            "check_name": "Estándares KVR",
+            "description": "Soporte de estándares de movilidad (Mínimo 2 de 3: k, v, r)",
+            "category": "kvr",
+            "passed": false,
+            "severity": "medium",
+            "details": "k=False, v=True, r=False",
+            "recommendation": "Se recomienda habilitar el estándar faltante para roaming óptimo"
+        }
+    ],
+    "verdict": "FAILED",
+    "analysis_text": "# INFORME TÉCNICO DE AUDITORÍA DE BAND STEERING\n\n**Archivo:** HUAWEI P30 PRO .pcapng  \n**Paquetes WLAN analizados:** 14  \n**Eventos 802.11 capturados:** 10  \n**Calidad de captura:** VALIDA - Steering fallido pero analizable  \n\n---\n\n## 1. RESUMEN EJECUTIVO\n\n**Veredicto Final AIDLC:** FAILED\n\nLa auditoría de Band Steering ha resultado en un veredicto FALLIDO debido a múltiples fallos críticos en los mecanismos de gestión de transición de banda y asociación. Se detectaron 5 eventos de Deauthentication, lo que indica que el cliente fue expulsado activamente en lugar de realizar transiciones de banda efectivas. Además, no se registraron eventos de BSS Transition Management (BTM), lo que sugiere que el cliente no está utilizando los mecanismos adecuados para el steering. En total, se realizaron 5 intentos de steering, todos fallidos, sin transiciones exitosas.\n\n---\n\n## 2. ANÁLISIS TÉCNICO\n\n### Análisis de Protocolos de Roaming (802.11k/v/r)\n\n- **Soporte BTM (802.11v): FALLÓ**\n  - **Evidencia:** Se registraron 5 solicitudes de BTM, pero no se recibió ninguna respuesta (0 Responses).\n  - **Contexto:** La falta de respuestas a las solicitudes BTM indica que el cliente no está cooperando con el AP para gestionar las transiciones de banda. Esto limita la capacidad del cliente para recibir información sobre las bandas disponibles y su calidad, lo que es crucial para un roaming eficiente.\n\n- **Estándares KVR: FALLÓ**\n  - **Evidencia:** El cliente soporta 802.11v, pero no 802.11k ni 802.11r.\n  - **Contexto:** La ausencia de 802.11k (Neighbor Reports) y 802.11r (Fast Transition) impide que el cliente tome decisiones informadas sobre el roaming, lo que contribuye a la ineficiencia en la gestión de la transición de banda.\n\n### Análisis de Transiciones de Banda\n\n- **Transiciones fallidas:** 5 de 5 intentos de steering resultaron en fallos.\n- **Bucles detectados:** SÍ\n  - **Descripción:** Se observaron múltiples intentos de transición que resultaron en bucles, donde el cliente intentó cambiar de banda pero permaneció en la misma (misma banda, mismo BSSID).\n  - **Impacto:** Esto indica un comportamiento problemático en el que el cliente no logra completar el proceso de asociación, lo que puede ser frustrante para el usuario final.\n\n### Estabilidad de Asociación\n\n- **Asociación y Reasociación: FALLÓ**\n  - **Evidencia:** Se registraron 5 eventos de Deauthentication y 0 eventos de asociación o reasociación.\n  - **Contexto:** La presencia de 5 Deauth indica que el AP está expulsando al cliente de manera activa, lo que sugiere problemas de estabilidad en la conexión. Esto no solo afecta la experiencia del usuario, sino que también impide que el cliente realice transiciones de banda efectivas.\n\n### Calidad de Red\n\n- **Indicadores de red:**\n  - **TCP Retransmissions:** 0\n  - **WLAN Retries:** 0\n  - **DNS Errors:** 0\n  - **Contexto:** Aunque no se registraron retransmisiones ni errores, la falta de estabilidad en la asociación y el steering efectivo son problemas más críticos que afectan la experiencia general del usuario.\n\n### Comportamiento del Cliente\n\n- **Capacidades detectadas:** El cliente soporta 802.11v, pero no los estándares k y r, lo que limita su capacidad para realizar transiciones de banda efectivas.\n- **Preferencias de banda observadas:** El cliente parece estar atrapado en un ciclo de bucles en la misma banda, lo que indica que no está tomando decisiones de roaming adecuadas.\n\n---\n\n## 3. CONCLUSIÓN FINAL\n\nLa auditoría de Band Steering ha resultado en un veredicto FALLIDO debido a la falta de soporte para BSS Transition Management (802.11v), problemas de asociación y reasociación, y la incapacidad para realizar transiciones de banda efectivas. Se recomienda revisar la configuración del cliente para habilitar los estándares faltantes (802.11k y 802.11r) y ajustar los umbrales de RSSI para facilitar un steering más efectivo. La inestabilidad observada en la conexión del cliente debe ser abordada para mejorar la experiencia del usuario y la eficiencia de la red.",
+    "raw_stats": {
+        "total_packets": 14,
+        "total_tcp_packets": 0,
+        "total_wlan_packets": 14,
+        "approx_total_bytes": 0,
+        "diagnostics": {
+            "tcp_retransmissions": 0,
+            "wlan_retries": 0,
+            "dns_errors": 0,
+            "steering_events_count": 10,
+            "unique_bssid_count": 1,
+            "bssid_info": {
+                "f8:79:28:56:f3:d5": {
+                    "band": "5GHz",
+                    "ssid": "",
+                    "frequency": "5180"
+                }
+            },
+            "client_mac": "12:27:9e:88:3a:96",
+            "capture_quality": "VALIDA - Steering fallido pero analizable",
+            "band_counters": {
+                "beacon_24": 0,
+                "beacon_5": 0,
+                "probe_req": 0,
+                "probe_resp_24": 0,
+                "probe_resp_5": 0,
+                "data_24": 0,
+                "data_5": 0
+            }
+        },
+        "steering_analysis": {
+            "transitions": [
+                {
+                    "client": "f8:79:28:56:f3:d5",
+                    "type": "aggressive",
+                    "deauth_time": 1726592092.906427,
+                    "reassoc_time": 1726592093.020034,
+                    "transition_time": 0.11360716819763184,
+                    "from_bssid": "f8:79:28:56:f3:d5",
+                    "to_bssid": "f8:79:28:56:f3:d5",
+                    "from_band": "5GHz",
+                    "to_band": "5GHz",
+                    "is_band_change": false,
+                    "reason_code": "0x0002",
+                    "status": "LOOP",
+                    "returned_to_original": true
+                },
+                {
+                    "client": "f8:79:28:56:f3:d5",
+                    "type": "aggressive",
+                    "deauth_time": 1726592096.045703,
+                    "reassoc_time": 1726592096.159573,
+                    "transition_time": 0.11387014389038086,
+                    "from_bssid": "f8:79:28:56:f3:d5",
+                    "to_bssid": "f8:79:28:56:f3:d5",
+                    "from_band": "5GHz",
+                    "to_band": "5GHz",
+                    "is_band_change": false,
+                    "reason_code": "0x0002",
+                    "status": "LOOP",
+                    "returned_to_original": true
+                },
+                {
+                    "client": "f8:79:28:56:f3:d5",
+                    "type": "aggressive",
+                    "deauth_time": 1726592099.185863,
+                    "reassoc_time": 1726592099.299312,
+                    "transition_time": 0.1134490966796875,
+                    "from_bssid": "f8:79:28:56:f3:d5",
+                    "to_bssid": "f8:79:28:56:f3:d5",
+                    "from_band": "5GHz",
+                    "to_band": "5GHz",
+                    "is_band_change": false,
+                    "reason_code": "0x0002",
+                    "status": "LOOP",
+                    "returned_to_original": true
+                },
+                {
+                    "client": "f8:79:28:56:f3:d5",
+                    "type": "aggressive",
+                    "deauth_time": 1726592102.315537,
+                    "reassoc_time": 1726592102.43652,
+                    "transition_time": 0.12098312377929688,
+                    "from_bssid": "f8:79:28:56:f3:d5",
+                    "to_bssid": "f8:79:28:56:f3:d5",
+                    "from_band": "5GHz",
+                    "to_band": "5GHz",
+                    "is_band_change": false,
+                    "reason_code": "0x0002",
+                    "status": "LOOP",
+                    "returned_to_original": true
+                },
+                {
+                    "client": "f8:79:28:56:f3:d5",
+                    "type": "aggressive",
+                    "deauth_time": 1726592105.455575,
+                    "reassoc_time": null,
+                    "transition_time": null,
+                    "from_bssid": "f8:79:28:56:f3:d5",
+                    "to_bssid": null,
+                    "from_band": "5GHz",
+                    "to_band": null,
+                    "is_band_change": null,
+                    "reason_code": "0x0002",
+                    "status": "NO_REASSOC",
+                    "returned_to_original": false
+                }
+            ],
+            "steering_attempts": 5,
+            "successful_transitions": 0,
+            "failed_transitions": 5,
+            "loop_detected": true,
+            "avg_transition_time": 0.115,
+            "max_transition_time": 0.121,
+            "transition_times": [
+                0.11360716819763184,
+                0.11387014389038086,
+                0.1134490966796875,
+                0.12098312377929688
+            ],
+            "verdict": "FAILED",
+            "clients_analyzed": 1,
+            "preventive_steering": false
+        },
+        "steering_events": [
+            {
+                "timestamp": 1726592089.887493,
+                "type": "Association Response",
+                "subtype": 1,
+                "sa": "f8:79:28:56:f3:d5",
+                "da": "12:27:9e:88:3a:96",
+                "client_mac": "f8:79:28:56:f3:d5",
+                "bssid": "f8:79:28:56:f3:d5",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "",
+                "assoc_status_code": "0x0000",
+                "signal_strength": "-10"
+            },
+            {
+                "timestamp": 1726592092.906427,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "f8:79:28:56:f3:d5",
+                "da": "12:27:9e:88:3a:96",
+                "client_mac": "f8:79:28:56:f3:d5",
+                "bssid": "f8:79:28:56:f3:d5",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0002",
+                "assoc_status_code": "",
+                "signal_strength": "-10"
+            },
+            {
+                "timestamp": 1726592093.020034,
+                "type": "Association Response",
+                "subtype": 1,
+                "sa": "f8:79:28:56:f3:d5",
+                "da": "12:27:9e:88:3a:96",
+                "client_mac": "f8:79:28:56:f3:d5",
+                "bssid": "f8:79:28:56:f3:d5",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "",
+                "assoc_status_code": "0x0000",
+                "signal_strength": "-10"
+            },
+            {
+                "timestamp": 1726592096.045703,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "f8:79:28:56:f3:d5",
+                "da": "12:27:9e:88:3a:96",
+                "client_mac": "f8:79:28:56:f3:d5",
+                "bssid": "f8:79:28:56:f3:d5",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0002",
+                "assoc_status_code": "",
+                "signal_strength": "-10"
+            },
+            {
+                "timestamp": 1726592096.159573,
+                "type": "Association Response",
+                "subtype": 1,
+                "sa": "f8:79:28:56:f3:d5",
+                "da": "12:27:9e:88:3a:96",
+                "client_mac": "f8:79:28:56:f3:d5",
+                "bssid": "f8:79:28:56:f3:d5",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "",
+                "assoc_status_code": "0x0000",
+                "signal_strength": "-10"
+            },
+            {
+                "timestamp": 1726592099.185863,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "f8:79:28:56:f3:d5",
+                "da": "12:27:9e:88:3a:96",
+                "client_mac": "f8:79:28:56:f3:d5",
+                "bssid": "f8:79:28:56:f3:d5",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0002",
+                "assoc_status_code": "",
+                "signal_strength": "-10"
+            },
+            {
+                "timestamp": 1726592099.299312,
+                "type": "Association Response",
+                "subtype": 1,
+                "sa": "f8:79:28:56:f3:d5",
+                "da": "12:27:9e:88:3a:96",
+                "client_mac": "f8:79:28:56:f3:d5",
+                "bssid": "f8:79:28:56:f3:d5",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "",
+                "assoc_status_code": "0x0000",
+                "signal_strength": "-10"
+            },
+            {
+                "timestamp": 1726592102.315537,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "f8:79:28:56:f3:d5",
+                "da": "12:27:9e:88:3a:96",
+                "client_mac": "f8:79:28:56:f3:d5",
+                "bssid": "f8:79:28:56:f3:d5",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0002",
+                "assoc_status_code": "",
+                "signal_strength": "-10"
+            },
+            {
+                "timestamp": 1726592102.43652,
+                "type": "Association Response",
+                "subtype": 1,
+                "sa": "f8:79:28:56:f3:d5",
+                "da": "12:27:9e:88:3a:96",
+                "client_mac": "f8:79:28:56:f3:d5",
+                "bssid": "f8:79:28:56:f3:d5",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "",
+                "assoc_status_code": "0x0000",
+                "signal_strength": "-10"
+            },
+            {
+                "timestamp": 1726592105.455575,
+                "type": "Deauthentication",
+                "subtype": 12,
+                "sa": "f8:79:28:56:f3:d5",
+                "da": "12:27:9e:88:3a:96",
+                "client_mac": "f8:79:28:56:f3:d5",
+                "bssid": "f8:79:28:56:f3:d5",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "0x0002",
+                "assoc_status_code": "",
+                "signal_strength": "-10"
+            }
+        ],
+        "signal_samples": [],
+        "top_protocols": [
+            [
+                "radiotap",
+                14
+            ],
+            [
+                "wlan_radio",
+                14
+            ],
+            [
+                "wlan",
+                14
+            ]
+        ],
+        "top_sources": [],
+        "top_destinations": []
+    },
+    "fragments": []
+}

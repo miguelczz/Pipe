@@ -94,7 +94,7 @@ export function ReportsPage() {
         file_name: fullDetail.filename,
         analysis: fullDetail.analysis_text,
         stats: fullDetail.raw_stats || {},
-        aidlc: {
+        band_steering: {
             analysis_id: fullDetail.analysis_id,
             verdict: fullDetail.verdict,
             device: fullDetail.devices?.[0] || {},

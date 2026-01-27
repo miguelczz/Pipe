@@ -12,28 +12,28 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Reason codes IEEE 802.11 que indican salida GRACEFUL (no forzada)
+# Reason codes IEEE 802.11 que indican salida GRACEFUL (normal/voluntaria)
 GRACEFUL_DEAUTH_REASONS = {
     3: "STA is leaving (client-initiated)",
+    4: "Disassociated due to inactivity",
     8: "Deauthenticated because of inactivity",
     32: "Disassociated due to inactivity",
-    33: "Unable to handle another STA",
-    34: "Class 2 frame received from nonauthenticated STA",
-    35: "Class 3 frame received from nonassociated STA",
 }
 
-# Reason codes que indican destierro FORZADO del AP
+# Reason codes que indican destierro FORZADO del AP (trigger para steering)
 FORCED_DEAUTH_REASONS = {
     1: "Unspecified reason (likely AP-initiated)",
     2: "Previous authentication no longer valid",
-    5: "Disassociated because AP unable to handle all currently associated STAs",
-    7: "Class 2 frame received from an unauthenticated STA",
+    5: "AP unable to handle all currently associated STAs (AP full)",
+    6: "Class 2 frame received from nonauthenticated STA",
+    7: "Class 3 frame received from nonassociated STA",
     15: "4-Way Handshake timeout",
     16: "Group Key Handshake timeout",
-    17: "IE in 4-Way Handshake differs from (Re)Association Request/Probe Response/Beacon",
+    17: "IE in 4-Way Handshake differs",
     24: "Invalid PMKID",
     25: "Invalid MDE",
     26: "Invalid FTE",
+    33: "Disassociated due to lack of QoS resources",
     34: "Disassociated due to poor channel conditions",
 }
 
@@ -176,7 +176,14 @@ class DeauthValidator:
             return "directed_to_other"
         
         # Está dirigido al cliente, verificar reason code
-        reason = int(event.get("reason_code", 0)) if event.get("reason_code") else 0
+        reason_raw = event.get("reason_code", 0)
+        try:
+            if isinstance(reason_raw, str) and reason_raw.startswith("0x"):
+                reason = int(reason_raw, 16)
+            else:
+                reason = int(reason_raw) if reason_raw else 0
+        except (ValueError, TypeError):
+            reason = 0
         
         if DeauthValidator.is_forced_deauth(reason):
             return "forced_to_client"
@@ -187,7 +194,11 @@ class DeauthValidator:
     def get_reason_description(reason_code: int) -> str:
         """Retorna descripción textual de un reason_code."""
         try:
-            code_int = int(reason_code)
+            # Asegurar que sea int incluso si viene como hex string
+            if isinstance(reason_code, str) and reason_code.startswith("0x"):
+                code_int = int(reason_code, 16)
+            else:
+                code_int = int(reason_code)
         except (ValueError, TypeError):
             return f"Unknown reason code: {reason_code}"
         
@@ -222,7 +233,15 @@ class DeauthValidator:
         classification = DeauthValidator.classify_deauth_event(event, client_mac, ap_bssid)
         is_forced = classification == "forced_to_client"
         
-        reason_code = int(event.get("reason_code", 0)) if event.get("reason_code") else 0
+        reason_raw = event.get("reason_code", 0)
+        try:
+            if isinstance(reason_raw, str) and reason_raw.startswith("0x"):
+                reason_code = int(reason_raw, 16)
+            else:
+                reason_code = int(reason_raw) if reason_raw else 0
+        except (ValueError, TypeError):
+            reason_code = 0
+            
         reason_desc = DeauthValidator.get_reason_description(reason_code)
         
         da = event.get("da", "").strip().lower() if event.get("da") else "unknown"

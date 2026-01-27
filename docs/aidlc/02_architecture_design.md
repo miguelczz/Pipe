@@ -42,6 +42,7 @@ graph TB
         WiresharkTool[Wireshark Tool]
         FragmentExtractor[Fragment Extractor]
         ComplianceEvaluator[Compliance Evaluator]
+        DeauthValidator[Deauth Validator]
     end
     
     subgraph "AI/ML Layer"

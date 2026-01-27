@@ -10,6 +10,7 @@ from typing import Dict, Any
 
 from openai import OpenAI
 from ..settings import settings
+from ..utils.deauth_validator import DeauthValidator, REASSOC_TIMEOUT_SECONDS
 
 logger = logging.getLogger(__name__)
 
@@ -568,12 +569,16 @@ class WiresharkTool:
                 
                 # CASO 1: Steering agresivo (Deauth/Disassoc → Reassoc)
                 if event_subtype in [10, 12]:  # Disassoc o Deauth
-                    total_steering_attempts += 1
-                    
-                    deauth_time = event["timestamp"]
-                    deauth_bssid = event["bssid"]
                     deauth_band = event["band"]
                     reason_code = event["reason_code"]
+                    
+                    # VALIDAR DEAUTH: Solo contar si es dirigido y forzado
+                    is_forced, classification, desc = DeauthValidator.validate_and_classify(event, client_mac)
+                    if not is_forced:
+                        logger.debug(f"Deauth ignorado para steering count: {desc}")
+                        continue
+                    
+                    total_steering_attempts += 1
                     
                     # Buscar reassociation subsecuente
                     reassoc_found = False
@@ -581,8 +586,14 @@ class WiresharkTool:
                     new_bssid = None
                     new_band = None
                     
-                    for j in range(i + 1, min(i + 15, len(client_event_list))):  # Aumentado a 15
+                    # Usar ventana configurada (15.0s)
+                    reassoc_limit = REASSOC_TIMEOUT_SECONDS
+                    for j in range(i + 1, len(client_event_list)):
                         next_event = client_event_list[j]
+                        
+                        # Si excedemos la ventana temporal, parar búsqueda
+                        if (next_event["timestamp"] - deauth_time) > reassoc_limit:
+                            break
                         
                         # Buscar RESPONSE (1=Assoc Resp, 3=Reassoc Resp)
                         if next_event["subtype"] in [1, 3]:
@@ -747,21 +758,26 @@ class WiresharkTool:
             verdict = self._determine_verdict(
                 total_steering_attempts, successful_transitions, 
                 failed_transitions, loop_detected, avg_transition_time,
-                band_counters, # Pasamos band_counters para ver BTM
-                events, # NUEVO: Pasar eventos para detectar Deauth/Disassoc
-                primary_client_mac # PASAR MAC PARA FILTRO
+                band_counters, 
+                events, 
+                primary_client_mac 
             )
+        
+        # --- NUEVA REGLA DE SINCRONIZACIÓN ANSI ---
+        # Si detectamos más transiciones físicas que intentos lógicos, 
+        # elevamos los intentos para mantener la coherencia en la UI.
+        total_attempts_final = max(total_steering_attempts, len(transitions))
         
         return {
             "transitions": transitions,
-            "steering_attempts": total_steering_attempts,
+            "steering_attempts": total_attempts_final,
             "successful_transitions": successful_transitions,
-            "failed_transitions": failed_transitions,
-            "loop_detected": loop_detected,
+            "failed_transitions": max(0, total_attempts_final - successful_transitions),
+            "loop_detected": loop_detected or len(transitions) > 3,
             "avg_transition_time": round(avg_transition_time, 3),
             "max_transition_time": round(max_transition_time, 3),
             "transition_times": transition_times,
-            "verdict": verdict,
+            "verdict": verdict, 
             "clients_analyzed": len(client_events),
             "preventive_steering": preventive_detected
         }
@@ -1210,7 +1226,7 @@ class WiresharkTool:
             "  * Nivel de cooperación con el AP\n\n"
             
             "## REGLA DE ORO: FIDELIDAD TOTAL AL VEREDICTO FINAL\n"
-            "El resumen técnico tiene una sección llamada '**VEREDICTO FINAL AIDLC**'.\n"
+            "El resumen técnico tiene una sección llamada '**VEREDICTO FINAL**'.\n"
             "- Si el veredicto es **SUCCESS** o **EXITOSA**, el reporte **DEBE** concluir que la prueba fue exitosa.\n"
             "- Si el veredicto es **SUCCESS**, puedes mencionar bucles o tiempos altos como 'puntos de mejora' o 'observaciones técnicas', pero **NUNCA** usarlos para decir que la prueba falló.\n"
             "- Un veredicto de **SUCCESS** significa que los criterios mínimos se cumplieron; tu análisis debe validar ese éxito.\n\n"
@@ -1220,7 +1236,7 @@ class WiresharkTool:
             "- Si un check dice 'PASÓ', NO lo uses como causa de fallo ni de veredicto negativo.\n\n"
             
             "## ESTRUCTURA DEL REPORTE (ADAPTATIVA)\n\n"
-            "1. **RESUMEN EJECUTIVO**: Declara el veredicto basándote estrictamente en el 'VEREDICTO FINAL AIDLC'.\n"
+            "1. **RESUMEN EJECUTIVO**: Declara el veredicto basándote estrictamente en el 'VEREDICTO FINAL'.\n"
             "2. **ANÁLISIS TÉCNICO**: Usa las métricas para explicar el proceso.\n"
             "3. **CONCLUSIÓN FINAL**: Debe ser 100% coherente con el veredicto de la tabla.\n\n"
             

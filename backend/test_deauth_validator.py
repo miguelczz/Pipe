@@ -1,7 +1,9 @@
-"""
-Tests unitarios para el validador de Deauthentication.
-Valida que la lógica de clasificación de deauth sea correcta en todos los casos edge.
-"""
+import os
+
+# Mock environment variables to avoid validation errors when importing settings via utils
+os.environ["openai_api_key"] = "mock_key"
+os.environ["qdrant_url"] = "http://localhost:6333"
+
 import pytest
 from backend.src.utils.deauth_validator import (
     DeauthValidator,
@@ -192,12 +194,12 @@ class TestClassifyDeauthEvent:
         classification = DeauthValidator.classify_deauth_event(event, "11:22:33:44:55:66")
         assert classification == "graceful"
 
-    def test_poor_channel_conditions_forced(self):
-        """Reason code 34 (poor channel) debe ser forced."""
+    def test_lack_of_qos_forced(self):
+        """Reason code 33 (Lacking QoS) debe ser forced."""
         event = {
             "da": "11:22:33:44:55:66",
             "sa": "aa:bb:cc:dd:ee:ff",
-            "reason_code": 34,
+            "reason_code": 33,
         }
         classification = DeauthValidator.classify_deauth_event(event, "11:22:33:44:55:66")
         assert classification == "forced_to_client"

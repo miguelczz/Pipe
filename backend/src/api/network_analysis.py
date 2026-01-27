@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/network-analysis", tags=["network-analysis"])
 
-# Instanciar el servicio orquestador (AIDLC)
+# Instanciar el servicio orquestador
 band_steering_service = BandSteeringService()
 
 # Thread pool executor para operaciones pesadas de tshark
@@ -28,7 +28,7 @@ _executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_pre
 @router.post("/analyze")
 async def analyze_network_capture(file: UploadFile = File(...)):
     """
-    Sube un archivo de captura y realiza el proceso AIDLC completo de Band Steering.
+    Sube un archivo de captura y realiza el proceso completo de Band Steering.
     """
     if not file.filename:
         raise HTTPException(status_code=400, detail="Debe proporcionar un archivo de captura.")
@@ -52,7 +52,7 @@ async def analyze_network_capture(file: UploadFile = File(...)):
         content = await file.read()
         temp_path.write_bytes(content)
 
-        logger.info(f"[NetworkAnalysis] Iniciando proceso AIDLC para: {file.filename}")
+        logger.info(f"[NetworkAnalysis] Iniciando proceso Band Steering para: {file.filename}")
 
         # Ejecutar el servicio en un thread separado (tshark es bloqueante)
         loop = asyncio.get_event_loop()
@@ -73,7 +73,7 @@ async def analyze_network_capture(file: UploadFile = File(...)):
                 "file_name": analysis.filename,
                 "analysis": analysis.analysis_text,
                 "stats": raw_stats,  # Mantenemos la estructura de stats para el dashboard
-                "aidlc": {
+                "band_steering": {
                     "analysis_id": analysis.analysis_id,
                     "verdict": analysis.verdict,
                     "device": analysis.devices[0].model_dump() if analysis.devices else {},

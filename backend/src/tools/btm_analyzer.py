@@ -20,13 +20,14 @@ from ..models.btm_schemas import (
     CaptureFragment,
     SignalSample
 )
+from ..utils.deauth_validator import DeauthValidator, REASSOC_TIMEOUT_SECONDS
 
 logger = logging.getLogger(__name__)
 
 class BTMAnalyzer:
     """
     Analizador especializado en BTM y Steering.
-    Sigue el diseño AIDLC para separar la lógica de análisis de la extracción de datos.
+    Sigue el diseño para separar la lógica de análisis de la extracción de datos.
     """
 
     def analyze_btm_events(
@@ -54,30 +55,37 @@ class BTMAnalyzer:
         
         # 4. Calcular métricas agregadas (Sincronizar con WiresharkTool)
         btm_stats = band_counters.get("btm_stats", {})
-        
-        # Preferir contadores directos si vienen de WiresharkTool
-        btm_requests = band_counters.get("steering_attempts") or btm_stats.get("requests", 0)
         btm_responses = btm_stats.get("responses", 0)
         
-        # 5. Detectar éxitos (Override desde WiresharkTool tiene prioridad)
-        successful_transitions = band_counters.get("successful_transitions", 0)
+        # ============================================================
+        # REGLA DE ORO: WiresharkTool es la ÚNICA fuente de verdad
+        # ============================================================
+        # Si WiresharkTool ya calculó steering_attempts y successful_transitions,
+        # esos valores son DEFINITIVOS y NO se recalculan.
         
-        # Solo calcular si el override es 0
-        if successful_transitions == 0:
+        ws_attempts = band_counters.get("steering_attempts", 0)
+        ws_success = band_counters.get("successful_transitions", 0)
+        
+        # Si WiresharkTool proporcionó valores, usarlos directamente
+        if ws_attempts > 0 or ws_success > 0:
+            btm_requests = ws_attempts
+            successful_transitions = ws_success
+            logger.info(f"📊 Usando valores de WiresharkTool: {ws_success}/{ws_attempts} transiciones")
+        else:
+            # Fallback: Solo si WiresharkTool no detectó nada, calcular desde transitions
+            btm_requests = max(btm_stats.get("requests", 0), len(transitions))
             successful_transitions = sum(1 for t in transitions if t.is_successful)
-            
-        failed_transitions = band_counters.get("failed_transitions", 0)
-        if failed_transitions == 0 and successful_transitions == 0:
-            failed_transitions = sum(1 for t in transitions if not t.is_successful)
+            logger.info(f"📊 Calculando desde transitions locales: {successful_transitions}/{btm_requests}")
+        
+        failed_transitions = max(0, btm_requests - successful_transitions)
         
         # Re-calcular success rate
-        # Para el Steering, el éxito es (Exitosos / Intentos)
         btm_success_rate = (successful_transitions / btm_requests) if btm_requests > 0 else 0.0
+        btm_success_rate = max(0.0, min(1.0, float(btm_success_rate)))
 
-        # ... (Soporte KVR similar)
         kvr_support = self._evaluate_kvr_support(band_counters, btm_requests > 0 or btm_responses > 0)
         
-        # 6. Generar tabla de cumplimiento (Pasando los contadores reales)
+        # 6. Generar tabla de cumplimiento
         compliance_checks = self._run_compliance_checks(
             btm_requests, btm_responses, btm_success_rate, 
             kvr_support, transitions, band_counters,
@@ -157,12 +165,21 @@ class BTMAnalyzer:
                         try: rssi_val = int(s)
                         except: pass
                 
+                try:
+                    if status is not None:
+                        status_str = str(status)
+                        status_code = int(status_str, 16) if status_str.startswith("0x") else int(status_str)
+                    else:
+                        status_code = None
+                except (ValueError, TypeError):
+                    status_code = None
+                
                 schemas.append(BTMEvent(
                     timestamp=float(e.get("timestamp", 0.0)),
                     event_type=evt_type,
                     client_mac=e.get("client_mac", "unknown"),
                     ap_bssid=e.get("ap_bssid") or e.get("bssid", "unknown"),
-                    status_code=int(status) if status is not None and str(status).isdigit() else None,
+                    status_code=status_code,
                     band=e.get("band"),
                     frequency=int(e.get("frequency")) if e.get("frequency") else None,
                     rssi=rssi_val
@@ -205,16 +222,16 @@ class BTMAnalyzer:
                 # 2. Detectar fin de transición (Reassociation)
                 if etype in ["Reassociation Response", "Association Response"] or subtype in [1, 3]:
                     # Verificar éxito (Status Code 0)
-                    assoc_status = ev.get("assoc_status_code")
-                    is_success = str(assoc_status) == "0"
+                    assoc_status = str(ev.get("assoc_status_code", ""))
+                    is_success = assoc_status in ["0", "0x00", "0x0", "0x0000"]
                     
                     if is_success:
                         # Determinar tipo
-                        if last_deauth and (ev["timestamp"] - last_deauth["timestamp"] < 5.0):
+                        if last_deauth and (ev["timestamp"] - last_deauth["timestamp"] < REASSOC_TIMEOUT_SECONDS):
                             # Es Agresivo (hubo deauth reciente)
                             start_node = last_deauth
                             s_type = SteeringType.AGGRESSIVE
-                        elif last_btm_req and (ev["timestamp"] - last_btm_req["timestamp"] < 5.0):
+                        elif last_btm_req and (ev["timestamp"] - last_btm_req["timestamp"] < REASSOC_TIMEOUT_SECONDS):
                             # Es Asistido (hubo BTM req reciente)
                             start_node = last_btm_req
                             s_type = SteeringType.ASSISTED
@@ -388,15 +405,13 @@ class BTMAnalyzer:
             
             # Análisis de desconexiones (SOLO SI ES EL CLIENTE ANALIZADO)
             elif st in [10, 12] and primary_client:
-                # Solo penalizar si va dirigido a nuestro cliente
-                is_targeted = (e.get("da") == primary_client or e.get("sa") == primary_client)
-                # Ignorar motivos de salida voluntaria (3=STA leaving, 8=STA leaving BSS)
-                reason = str(e.get("reason_code", "0"))
-                is_graceful = reason in ["3", "8"]
+                is_forced, classification, desc = DeauthValidator.validate_and_classify(e, primary_client)
                 
-                if is_targeted and not is_graceful:
+                if is_forced:
                     if st == 10: forced_disassoc_count += 1
                     else: forced_deauth_count += 1
+                else:
+                    logger.debug(f"Deauth/Disassoc ignorado en cumplimiento: {desc}")
         
         assoc_failures = band_counters.get("association_failures", [])
         failure_count = len(assoc_failures)
@@ -428,17 +443,29 @@ class BTMAnalyzer:
         ))
         
         # 3. Transición de Bandas (Steering Efectivo)
-        # Usar el override si viene de WiresharkTool
-        band_changes = success_count_override if success_count_override > 0 else sum(1 for t in transitions if t.is_band_change and t.is_successful)
-        steering_passed = band_changes > 0 or self._check_preventive_steering(band_counters)
+        # FILOSOFÍA SIMPLE: Si hubo cambios exitosos de banda, el steering funcionó
+        band_changes = success_count_override
+        
+        # CRITERIO DE ÉXITO SIMPLIFICADO: ¿Hubo al menos 1 cambio exitoso?
+        steering_passed = band_changes >= 1
+        
+        # Logging para diagnóstico
+        logger.info(f"🔍 Evaluación Steering Efectivo: cambios_exitosos={band_changes}, resultado={'PASÓ' if steering_passed else 'FALLÓ'}")
+        
+        # Recomendación solo si no hubo cambios
+        if band_changes == 0:
+            rec_steering = "No se detectaron transiciones de banda efectivas. Verificar que la captura contenga el flujo completo de steering."
+        else:
+            rec_steering = None
+
         checks.append(ComplianceCheck(
             check_name="Steering Efectivo",
-            description="Se deben realizar cambios de banda efectivos (2.4 -> 5GHz)",
+            description="Se deben realizar cambios de banda estables (2.4 -> 5GHz)",
             category="performance",
             passed=steering_passed,
             severity="high",
-            details=f"Cambios de banda: {band_changes}",
-            recommendation="Ajustar umbrales de RSSI para forzar steering" if not steering_passed else None
+            details=f"Cambios detectados: {band_changes}",
+            recommendation=rec_steering
         ))
 
         # 4. KVR Suficiente (Flexible: 2 de 3 es éxito)

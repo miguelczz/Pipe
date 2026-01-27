@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 class BandSteeringService:
     """
-    Director de orquesta para el proceso AIDLC de Band Steering.
+    Director de orquesta para el proceso de Band Steering.
     Cumple con los requerimientos de organización por marca y extracción de fragmentos.
     """
 
@@ -49,9 +49,9 @@ class BandSteeringService:
         original_filename: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Realiza el ciclo completo de análisis AIDLC:
+        Realiza el ciclo completo de análisis de Band Steering:
         Extracción -> Clasificación -> Análisis BTM -> Fragmentación -> Reporte IA -> Persistencia -> Indexación.
-        """
+        """ 
         logger.info(f"Iniciando análisis integral de: {file_path}")
         file_name = original_filename or os.path.basename(file_path)
         
@@ -129,8 +129,8 @@ class BandSteeringService:
         )
         
         # Añadir información de cumplimiento al summary para el LLM
-        technical_summary += f"\n\n## AUDITORÍA DE CUMPLIMIENTO (AIDLC)\n\n"
-        technical_summary += f"**Veredicto Final AIDLC:** {analysis.verdict}\n\n"
+        technical_summary += f"\n\n## AUDITORÍA DE CUMPLIMIENTO (BAND STEERING)\n\n"
+        technical_summary += f"**Veredicto Final:** {analysis.verdict}\n\n"
         
         # Separar checks en pasados y fallidos para claridad
         passed_checks = [c for c in analysis.compliance_checks if c.passed]
