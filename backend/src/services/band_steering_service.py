@@ -56,7 +56,13 @@ class BandSteeringService:
         file_name = original_filename or os.path.basename(file_path)
         
         # 1. Extracción de datos crudos (WiresharkTool)
-        raw_data = self.wireshark_tool._extract_basic_stats(file_path)
+        ssid_hint = (user_metadata or {}).get("ssid") if user_metadata else None
+        client_mac_hint = (user_metadata or {}).get("client_mac") if user_metadata else None
+        raw_data = self.wireshark_tool._extract_basic_stats(
+            file_path=file_path,
+            ssid_filter=ssid_hint,
+            client_mac_hint=client_mac_hint,
+        )
         
         # 2. Identificación y Clasificación del Dispositivo
         steering_events = raw_data.get("steering_events", [])
@@ -72,15 +78,41 @@ class BandSteeringService:
             return True
 
         primary_mac = "unknown"
-        for event in steering_events:
-            event_mac = event.get("client_mac")
-            if is_valid_client_mac(event_mac):
-                primary_mac = event_mac
-                break
-        
-        # Si no hay eventos específicos, usar la que detectó WiresharkTool como global
-        if primary_mac == "unknown":
-            primary_mac = raw_data.get("diagnostics", {}).get("client_mac", "unknown")
+        client_mac_warning = None
+
+        # Obtener BSSIDs conocidos para validación
+        bssid_info = raw_data.get("diagnostics", {}).get("bssid_info", {})
+        known_bssids = set()
+        if bssid_info:
+            for bssid in bssid_info.keys():
+                if bssid and bssid != "":
+                    known_bssids.add(bssid.lower().replace("-", ":"))
+
+        # Preferir la MAC proporcionada por el usuario si es válida
+        if client_mac_hint and is_valid_client_mac(client_mac_hint):
+            # Normalizar MAC para comparación
+            hint_normalized = client_mac_hint.lower().replace("-", ":")
+            
+            # Verificar si la MAC ingresada es un BSSID conocido
+            if hint_normalized in known_bssids:
+                client_mac_warning = (
+                    f"La MAC ingresada ({client_mac_hint}) corresponde a un BSSID conocido. "
+                    f"¿Estás seguro de que es la MAC del cliente y no del Access Point? "
+                    f"El análisis usará esta MAC pero puede no ser correcta."
+                )
+                logger.warning(f"⚠️ {client_mac_warning}")
+            else:
+                primary_mac = client_mac_hint
+        else:
+            for event in steering_events:
+                event_mac = event.get("client_mac")
+                if is_valid_client_mac(event_mac):
+                    primary_mac = event_mac
+                    break
+            
+            # Si no hay eventos específicos, usar la que detectó WiresharkTool como global
+            if primary_mac == "unknown":
+                primary_mac = raw_data.get("diagnostics", {}).get("client_mac", "unknown")
             
         device_info = self.device_classifier.classify_device(
             primary_mac, 
@@ -90,18 +122,46 @@ class BandSteeringService:
         logger.info(f"Dispositivo identificado: {device_info.vendor} ({device_info.mac_address})")
 
         # 3. Análisis Especializado BTM y cumplimiento (BTMAnalyzer)
-        # Sincronizar: Pasar los resultados de WiresharkTool como base para BTMAnalyzer
+        # Sincronizar: Pasar los resultados de WiresharkTool como base para BTMAnalyzer.
+        # IMPORTANTE: `combined_stats` es sólo un contenedor de lectura para
+        # BTMAnalyzer; la fuente de verdad sigue siendo `raw_data.diagnostics`.
         combined_stats = raw_data.get("diagnostics", {}).get("band_counters", {}).copy()
         if "steering_analysis" in raw_data:
             combined_stats.update(raw_data["steering_analysis"])
+        # Adjuntar referencia de solo lectura a los datos crudos de Wireshark
+        # para que BTMAnalyzer pueda usar `wireshark_raw.summary` cuando exista.
+        wireshark_raw = raw_data.get("diagnostics", {}).get("wireshark_raw")
+        if wireshark_raw:
+            combined_stats["wireshark_raw"] = wireshark_raw
 
         analysis = self.btm_analyzer.analyze_btm_events(
             steering_events=steering_events,
             band_counters=combined_stats,
             filename=file_name,
             device_info=device_info,
-            signal_samples=signal_samples
+            signal_samples=signal_samples,
+            wireshark_raw=raw_data.get("diagnostics", {}).get("wireshark_raw")
         )
+        
+        # SINCRONIZAR: Actualizar steering_analysis con los valores calculados en
+        # BTMAnalyzer para que todos los paneles muestren los mismos valores.
+        # En esta dirección, BTMAnalyzer sólo puede *refinar* valores ya
+        # derivados de WiresharkTool (por ejemplo, tomando el máximo entre
+        # BTM Accepts y transiciones exitosas), pero nunca inventar
+        # contadores que contradigan a `wireshark_raw.summary`.
+        if "steering_analysis" in raw_data:
+            synchronized_metrics = self._synchronize_steering_metrics(analysis, steering_events, primary_mac)
+            raw_data["steering_analysis"].update(synchronized_metrics)
+            logger.info(f"📊 Métricas sincronizadas: {synchronized_metrics.get('successful_transitions', 0)}/{synchronized_metrics.get('steering_attempts', 0)} exitosos")
+        
+        # COMPARAR: Raw Wireshark vs Datos Procesados
+        wireshark_compare = self._compare_wireshark_raw_vs_processed(
+            raw_data.get("diagnostics", {}).get("wireshark_raw"),
+            raw_data.get("steering_analysis", {}),
+            analysis
+        )
+        if "diagnostics" in raw_data:
+            raw_data["diagnostics"]["wireshark_compare"] = wireshark_compare
         
         # Completar datos globales que BTMAnalyzer no tiene
         analysis.total_packets = raw_data.get("total_packets", 0)
@@ -182,6 +242,232 @@ class BandSteeringService:
             "save_path": save_path
         }
 
+    def _synchronize_steering_metrics(
+        self, 
+        analysis: BandSteeringAnalysis, 
+        steering_events: List[Dict[str, Any]],
+        primary_client_mac: str
+    ) -> Dict[str, Any]:
+        """
+        Sincroniza las métricas de steering_analysis con los valores calculados en BTMAnalyzer.
+        Esto asegura que todos los paneles (métricas, compliance checks, gráfica) muestren los mismos valores.
+        
+        Usa la MISMA lógica que los compliance checks para garantizar consistencia.
+        """
+        # USAR EXACTAMENTE LA MISMA LÓGICA que compliance checks para garantizar consistencia
+        
+        # Contar transiciones con cambio de banda exitosas
+        band_change_transitions = sum(1 for t in analysis.transitions if t.is_successful and t.is_band_change)
+        
+        # Contar transiciones exitosas entre BSSIDs distintos (roaming dentro de la misma banda)
+        # MISMOS CRITERIOS que compliance checks: solo cambios de BSSID, no todas las transiciones sin cambio de banda
+        bssid_change_transitions = sum(
+            1
+            for t in analysis.transitions
+            if t.is_successful
+            and t.from_bssid
+            and t.to_bssid
+            and t.from_bssid != t.to_bssid
+        )
+        
+        # Contar BTM responses exitosos (cooperación del cliente con steering)
+        btm_successful_responses = sum(
+            1 for e in steering_events 
+            if e.get("type") == "btm" 
+            and e.get("event_type") == "response"
+            and (e.get("status_code") == 0 or str(e.get("status_code")) == "0")
+            and (not primary_client_mac or e.get("client_mac") == primary_client_mac)
+        )
+        
+        # MISMOS CRITERIOS que compliance checks: Steering efectivo SOLO si hay:
+        # 1. Al menos 1 cambio de banda exitoso, O
+        # 2. Al menos 1 transición exitosa entre BSSIDs distintos
+        # NOTA: BTM Accept solo cuenta si también hay cambio de banda o BSSID
+        # (un BTM Accept sin cambio físico no es steering efectivo)
+        steering_effective_count = max(band_change_transitions, bssid_change_transitions)
+        
+        # Si hay BTM Accept PERO también hay cambio de banda/BSSID, es steering efectivo
+        # Si solo hay BTM Accept sin cambios físicos, NO es steering efectivo
+        if btm_successful_responses > 0 and steering_effective_count == 0:
+            # BTM Accept sin cambio físico: no es steering efectivo
+            total_successful = 0
+        else:
+            # Si hay steering efectivo, usar el máximo entre efectivo y BTM (si hay cambio físico)
+            total_successful = max(steering_effective_count, btm_successful_responses if steering_effective_count > 0 else 0)
+        
+        # Contar BTM requests del cliente principal
+        btm_requests_count = sum(
+            1 for e in steering_events 
+            if e.get("type") == "btm" 
+            and e.get("event_type") == "request"
+            and (not primary_client_mac or e.get("client_mac") == primary_client_mac)
+        )
+        
+        # El total de intentos es el máximo entre requests BTM y número de transiciones
+        # Esto asegura que si hay más transiciones que requests, se cuenten todas
+        total_attempts = max(btm_requests_count, len(analysis.transitions))
+        
+        # Calcular tiempo promedio de transiciones exitosas
+        successful_transition_times = [
+            t.duration for t in analysis.transitions 
+            if t.is_successful and t.duration and t.duration > 0
+        ]
+        avg_time = sum(successful_transition_times) / len(successful_transition_times) if successful_transition_times else 0
+        
+        return {
+            "steering_attempts": total_attempts,
+            "successful_transitions": total_successful,
+            "failed_transitions": max(0, total_attempts - total_successful),
+            "avg_transition_time": round(avg_time, 3),
+            "max_transition_time": round(max(successful_transition_times) if successful_transition_times else 0, 3),
+            "verdict": analysis.verdict
+        }
+    
+    def _compare_wireshark_raw_vs_processed(
+        self,
+        wireshark_raw: Optional[Dict[str, Any]],
+        steering_analysis: Dict[str, Any],
+        analysis: BandSteeringAnalysis
+    ) -> Dict[str, Any]:
+        """
+        Compara los datos raw de Wireshark con los datos procesados para detectar inconsistencias.
+        Retorna un diccionario con mismatches encontrados.
+        """
+        if not wireshark_raw:
+            return {
+                "enabled": False,
+                "reason": "wireshark_raw no disponible",
+                "mismatches": []
+            }
+        
+        mismatches = []
+        raw_summary = wireshark_raw.get("summary", {})
+        raw_btm = raw_summary.get("btm", {})
+        raw_assoc = raw_summary.get("assoc", {})
+        raw_reassoc = raw_summary.get("reassoc", {})
+        
+        # Comparación 1: BTM Requests
+        raw_btm_requests = raw_btm.get("requests", 0)
+        processed_steering_attempts = steering_analysis.get("steering_attempts", 0)
+        if raw_btm_requests > 0 and processed_steering_attempts != raw_btm_requests:
+            mismatches.append({
+                "field": "btm_requests_vs_steering_attempts",
+                "raw_value": raw_btm_requests,
+                "processed_value": processed_steering_attempts,
+                "delta": processed_steering_attempts - raw_btm_requests,
+                "severity": "warning",
+                "explanation": f"Los intentos de steering ({processed_steering_attempts}) pueden incluir Deauth/Disassoc además de BTM Requests ({raw_btm_requests})"
+            })
+        
+        # Comparación 2: BTM Responses Accept vs Successful Transitions
+        raw_btm_accept = raw_btm.get("responses_accept", 0)
+        processed_successful = steering_analysis.get("successful_transitions", 0)
+        # Usar el máximo entre transiciones exitosas y BTM accepts (como en compliance checks)
+        analysis_successful = max(
+            sum(1 for t in analysis.transitions if t.is_successful),
+            raw_btm_accept
+        )
+        if raw_btm_accept > 0 and processed_successful != analysis_successful:
+            mismatches.append({
+                "field": "btm_accept_vs_successful_transitions",
+                "raw_value": raw_btm_accept,
+                "processed_value": processed_successful,
+                "expected_value": analysis_successful,
+                "delta": processed_successful - analysis_successful,
+                "severity": "error" if abs(processed_successful - analysis_successful) > 1 else "warning",
+                "explanation": f"BTM Accept raw: {raw_btm_accept}, Transiciones exitosas: {sum(1 for t in analysis.transitions if t.is_successful)}, Esperado: {analysis_successful}, Procesado: {processed_successful}"
+            })
+        
+        # Comparación 3: Association/Reassociation counts (coherencia básica)
+        raw_assoc_req = raw_assoc.get("requests", 0)
+        raw_assoc_resp = raw_assoc.get("responses", 0)
+        raw_reassoc_req = raw_reassoc.get("requests", 0)
+        raw_reassoc_resp = raw_reassoc.get("responses", 0)
+        
+        # Comparación 4: Deauth / Disassoc totales
+        raw_deauth = raw_summary.get("deauth", {})
+        raw_disassoc = raw_summary.get("disassoc", {})
+        raw_deauth_count = raw_deauth.get("count", 0)
+        raw_disassoc_count = raw_disassoc.get("count", 0)
+
+        # Contar eventos de steering que son Deauth/Disassoc dirigidos al cliente
+        processed_deauth = 0
+        processed_disassoc = 0
+        if analysis.transitions:
+            for t in analysis.transitions:
+                # Transitions no contienen todos los eventos 1:1, así que aquí
+                # sólo verificamos si hay una desviación grosera (ej. 0 vs muchos).
+                # El conteo fino se hace en los compliance checks.
+                pass
+        # Si Wireshark detecta desconexiones pero el análisis no ve ninguna
+        if (raw_deauth_count + raw_disassoc_count) > 0 and analysis.loops_detected is False:
+            mismatches.append({
+                "field": "forced_disconnect_visibility",
+                "raw_value": {
+                    "deauth": raw_deauth_count,
+                    "disassoc": raw_disassoc_count,
+                },
+                "processed_value": "no_loops_detected",
+                "severity": "warning",
+                "explanation": "Wireshark detecta desconexiones (Deauth/Disassoc) pero el análisis no marca bucles; revisar estabilidad en el reporte narrativo."
+            })
+
+        # Verificar inconsistencias en freq_band_map
+        freq_band_inconsistencies = []
+        freq_band_map = raw_summary.get("freq_band_map", {})
+        for freq_str, band in freq_band_map.items():
+            try:
+                freq_val = int(freq_str)
+                expected_band = "2.4GHz" if 2400 <= freq_val <= 2500 else ("5GHz" if 5000 <= freq_val <= 6000 else None)
+                if expected_band and band != expected_band:
+                    freq_band_inconsistencies.append({
+                        "frequency": freq_val,
+                        "raw_band": band,
+                        "expected_band": expected_band
+                    })
+            except (ValueError, TypeError):
+                pass
+        
+        if freq_band_inconsistencies:
+            mismatches.append({
+                "field": "freq_band_inconsistencies",
+                "raw_value": freq_band_inconsistencies,
+                "processed_value": None,
+                "severity": "error",
+                "explanation": f"Se detectaron {len(freq_band_inconsistencies)} inconsistencias entre frecuencia y banda asignada"
+            })
+        
+        # Comparación 4: BTM Status Codes
+        raw_status_codes = raw_btm.get("status_codes", [])
+        processed_status_codes = []
+        for event in analysis.btm_events:
+            if event.status_code is not None and str(event.status_code) not in processed_status_codes:
+                processed_status_codes.append(str(event.status_code))
+        
+        if set(raw_status_codes) != set(processed_status_codes):
+            mismatches.append({
+                "field": "btm_status_codes",
+                "raw_value": raw_status_codes,
+                "processed_value": processed_status_codes,
+                "severity": "warning",
+                "explanation": "Los status codes pueden diferir si se filtraron eventos por cliente principal"
+            })
+        
+        return {
+            "enabled": True,
+            "total_mismatches": len(mismatches),
+            "mismatches": mismatches,
+            "summary": {
+                "raw_btm_requests": raw_btm_requests,
+                "raw_btm_responses": raw_btm.get("responses", 0),
+                "raw_btm_accept": raw_btm_accept,
+                "processed_steering_attempts": processed_steering_attempts,
+                "processed_successful_transitions": processed_successful,
+                "raw_assoc": f"{raw_assoc_req}/{raw_assoc_resp}",
+                "raw_reassoc": f"{raw_reassoc_req}/{raw_reassoc_resp}"
+            }
+        }
+    
     def _index_analysis_for_rag(self, analysis: BandSteeringAnalysis):
         """
         Convierte el resultado del análisis en texto y lo indexa en Qdrant.

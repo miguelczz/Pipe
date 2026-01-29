@@ -1,0 +1,1450 @@
+{
+    "analysis_id": "c5cc9144-fd36-4d3f-8069-435ba2aa92ad",
+    "filename": "4.MOTO G7   .pcapng",
+    "analysis_timestamp": "2026-01-28T09:13:32.632630",
+    "total_packets": 54,
+    "wlan_packets": 54,
+    "analysis_duration_ms": 0,
+    "devices": [
+        {
+            "mac_address": "60:1d:91:60:fe:f3",
+            "oui": "60:1d:91",
+            "vendor": "Moto",
+            "device_model": "MOTO G7",
+            "device_category": "mobile_device",
+            "is_virtual": false,
+            "confidence_score": 1.0
+        }
+    ],
+    "btm_events": [],
+    "transitions": [
+        {
+            "client_mac": "60:1d:91:60:fe:f3",
+            "steering_type": "unknown",
+            "start_time": 1724464601.270203,
+            "end_time": 1724464601.270203,
+            "duration": 0.0,
+            "from_bssid": "00:19:c6:51:00:25",
+            "to_bssid": "00:19:c6:51:00:25",
+            "from_band": "5GHz",
+            "to_band": "5GHz",
+            "is_successful": true,
+            "is_band_change": false,
+            "returned_to_original": false,
+            "btm_status_code": null,
+            "failure_reason": null
+        },
+        {
+            "client_mac": "60:1d:91:60:fe:f3",
+            "steering_type": "unknown",
+            "start_time": 1724464669.66511,
+            "end_time": 1724464669.66511,
+            "duration": 0.0,
+            "from_bssid": "00:19:c6:51:00:24",
+            "to_bssid": "00:19:c6:51:00:24",
+            "from_band": "2.4GHz",
+            "to_band": "2.4GHz",
+            "is_successful": true,
+            "is_band_change": false,
+            "returned_to_original": false,
+            "btm_status_code": null,
+            "failure_reason": null
+        },
+        {
+            "client_mac": "60:1d:91:60:fe:f3",
+            "steering_type": "unknown",
+            "start_time": 1724464721.427278,
+            "end_time": 1724464721.427278,
+            "duration": 0.0,
+            "from_bssid": "00:19:c6:51:00:25",
+            "to_bssid": "00:19:c6:51:00:25",
+            "from_band": "5GHz",
+            "to_band": "5GHz",
+            "is_successful": true,
+            "is_band_change": false,
+            "returned_to_original": false,
+            "btm_status_code": null,
+            "failure_reason": null
+        },
+        {
+            "client_mac": "60:1d:91:60:fe:f3",
+            "steering_type": "unknown",
+            "start_time": 1724464815.672201,
+            "end_time": 1724464815.672201,
+            "duration": 0.0,
+            "from_bssid": "00:19:c6:51:00:24",
+            "to_bssid": "00:19:c6:51:00:24",
+            "from_band": "2.4GHz",
+            "to_band": "2.4GHz",
+            "is_successful": true,
+            "is_band_change": false,
+            "returned_to_original": false,
+            "btm_status_code": null,
+            "failure_reason": null
+        },
+        {
+            "client_mac": "60:1d:91:60:fe:f3",
+            "steering_type": "unknown",
+            "start_time": 1724464843.63252,
+            "end_time": 1724464843.63252,
+            "duration": 0.0,
+            "from_bssid": "00:19:c6:51:00:25",
+            "to_bssid": "00:19:c6:51:00:25",
+            "from_band": "5GHz",
+            "to_band": "5GHz",
+            "is_successful": true,
+            "is_band_change": false,
+            "returned_to_original": false,
+            "btm_status_code": null,
+            "failure_reason": null
+        }
+    ],
+    "signal_samples": [
+        {
+            "timestamp": 1724464562.930548,
+            "rssi": -92,
+            "band": "2.4GHz",
+            "frequency": 2462
+        },
+        {
+            "timestamp": 1724464562.954795,
+            "rssi": -94,
+            "band": "2.4GHz",
+            "frequency": 2462
+        },
+        {
+            "timestamp": 1724464601.25922,
+            "rssi": -82,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1724464601.266876,
+            "rssi": -78,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1724464669.642972,
+            "rssi": -84,
+            "band": "2.4GHz",
+            "frequency": 2462
+        },
+        {
+            "timestamp": 1724464669.656732,
+            "rssi": -92,
+            "band": "2.4GHz",
+            "frequency": 2462
+        },
+        {
+            "timestamp": 1724464721.417855,
+            "rssi": -76,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1724464721.425076,
+            "rssi": -72,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1724464815.653451,
+            "rssi": -82,
+            "band": "2.4GHz",
+            "frequency": 2462
+        },
+        {
+            "timestamp": 1724464815.664326,
+            "rssi": -82,
+            "band": "2.4GHz",
+            "frequency": 2462
+        },
+        {
+            "timestamp": 1724464843.622538,
+            "rssi": -74,
+            "band": "5GHz",
+            "frequency": 5180
+        },
+        {
+            "timestamp": 1724464843.63044,
+            "rssi": -70,
+            "band": "5GHz",
+            "frequency": 5180
+        }
+    ],
+    "btm_requests": 5,
+    "btm_responses": 0,
+    "btm_success_rate": 0.0,
+    "successful_transitions": 0,
+    "failed_transitions": 5,
+    "loops_detected": true,
+    "kvr_support": {
+        "k_support": false,
+        "v_support": true,
+        "r_support": false
+    },
+    "compliance_checks": [
+        {
+            "check_name": "Soporte BTM (802.11v)",
+            "description": "El dispositivo debe demostrar soporte activo de BSS Transition Management",
+            "category": "btm",
+            "passed": true,
+            "severity": "high",
+            "details": "REQUESTS: 0, RESPONSES: 0 CODE: 0 (ACCEPT)",
+            "recommendation": "Habilitar 802.11v"
+        },
+        {
+            "check_name": "Asociación y Reasociación",
+            "description": "Verifica ciclos completos de asociación y reasociación",
+            "category": "association",
+            "passed": true,
+            "severity": "medium",
+            "details": "ASSOC: 0/0, REASSOC: 7/5 DISASSOC: 0, DEAUTH: 0",
+            "recommendation": null
+        },
+        {
+            "check_name": "Steering Efectivo",
+            "description": "Se deben realizar transiciones de steering exitosas (cambio de banda o entre BSSIDs)",
+            "category": "performance",
+            "passed": true,
+            "severity": "high",
+            "details": "TRANSICIONES EXITOSAS: 5 | BTM ACCEPT: 0",
+            "recommendation": null
+        },
+        {
+            "check_name": "Estándares KVR",
+            "description": "Soporte de estándares de movilidad (Mínimo 2 de 3: k, v, r)",
+            "category": "kvr",
+            "passed": false,
+            "severity": "medium",
+            "details": "k=False, v=True, r=False",
+            "recommendation": "Se recomienda habilitar el estándar faltante para roaming óptimo"
+        }
+    ],
+    "verdict": "SUCCESS",
+    "analysis_text": "# INFORME TÉCNICO DE AUDITORÍA DE BAND STEERING\n\n## 1. RESUMEN EJECUTIVO\n**Veredicto Final:** SUCCESS\n\nLa auditoría de Band Steering ha sido exitosa, cumpliendo con los criterios mínimos establecidos. Se registraron un total de 5 intentos de steering, todos ellos exitosos, aunque se identificaron bucles en las transiciones de banda. Sin embargo, el cumplimiento de los estándares de movilidad fue insuficiente, ya que el dispositivo no soporta el estándar 802.11k, lo que limita su capacidad para realizar decisiones informadas de roaming. \n\n**Hallazgos Clave:**\n- **Transiciones exitosas:** 5\n- **Bucles detectados:** Sí\n- **Estándares KVR:** Falló (k=False, v=True, r=False)\n\n## 2. ANÁLISIS TÉCNICO\n\n### Análisis de Protocolos de Roaming (802.11k/v/r)\nDurante la captura, se observó que el cliente soporta el estándar 802.11v, pero no el 802.11k ni el 802.11r. Esto es crítico, ya que la falta de 802.11k impide que el cliente reciba informes de vecinos, limitando su capacidad para seleccionar la mejor banda disponible. Aunque se registraron 5 transiciones exitosas, la ausencia de 802.11k y 802.11r significa que el cliente no puede beneficiarse de un roaming optimizado.\n\n### Análisis de Transiciones de Banda\nSe registraron 5 transiciones de banda, todas exitosas, pero con un patrón de bucle evidente. Las transiciones fueron:\n1. 2.4GHz → 5GHz (LOOP)\n2. 5GHz → 2.4GHz (LOOP)\n3. 2.4GHz → 5GHz (LOOP)\n4. 5GHz → 2.4GHz (LOOP)\n5. 2.4GHz → 5GHz (TIMEOUT)\n\nEl tiempo promedio de transición fue de 0s, lo que indica que las transiciones fueron rápidas, pero el hecho de que todas las transiciones se registren como bucles sugiere que el cliente no está tomando decisiones óptimas de roaming, lo que podría afectar la experiencia del usuario.\n\n### Estabilidad de Asociación\nNo se detectaron eventos de Deauthentication ni Disassociation, lo que indica una buena estabilidad en la asociación del cliente con el AP. Se registraron 7 re-asociaciones exitosas, lo que sugiere que el cliente se mantiene conectado de manera efectiva a la red, aunque la falta de soporte para 802.11k limita la optimización del roaming.\n\n### Calidad de Red\nLos indicadores de calidad de red son positivos, con 0 retransmisiones TCP y WLAN, así como 0 errores DNS. Esto sugiere que la red está funcionando de manera eficiente en términos de conectividad y rendimiento.\n\n### Comportamiento del Cliente\nEl cliente analizado mostró un comportamiento cooperativo al realizar transiciones de banda, pero la falta de soporte para 802.11k y 802.11r limita su capacidad para optimizar el roaming. La presencia de bucles en las transiciones indica que el cliente podría beneficiarse de una mejor gestión de las decisiones de conexión.\n\n## 3. CONCLUSIÓN FINAL\nLa auditoría de Band Steering ha sido exitosa, cumpliendo con los criterios mínimos establecidos. Sin embargo, se identificaron áreas de mejora, especialmente en la implementación de los estándares 802.11k y 802.11r, que son esenciales para un roaming eficiente. Se recomienda habilitar estos estándares para optimizar la experiencia del usuario y mejorar la gestión de las transiciones de banda.",
+    "raw_stats": {
+        "total_packets": 54,
+        "total_tcp_packets": 0,
+        "total_wlan_packets": 54,
+        "approx_total_bytes": 0,
+        "diagnostics": {
+            "tcp_retransmissions": 0,
+            "wlan_retries": 0,
+            "dns_errors": 0,
+            "steering_events_count": 12,
+            "unique_bssid_count": 3,
+            "bssid_info": {
+                "00:19:c6:51:00:24": {
+                    "band": "2.4GHz",
+                    "ssid": "483336303150",
+                    "frequency": "2462"
+                },
+                "00:19:c6:51:00:25": {
+                    "band": "5GHz",
+                    "ssid": "483336303150",
+                    "frequency": "5180"
+                },
+                "52:c3:c4:11:6b:f7": {
+                    "band": "2.4GHz",
+                    "ssid": "48534520474552414c",
+                    "frequency": "2412"
+                }
+            },
+            "client_mac": "60:1d:91:60:fe:f3",
+            "capture_quality": "VALIDA - Steering fallido pero analizable",
+            "band_counters": {
+                "beacon_24": 0,
+                "beacon_5": 0,
+                "probe_req": 0,
+                "probe_resp_24": 0,
+                "probe_resp_5": 0,
+                "data_24": 0,
+                "data_5": 0
+            },
+            "wireshark_raw": {
+                "summary": {
+                    "total_lines": 54,
+                    "total_packets": 54,
+                    "total_wlan_packets": 54,
+                    "btm": {
+                        "requests": 0,
+                        "responses": 0,
+                        "responses_accept": 0,
+                        "responses_reject": 0,
+                        "status_codes": []
+                    },
+                    "assoc": {
+                        "requests": 0,
+                        "responses": 0,
+                        "responses_success": 0,
+                        "responses_fail": 0
+                    },
+                    "reassoc": {
+                        "requests": 7,
+                        "responses": 5,
+                        "responses_success": 5,
+                        "responses_fail": 0
+                    },
+                    "deauth": {
+                        "count": 0,
+                        "reason_codes": []
+                    },
+                    "disassoc": {
+                        "count": 0,
+                        "reason_codes": []
+                    },
+                    "freq_band_map": {
+                        "2462": "2.4GHz",
+                        "5180": "5GHz",
+                        "2412": "2.4GHz"
+                    }
+                },
+                "sample": [
+                    {
+                        "timestamp": "1724464562.954795",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "2",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "60:1d:91:60:fe:f3",
+                        "wlan_da": "00:19:c6:51:00:24",
+                        "source": "60:1d:91:60:fe:f3",
+                        "destination": "00:19:c6:51:00:24",
+                        "frequency": "2462",
+                        "reason_code": "",
+                        "ssid": "483336303150",
+                        "category_code": "",
+                        "action_code": "",
+                        "btm_status_code": "",
+                        "assoc_status_code": "",
+                        "signal_strength": "-94",
+                        "frame_len": "219",
+                        "ip_src": "",
+                        "ip_dst": "",
+                        "client_mac": "60:1d:91:60:fe:f3",
+                        "ap_mac": "00:19:c6:51:00:24"
+                    },
+                    {
+                        "timestamp": "1724464601.266876",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "2",
+                        "bssid": "00:19:c6:51:00:25",
+                        "wlan_sa": "60:1d:91:60:fe:f3",
+                        "wlan_da": "00:19:c6:51:00:25",
+                        "source": "60:1d:91:60:fe:f3",
+                        "destination": "00:19:c6:51:00:25",
+                        "frequency": "5180",
+                        "reason_code": "",
+                        "ssid": "483336303150",
+                        "category_code": "",
+                        "action_code": "",
+                        "btm_status_code": "",
+                        "assoc_status_code": "",
+                        "signal_strength": "-78",
+                        "frame_len": "213",
+                        "ip_src": "",
+                        "ip_dst": "",
+                        "client_mac": "60:1d:91:60:fe:f3",
+                        "ap_mac": "00:19:c6:51:00:25"
+                    },
+                    {
+                        "timestamp": "1724464601.270203",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "3",
+                        "bssid": "00:19:c6:51:00:25",
+                        "wlan_sa": "00:19:c6:51:00:25",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "source": "00:19:c6:51:00:25",
+                        "destination": "60:1d:91:60:fe:f3",
+                        "frequency": "5180",
+                        "reason_code": "",
+                        "ssid": "",
+                        "category_code": "",
+                        "action_code": "",
+                        "btm_status_code": "",
+                        "assoc_status_code": "0",
+                        "signal_strength": "-14",
+                        "frame_len": "296",
+                        "ip_src": "",
+                        "ip_dst": "",
+                        "client_mac": "60:1d:91:60:fe:f3",
+                        "ap_mac": "00:19:c6:51:00:25"
+                    },
+                    {
+                        "timestamp": "1724464669.656732",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "2",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "60:1d:91:60:fe:f3",
+                        "wlan_da": "00:19:c6:51:00:24",
+                        "source": "60:1d:91:60:fe:f3",
+                        "destination": "00:19:c6:51:00:24",
+                        "frequency": "2462",
+                        "reason_code": "",
+                        "ssid": "483336303150",
+                        "category_code": "",
+                        "action_code": "",
+                        "btm_status_code": "",
+                        "assoc_status_code": "",
+                        "signal_strength": "-92",
+                        "frame_len": "219",
+                        "ip_src": "",
+                        "ip_dst": "",
+                        "client_mac": "60:1d:91:60:fe:f3",
+                        "ap_mac": "00:19:c6:51:00:24"
+                    },
+                    {
+                        "timestamp": "1724464669.66511",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "3",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "00:19:c6:51:00:24",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "source": "00:19:c6:51:00:24",
+                        "destination": "60:1d:91:60:fe:f3",
+                        "frequency": "2462",
+                        "reason_code": "",
+                        "ssid": "",
+                        "category_code": "",
+                        "action_code": "",
+                        "btm_status_code": "",
+                        "assoc_status_code": "0",
+                        "signal_strength": "-42",
+                        "frame_len": "281",
+                        "ip_src": "",
+                        "ip_dst": "",
+                        "client_mac": "60:1d:91:60:fe:f3",
+                        "ap_mac": "00:19:c6:51:00:24"
+                    },
+                    {
+                        "timestamp": "1724464711.763652",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "2",
+                        "bssid": "52:c3:c4:11:6b:f7",
+                        "wlan_sa": "d0:c5:d3:52:35:29",
+                        "wlan_da": "52:c3:c4:11:6b:f7",
+                        "source": "d0:c5:d3:52:35:29",
+                        "destination": "52:c3:c4:11:6b:f7",
+                        "frequency": "2412",
+                        "reason_code": "",
+                        "ssid": "48534520474552414c",
+                        "category_code": "",
+                        "action_code": "",
+                        "btm_status_code": "",
+                        "assoc_status_code": "",
+                        "signal_strength": "-52",
+                        "frame_len": "167",
+                        "ip_src": "",
+                        "ip_dst": "",
+                        "client_mac": "d0:c5:d3:52:35:29",
+                        "ap_mac": "52:c3:c4:11:6b:f7"
+                    },
+                    {
+                        "timestamp": "1724464721.425076",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "2",
+                        "bssid": "00:19:c6:51:00:25",
+                        "wlan_sa": "60:1d:91:60:fe:f3",
+                        "wlan_da": "00:19:c6:51:00:25",
+                        "source": "60:1d:91:60:fe:f3",
+                        "destination": "00:19:c6:51:00:25",
+                        "frequency": "5180",
+                        "reason_code": "",
+                        "ssid": "483336303150",
+                        "category_code": "",
+                        "action_code": "",
+                        "btm_status_code": "",
+                        "assoc_status_code": "",
+                        "signal_strength": "-72",
+                        "frame_len": "213",
+                        "ip_src": "",
+                        "ip_dst": "",
+                        "client_mac": "60:1d:91:60:fe:f3",
+                        "ap_mac": "00:19:c6:51:00:25"
+                    },
+                    {
+                        "timestamp": "1724464721.427278",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "3",
+                        "bssid": "00:19:c6:51:00:25",
+                        "wlan_sa": "00:19:c6:51:00:25",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "source": "00:19:c6:51:00:25",
+                        "destination": "60:1d:91:60:fe:f3",
+                        "frequency": "5180",
+                        "reason_code": "",
+                        "ssid": "",
+                        "category_code": "",
+                        "action_code": "",
+                        "btm_status_code": "",
+                        "assoc_status_code": "0",
+                        "signal_strength": "-14",
+                        "frame_len": "296",
+                        "ip_src": "",
+                        "ip_dst": "",
+                        "client_mac": "60:1d:91:60:fe:f3",
+                        "ap_mac": "00:19:c6:51:00:25"
+                    },
+                    {
+                        "timestamp": "1724464815.664326",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "2",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "60:1d:91:60:fe:f3",
+                        "wlan_da": "00:19:c6:51:00:24",
+                        "source": "60:1d:91:60:fe:f3",
+                        "destination": "00:19:c6:51:00:24",
+                        "frequency": "2462",
+                        "reason_code": "",
+                        "ssid": "483336303150",
+                        "category_code": "",
+                        "action_code": "",
+                        "btm_status_code": "",
+                        "assoc_status_code": "",
+                        "signal_strength": "-82",
+                        "frame_len": "219",
+                        "ip_src": "",
+                        "ip_dst": "",
+                        "client_mac": "60:1d:91:60:fe:f3",
+                        "ap_mac": "00:19:c6:51:00:24"
+                    },
+                    {
+                        "timestamp": "1724464815.672201",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "3",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "00:19:c6:51:00:24",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "source": "00:19:c6:51:00:24",
+                        "destination": "60:1d:91:60:fe:f3",
+                        "frequency": "2462",
+                        "reason_code": "",
+                        "ssid": "",
+                        "category_code": "",
+                        "action_code": "",
+                        "btm_status_code": "",
+                        "assoc_status_code": "0",
+                        "signal_strength": "-84",
+                        "frame_len": "281",
+                        "ip_src": "",
+                        "ip_dst": "",
+                        "client_mac": "60:1d:91:60:fe:f3",
+                        "ap_mac": "00:19:c6:51:00:24"
+                    },
+                    {
+                        "timestamp": "1724464843.63044",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "2",
+                        "bssid": "00:19:c6:51:00:25",
+                        "wlan_sa": "60:1d:91:60:fe:f3",
+                        "wlan_da": "00:19:c6:51:00:25",
+                        "source": "60:1d:91:60:fe:f3",
+                        "destination": "00:19:c6:51:00:25",
+                        "frequency": "5180",
+                        "reason_code": "",
+                        "ssid": "483336303150",
+                        "category_code": "",
+                        "action_code": "",
+                        "btm_status_code": "",
+                        "assoc_status_code": "",
+                        "signal_strength": "-70",
+                        "frame_len": "213",
+                        "ip_src": "",
+                        "ip_dst": "",
+                        "client_mac": "60:1d:91:60:fe:f3",
+                        "ap_mac": "00:19:c6:51:00:25"
+                    },
+                    {
+                        "timestamp": "1724464843.63252",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "3",
+                        "bssid": "00:19:c6:51:00:25",
+                        "wlan_sa": "00:19:c6:51:00:25",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "source": "00:19:c6:51:00:25",
+                        "destination": "60:1d:91:60:fe:f3",
+                        "frequency": "5180",
+                        "reason_code": "",
+                        "ssid": "",
+                        "category_code": "",
+                        "action_code": "",
+                        "btm_status_code": "",
+                        "assoc_status_code": "0",
+                        "signal_strength": "-14",
+                        "frame_len": "296",
+                        "ip_src": "",
+                        "ip_dst": "",
+                        "client_mac": "60:1d:91:60:fe:f3",
+                        "ap_mac": "00:19:c6:51:00:25"
+                    }
+                ],
+                "general_sample": [
+                    {
+                        "timestamp": "1724464562.930548000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "60:1d:91:60:fe:f3",
+                        "wlan_da": "00:19:c6:51:00:24",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464562.939670000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "00:19:c6:51:00:24",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464562.939683000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "00:19:c6:51:00:24",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464562.941417000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "00:19:c6:51:00:24",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464562.941430000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "00:19:c6:51:00:24",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464562.942918000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "00:19:c6:51:00:24",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464562.942931000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "00:19:c6:51:00:24",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464562.946418000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "00:19:c6:51:00:24",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464562.946431000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "00:19:c6:51:00:24",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464562.947911000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "00:19:c6:51:00:24",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464562.952065000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "00:19:c6:51:00:24",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464562.954795000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x0002",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "60:1d:91:60:fe:f3",
+                        "wlan_da": "00:19:c6:51:00:24",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464562.955878000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "00:19:c6:51:00:24",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464601.259220000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "00:19:c6:51:00:25",
+                        "wlan_sa": "60:1d:91:60:fe:f3",
+                        "wlan_da": "00:19:c6:51:00:25",
+                        "frequency": "5180"
+                    },
+                    {
+                        "timestamp": "1724464601.266842000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "00:19:c6:51:00:25",
+                        "wlan_sa": "00:19:c6:51:00:25",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "frequency": "5180"
+                    },
+                    {
+                        "timestamp": "1724464601.266876000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x0002",
+                        "bssid": "00:19:c6:51:00:25",
+                        "wlan_sa": "60:1d:91:60:fe:f3",
+                        "wlan_da": "00:19:c6:51:00:25",
+                        "frequency": "5180"
+                    },
+                    {
+                        "timestamp": "1724464601.270203000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x0003",
+                        "bssid": "00:19:c6:51:00:25",
+                        "wlan_sa": "00:19:c6:51:00:25",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "frequency": "5180"
+                    },
+                    {
+                        "timestamp": "1724464669.642972000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "60:1d:91:60:fe:f3",
+                        "wlan_da": "00:19:c6:51:00:24",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464669.653978000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "00:19:c6:51:00:24",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464669.656732000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x0002",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "60:1d:91:60:fe:f3",
+                        "wlan_da": "00:19:c6:51:00:24",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464669.665110000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x0003",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "00:19:c6:51:00:24",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464711.752274000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "52:c3:c4:11:6b:f7",
+                        "wlan_sa": "d0:c5:d3:52:35:29",
+                        "wlan_da": "52:c3:c4:11:6b:f7",
+                        "frequency": "2412"
+                    },
+                    {
+                        "timestamp": "1724464711.763652000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x0002",
+                        "bssid": "52:c3:c4:11:6b:f7",
+                        "wlan_sa": "d0:c5:d3:52:35:29",
+                        "wlan_da": "52:c3:c4:11:6b:f7",
+                        "frequency": "2412"
+                    },
+                    {
+                        "timestamp": "1724464721.417855000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "00:19:c6:51:00:25",
+                        "wlan_sa": "60:1d:91:60:fe:f3",
+                        "wlan_da": "00:19:c6:51:00:25",
+                        "frequency": "5180"
+                    },
+                    {
+                        "timestamp": "1724464721.425043000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "00:19:c6:51:00:25",
+                        "wlan_sa": "00:19:c6:51:00:25",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "frequency": "5180"
+                    },
+                    {
+                        "timestamp": "1724464721.425076000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x0002",
+                        "bssid": "00:19:c6:51:00:25",
+                        "wlan_sa": "60:1d:91:60:fe:f3",
+                        "wlan_da": "00:19:c6:51:00:25",
+                        "frequency": "5180"
+                    },
+                    {
+                        "timestamp": "1724464721.427278000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x0003",
+                        "bssid": "00:19:c6:51:00:25",
+                        "wlan_sa": "00:19:c6:51:00:25",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "frequency": "5180"
+                    },
+                    {
+                        "timestamp": "1724464804.756268000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "04:62:73:f1:e7:b5",
+                        "wlan_sa": "5c:d0:6e:87:ff:a9",
+                        "wlan_da": "04:62:73:f1:e7:b5",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464804.756281000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "04:62:73:f1:e7:b5",
+                        "wlan_sa": "5c:d0:6e:87:ff:a9",
+                        "wlan_da": "04:62:73:f1:e7:b5",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464804.756288000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "04:62:73:f1:e7:b5",
+                        "wlan_sa": "5c:d0:6e:87:ff:a9",
+                        "wlan_da": "04:62:73:f1:e7:b5",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464804.756306000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "04:62:73:f1:e7:b5",
+                        "wlan_sa": "5c:d0:6e:87:ff:a9",
+                        "wlan_da": "04:62:73:f1:e7:b5",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464804.757352000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "04:62:73:f1:e7:b5",
+                        "wlan_sa": "5c:d0:6e:87:ff:a9",
+                        "wlan_da": "04:62:73:f1:e7:b5",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464804.757367000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "04:62:73:f1:e7:b5",
+                        "wlan_sa": "5c:d0:6e:87:ff:a9",
+                        "wlan_da": "04:62:73:f1:e7:b5",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464804.757373000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "04:62:73:f1:e7:b5",
+                        "wlan_sa": "5c:d0:6e:87:ff:a9",
+                        "wlan_da": "04:62:73:f1:e7:b5",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464804.757379000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "04:62:73:f1:e7:b5",
+                        "wlan_sa": "5c:d0:6e:87:ff:a9",
+                        "wlan_da": "04:62:73:f1:e7:b5",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464804.757385000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "04:62:73:f1:e7:b5",
+                        "wlan_sa": "5c:d0:6e:87:ff:a9",
+                        "wlan_da": "04:62:73:f1:e7:b5",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464804.757390000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "04:62:73:f1:e7:b5",
+                        "wlan_sa": "5c:d0:6e:87:ff:a9",
+                        "wlan_da": "04:62:73:f1:e7:b5",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464804.758651000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "04:62:73:f1:e7:b5",
+                        "wlan_sa": "5c:d0:6e:87:ff:a9",
+                        "wlan_da": "04:62:73:f1:e7:b5",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464804.758665000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "04:62:73:f1:e7:b5",
+                        "wlan_sa": "5c:d0:6e:87:ff:a9",
+                        "wlan_da": "04:62:73:f1:e7:b5",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464804.758703000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "04:62:73:f1:e7:b5",
+                        "wlan_sa": "5c:d0:6e:87:ff:a9",
+                        "wlan_da": "04:62:73:f1:e7:b5",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464804.758725000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "04:62:73:f1:e7:b5",
+                        "wlan_sa": "5c:d0:6e:87:ff:a9",
+                        "wlan_da": "04:62:73:f1:e7:b5",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464804.758731000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "04:62:73:f1:e7:b5",
+                        "wlan_sa": "5c:d0:6e:87:ff:a9",
+                        "wlan_da": "04:62:73:f1:e7:b5",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464804.758736000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "04:62:73:f1:e7:b5",
+                        "wlan_sa": "5c:d0:6e:87:ff:a9",
+                        "wlan_da": "04:62:73:f1:e7:b5",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464804.760635000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "04:62:73:f1:e7:b5",
+                        "wlan_sa": "5c:d0:6e:87:ff:a9",
+                        "wlan_da": "04:62:73:f1:e7:b5",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464804.760649000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "04:62:73:f1:e7:b5",
+                        "wlan_sa": "5c:d0:6e:87:ff:a9",
+                        "wlan_da": "04:62:73:f1:e7:b5",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464804.760655000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "04:62:73:f1:e7:b5",
+                        "wlan_sa": "5c:d0:6e:87:ff:a9",
+                        "wlan_da": "04:62:73:f1:e7:b5",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464815.653451000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "60:1d:91:60:fe:f3",
+                        "wlan_da": "00:19:c6:51:00:24",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464815.662198000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x000b",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "00:19:c6:51:00:24",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464815.664326000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x0002",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "60:1d:91:60:fe:f3",
+                        "wlan_da": "00:19:c6:51:00:24",
+                        "frequency": "2462"
+                    },
+                    {
+                        "timestamp": "1724464815.672201000",
+                        "protocols": "radiotap:wlan_radio:wlan",
+                        "subtype": "0x0003",
+                        "bssid": "00:19:c6:51:00:24",
+                        "wlan_sa": "00:19:c6:51:00:24",
+                        "wlan_da": "60:1d:91:60:fe:f3",
+                        "frequency": "2462"
+                    }
+                ],
+                "general_sample_limit": 50,
+                "truncated": false,
+                "beacon_tracking": {
+                    "bssids_seen": {},
+                    "max_beacons_per_bssid": 3,
+                    "beacon_window_sec": 5.0
+                }
+            },
+            "wireshark_compare": {
+                "enabled": true,
+                "total_mismatches": 0,
+                "mismatches": [],
+                "summary": {
+                    "raw_btm_requests": 0,
+                    "raw_btm_responses": 0,
+                    "raw_btm_accept": 0,
+                    "processed_steering_attempts": 5,
+                    "processed_successful_transitions": 5,
+                    "raw_assoc": "0/0",
+                    "raw_reassoc": "7/5"
+                }
+            }
+        },
+        "steering_analysis": {
+            "transitions": [
+                {
+                    "client": "60:1d:91:60:fe:f3",
+                    "type": "assisted",
+                    "deauth_time": null,
+                    "reassoc_time": 1724464601.266876,
+                    "transition_time": 38.31208109855652,
+                    "from_bssid": "00:19:c6:51:00:24",
+                    "to_bssid": "00:19:c6:51:00:25",
+                    "from_band": "2.4GHz",
+                    "to_band": "5GHz",
+                    "is_band_change": true,
+                    "reason_code": null,
+                    "status": "LOOP",
+                    "returned_to_original": true
+                },
+                {
+                    "client": "60:1d:91:60:fe:f3",
+                    "type": "assisted",
+                    "deauth_time": null,
+                    "reassoc_time": 1724464669.656732,
+                    "transition_time": 68.38652896881104,
+                    "from_bssid": "00:19:c6:51:00:25",
+                    "to_bssid": "00:19:c6:51:00:24",
+                    "from_band": "5GHz",
+                    "to_band": "2.4GHz",
+                    "is_band_change": true,
+                    "reason_code": null,
+                    "status": "LOOP",
+                    "returned_to_original": true
+                },
+                {
+                    "client": "60:1d:91:60:fe:f3",
+                    "type": "assisted",
+                    "deauth_time": null,
+                    "reassoc_time": 1724464721.425076,
+                    "transition_time": 51.759965896606445,
+                    "from_bssid": "00:19:c6:51:00:24",
+                    "to_bssid": "00:19:c6:51:00:25",
+                    "from_band": "2.4GHz",
+                    "to_band": "5GHz",
+                    "is_band_change": true,
+                    "reason_code": null,
+                    "status": "LOOP",
+                    "returned_to_original": true
+                },
+                {
+                    "client": "60:1d:91:60:fe:f3",
+                    "type": "assisted",
+                    "deauth_time": null,
+                    "reassoc_time": 1724464815.664326,
+                    "transition_time": 94.23704791069031,
+                    "from_bssid": "00:19:c6:51:00:25",
+                    "to_bssid": "00:19:c6:51:00:24",
+                    "from_band": "5GHz",
+                    "to_band": "2.4GHz",
+                    "is_band_change": true,
+                    "reason_code": null,
+                    "status": "LOOP",
+                    "returned_to_original": true
+                },
+                {
+                    "client": "60:1d:91:60:fe:f3",
+                    "type": "assisted",
+                    "deauth_time": null,
+                    "reassoc_time": 1724464843.63044,
+                    "transition_time": 27.95823907852173,
+                    "from_bssid": "00:19:c6:51:00:24",
+                    "to_bssid": "00:19:c6:51:00:25",
+                    "from_band": "2.4GHz",
+                    "to_band": "5GHz",
+                    "is_band_change": true,
+                    "reason_code": null,
+                    "status": "TIMEOUT",
+                    "returned_to_original": false
+                }
+            ],
+            "steering_attempts": 5,
+            "successful_transitions": 5,
+            "failed_transitions": 0,
+            "loop_detected": true,
+            "avg_transition_time": 0,
+            "max_transition_time": 0,
+            "transition_times": [
+                38.31208109855652,
+                68.38652896881104,
+                51.759965896606445,
+                94.23704791069031,
+                27.95823907852173
+            ],
+            "verdict": "SUCCESS",
+            "clients_analyzed": 2,
+            "preventive_steering": false
+        },
+        "steering_events": [
+            {
+                "timestamp": 1724464562.954795,
+                "type": "Reassociation Request",
+                "subtype": 2,
+                "sa": "60:1d:91:60:fe:f3",
+                "da": "00:19:c6:51:00:24",
+                "client_mac": "60:1d:91:60:fe:f3",
+                "bssid": "00:19:c6:51:00:24",
+                "ssid": "483336303150",
+                "band": "2.4GHz",
+                "frequency": "2462",
+                "reason_code": "",
+                "assoc_status_code": "",
+                "signal_strength": "-94"
+            },
+            {
+                "timestamp": 1724464601.266876,
+                "type": "Reassociation Request",
+                "subtype": 2,
+                "sa": "60:1d:91:60:fe:f3",
+                "da": "00:19:c6:51:00:25",
+                "client_mac": "60:1d:91:60:fe:f3",
+                "bssid": "00:19:c6:51:00:25",
+                "ssid": "483336303150",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "",
+                "assoc_status_code": "",
+                "signal_strength": "-78"
+            },
+            {
+                "timestamp": 1724464601.270203,
+                "type": "Reassociation Response",
+                "subtype": 3,
+                "sa": "00:19:c6:51:00:25",
+                "da": "60:1d:91:60:fe:f3",
+                "client_mac": "60:1d:91:60:fe:f3",
+                "bssid": "00:19:c6:51:00:25",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "",
+                "assoc_status_code": "0x0000",
+                "signal_strength": "-14"
+            },
+            {
+                "timestamp": 1724464669.656732,
+                "type": "Reassociation Request",
+                "subtype": 2,
+                "sa": "60:1d:91:60:fe:f3",
+                "da": "00:19:c6:51:00:24",
+                "client_mac": "60:1d:91:60:fe:f3",
+                "bssid": "00:19:c6:51:00:24",
+                "ssid": "483336303150",
+                "band": "2.4GHz",
+                "frequency": "2462",
+                "reason_code": "",
+                "assoc_status_code": "",
+                "signal_strength": "-92"
+            },
+            {
+                "timestamp": 1724464669.66511,
+                "type": "Reassociation Response",
+                "subtype": 3,
+                "sa": "00:19:c6:51:00:24",
+                "da": "60:1d:91:60:fe:f3",
+                "client_mac": "60:1d:91:60:fe:f3",
+                "bssid": "00:19:c6:51:00:24",
+                "ssid": "",
+                "band": "2.4GHz",
+                "frequency": "2462",
+                "reason_code": "",
+                "assoc_status_code": "0x0000",
+                "signal_strength": "-42"
+            },
+            {
+                "timestamp": 1724464711.763652,
+                "type": "Reassociation Request",
+                "subtype": 2,
+                "sa": "d0:c5:d3:52:35:29",
+                "da": "52:c3:c4:11:6b:f7",
+                "client_mac": "d0:c5:d3:52:35:29",
+                "bssid": "52:c3:c4:11:6b:f7",
+                "ssid": "48534520474552414c",
+                "band": "2.4GHz",
+                "frequency": "2412",
+                "reason_code": "",
+                "assoc_status_code": "",
+                "signal_strength": "-52"
+            },
+            {
+                "timestamp": 1724464721.425076,
+                "type": "Reassociation Request",
+                "subtype": 2,
+                "sa": "60:1d:91:60:fe:f3",
+                "da": "00:19:c6:51:00:25",
+                "client_mac": "60:1d:91:60:fe:f3",
+                "bssid": "00:19:c6:51:00:25",
+                "ssid": "483336303150",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "",
+                "assoc_status_code": "",
+                "signal_strength": "-72"
+            },
+            {
+                "timestamp": 1724464721.427278,
+                "type": "Reassociation Response",
+                "subtype": 3,
+                "sa": "00:19:c6:51:00:25",
+                "da": "60:1d:91:60:fe:f3",
+                "client_mac": "60:1d:91:60:fe:f3",
+                "bssid": "00:19:c6:51:00:25",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "",
+                "assoc_status_code": "0x0000",
+                "signal_strength": "-14"
+            },
+            {
+                "timestamp": 1724464815.664326,
+                "type": "Reassociation Request",
+                "subtype": 2,
+                "sa": "60:1d:91:60:fe:f3",
+                "da": "00:19:c6:51:00:24",
+                "client_mac": "60:1d:91:60:fe:f3",
+                "bssid": "00:19:c6:51:00:24",
+                "ssid": "483336303150",
+                "band": "2.4GHz",
+                "frequency": "2462",
+                "reason_code": "",
+                "assoc_status_code": "",
+                "signal_strength": "-82"
+            },
+            {
+                "timestamp": 1724464815.672201,
+                "type": "Reassociation Response",
+                "subtype": 3,
+                "sa": "00:19:c6:51:00:24",
+                "da": "60:1d:91:60:fe:f3",
+                "client_mac": "60:1d:91:60:fe:f3",
+                "bssid": "00:19:c6:51:00:24",
+                "ssid": "",
+                "band": "2.4GHz",
+                "frequency": "2462",
+                "reason_code": "",
+                "assoc_status_code": "0x0000",
+                "signal_strength": "-84"
+            },
+            {
+                "timestamp": 1724464843.63044,
+                "type": "Reassociation Request",
+                "subtype": 2,
+                "sa": "60:1d:91:60:fe:f3",
+                "da": "00:19:c6:51:00:25",
+                "client_mac": "60:1d:91:60:fe:f3",
+                "bssid": "00:19:c6:51:00:25",
+                "ssid": "483336303150",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "",
+                "assoc_status_code": "",
+                "signal_strength": "-70"
+            },
+            {
+                "timestamp": 1724464843.63252,
+                "type": "Reassociation Response",
+                "subtype": 3,
+                "sa": "00:19:c6:51:00:25",
+                "da": "60:1d:91:60:fe:f3",
+                "client_mac": "60:1d:91:60:fe:f3",
+                "bssid": "00:19:c6:51:00:25",
+                "ssid": "",
+                "band": "5GHz",
+                "frequency": "5180",
+                "reason_code": "",
+                "assoc_status_code": "0x0000",
+                "signal_strength": "-14"
+            }
+        ],
+        "signal_samples": [
+            {
+                "timestamp": 1724464562.930548,
+                "rssi": -92,
+                "band": "2.4GHz",
+                "frequency": 2462,
+                "sa": "60:1d:91:60:fe:f3",
+                "da": "00:19:c6:51:00:24"
+            },
+            {
+                "timestamp": 1724464562.954795,
+                "rssi": -94,
+                "band": "2.4GHz",
+                "frequency": 2462,
+                "sa": "60:1d:91:60:fe:f3",
+                "da": "00:19:c6:51:00:24"
+            },
+            {
+                "timestamp": 1724464601.25922,
+                "rssi": -82,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "60:1d:91:60:fe:f3",
+                "da": "00:19:c6:51:00:25"
+            },
+            {
+                "timestamp": 1724464601.266876,
+                "rssi": -78,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "60:1d:91:60:fe:f3",
+                "da": "00:19:c6:51:00:25"
+            },
+            {
+                "timestamp": 1724464669.642972,
+                "rssi": -84,
+                "band": "2.4GHz",
+                "frequency": 2462,
+                "sa": "60:1d:91:60:fe:f3",
+                "da": "00:19:c6:51:00:24"
+            },
+            {
+                "timestamp": 1724464669.656732,
+                "rssi": -92,
+                "band": "2.4GHz",
+                "frequency": 2462,
+                "sa": "60:1d:91:60:fe:f3",
+                "da": "00:19:c6:51:00:24"
+            },
+            {
+                "timestamp": 1724464721.417855,
+                "rssi": -76,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "60:1d:91:60:fe:f3",
+                "da": "00:19:c6:51:00:25"
+            },
+            {
+                "timestamp": 1724464721.425076,
+                "rssi": -72,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "60:1d:91:60:fe:f3",
+                "da": "00:19:c6:51:00:25"
+            },
+            {
+                "timestamp": 1724464815.653451,
+                "rssi": -82,
+                "band": "2.4GHz",
+                "frequency": 2462,
+                "sa": "60:1d:91:60:fe:f3",
+                "da": "00:19:c6:51:00:24"
+            },
+            {
+                "timestamp": 1724464815.664326,
+                "rssi": -82,
+                "band": "2.4GHz",
+                "frequency": 2462,
+                "sa": "60:1d:91:60:fe:f3",
+                "da": "00:19:c6:51:00:24"
+            },
+            {
+                "timestamp": 1724464843.622538,
+                "rssi": -74,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "60:1d:91:60:fe:f3",
+                "da": "00:19:c6:51:00:25"
+            },
+            {
+                "timestamp": 1724464843.63044,
+                "rssi": -70,
+                "band": "5GHz",
+                "frequency": 5180,
+                "sa": "60:1d:91:60:fe:f3",
+                "da": "00:19:c6:51:00:25"
+            }
+        ],
+        "top_protocols": [
+            [
+                "radiotap",
+                54
+            ],
+            [
+                "wlan_radio",
+                54
+            ],
+            [
+                "wlan",
+                54
+            ]
+        ],
+        "top_sources": [],
+        "top_destinations": []
+    },
+    "fragments": []
+}

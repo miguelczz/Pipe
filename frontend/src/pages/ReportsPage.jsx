@@ -99,6 +99,7 @@ export function ReportsPage() {
             verdict: fullDetail.verdict,
             device: fullDetail.devices?.[0] || {},
             fragments_count: fullDetail.fragments?.length || 0,
+            compliance_checks: fullDetail.compliance_checks || [],
             btm_events: fullDetail.btm_events || [],
             transitions: fullDetail.transitions || [],
             signal_samples: fullDetail.signal_samples || []

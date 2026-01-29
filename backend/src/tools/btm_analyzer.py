@@ -36,7 +36,8 @@ class BTMAnalyzer:
         band_counters: Dict[str, Any],
         filename: str = "unknown.pcap",
         device_info: Optional[DeviceInfo] = None,
-        signal_samples: List[Dict[str, Any]] = None
+        signal_samples: List[Dict[str, Any]] = None,
+        wireshark_raw: Optional[Dict[str, Any]] = None
     ) -> BandSteeringAnalysis:
         """
         Punto de entrada principal.
@@ -56,26 +57,57 @@ class BTMAnalyzer:
         # 4. Calcular métricas agregadas (Sincronizar con WiresharkTool)
         btm_stats = band_counters.get("btm_stats", {})
         btm_responses = btm_stats.get("responses", 0)
-        
+
         # ============================================================
-        # REGLA DE ORO: WiresharkTool es la ÚNICA fuente de verdad
+        # REGLA DE ORO: WiresharkTool/tshark = fuente de verdad
         # ============================================================
-        # Si WiresharkTool ya calculó steering_attempts y successful_transitions,
-        # esos valores son DEFINITIVOS y NO se recalculan.
-        
+        # ORDEN DE PRIORIDAD para métricas de intentos/éxitos:
+        # 1) Contadores calculados por WiresharkTool en steering_analysis
+        # 2) Contadores crudos de wireshark_raw.summary.btm (si existen)
+        # 3) Fallback local usando transitions (solo si 1 y 2 no existen)
+
         ws_attempts = band_counters.get("steering_attempts", 0)
         ws_success = band_counters.get("successful_transitions", 0)
-        
-        # Si WiresharkTool proporcionó valores, usarlos directamente
+
+        # 1) Si WiresharkTool proporcionó valores agregados, son definitivos
         if ws_attempts > 0 or ws_success > 0:
             btm_requests = ws_attempts
             successful_transitions = ws_success
-            logger.info(f"📊 Usando valores de WiresharkTool: {ws_success}/{ws_attempts} transiciones")
+            logger.info(
+                "📊 Usando métricas agregadas de WiresharkTool como fuente de verdad: "
+                f"{ws_success}/{ws_attempts} transiciones"
+            )
         else:
-            # Fallback: Solo si WiresharkTool no detectó nada, calcular desde transitions
-            btm_requests = max(btm_stats.get("requests", 0), len(transitions))
-            successful_transitions = sum(1 for t in transitions if t.is_successful)
-            logger.info(f"📊 Calculando desde transitions locales: {successful_transitions}/{btm_requests}")
+            # 2) Intentar usar directamente los contadores crudos de Wireshark
+            raw_btm = None
+            if isinstance(band_counters.get("wireshark_raw"), dict):
+                raw_summary = band_counters["wireshark_raw"].get("summary", {})
+                raw_btm = raw_summary.get("btm", {})
+
+            raw_requests = raw_btm.get("requests", 0) if raw_btm else 0
+            raw_accepts = raw_btm.get("responses_accept", 0) if raw_btm else 0
+
+            if raw_requests > 0 or raw_accepts > 0:
+                btm_requests = raw_requests or btm_stats.get("requests", 0)
+                # Considerar como exitosas al menos todas las respuestas Accept
+                successful_transitions = max(
+                    raw_accepts,
+                    sum(1 for t in transitions if t.is_successful),
+                )
+                logger.info(
+                    "📊 Usando contadores crudos de wireshark_raw.summary.btm: "
+                    f"{successful_transitions}/{btm_requests} (Accept={raw_accepts})"
+                )
+            else:
+                # 3) Fallback: Solo si no hay datos ni agregados ni crudos,
+                # calculamos desde transitions. Este modo se considera
+                # heurístico y se usa típicamente en capturas muy pequeñas.
+                btm_requests = max(btm_stats.get("requests", 0), len(transitions))
+                successful_transitions = sum(1 for t in transitions if t.is_successful)
+                logger.info(
+                    "📊 Fuente de verdad limitada: calculando métricas desde transitions locales "
+                    f"(fallback) -> {successful_transitions}/{btm_requests}"
+                )
         
         failed_transitions = max(0, btm_requests - successful_transitions)
         
@@ -91,7 +123,8 @@ class BTMAnalyzer:
             kvr_support, transitions, band_counters,
             success_count_override=successful_transitions,
             steering_events=steering_events,
-            device_info=device_info
+            device_info=device_info,
+            wireshark_raw=wireshark_raw
         )
         
         # 7. Determinar veredicto (REGLA DE ORO: 1 éxito = SUCCESS)
@@ -193,11 +226,32 @@ class BTMAnalyzer:
         """
         transitions = []
         
-        # Agrupar eventos por cliente
+        # Agrupar eventos por cliente, filtrando BSSIDs
+        # Los BSSIDs tienen el bit menos significativo del primer octeto en 0, pero son direcciones de APs
+        # Necesitamos filtrar direcciones que sean BSSIDs conocidos
+        def is_likely_bssid(mac: str, bssid_list: list = None) -> bool:
+            """Determina si una MAC es probablemente un BSSID (AP) en lugar de un cliente"""
+            if not mac:
+                return True
+            # Si está en la lista de BSSIDs conocidos, es un BSSID
+            if bssid_list:
+                mac_normalized = mac.lower().replace('-', ':')
+                for bssid in bssid_list:
+                    if bssid.lower().replace('-', ':') == mac_normalized:
+                        return True
+            return False
+        
+        # Obtener lista de BSSIDs conocidos de los eventos
+        known_bssids = set()
+        for e in raw_events:
+            bssid = e.get("bssid") or e.get("ap_bssid")
+            if bssid:
+                known_bssids.add(bssid)
+        
         events_by_client = {}
         for e in raw_events:
             c = e.get("client_mac")
-            if c:
+            if c and not is_likely_bssid(c, list(known_bssids)):
                 if c not in events_by_client: events_by_client[c] = []
                 events_by_client[c].append(e)
                 
@@ -276,6 +330,33 @@ class BTMAnalyzer:
                         last_btm_req = None
                         last_deauth = None
         
+        # Post-procesamiento: marcar cambios de banda aunque los frames individuales
+        # no lo hayan indicado explícitamente. Si vemos que, para un mismo cliente,
+        # las transiciones consecutivas usan bandas distintas (por ejemplo, primero
+        # 2.4GHz y luego 5GHz), consideramos que hubo un cambio de banda físico
+        # entre ellas, aunque cada transición aislada esté etiquetada como
+        # \"dentro de la misma banda\".
+        if transitions:
+            transitions_sorted = sorted(transitions, key=lambda t: t.start_time)
+            last_band_by_client = {}
+            
+            for t in transitions_sorted:
+                band = t.to_band or t.from_band
+                if not band:
+                    continue
+                
+                client_id = t.client_mac
+                last_band = last_band_by_client.get(client_id)
+                
+                if last_band and last_band != band:
+                    # Marcar este salto como cambio de banda si aún no lo estaba
+                    if not t.from_band:
+                        t.from_band = last_band
+                    t.to_band = band
+                    t.is_band_change = True
+                
+                last_band_by_client[client_id] = band
+        
         return transitions
 
     def _detect_steering_pattern(self, transitions: List[SteeringTransition], band_counters: dict) -> SteeringType:
@@ -344,14 +425,25 @@ class BTMAnalyzer:
         band_counters: dict,
         success_count_override: int = 0,
         steering_events: List[Dict[str, Any]] = None,
-        device_info: Optional[DeviceInfo] = None
+        device_info: Optional[DeviceInfo] = None,
+        wireshark_raw: Optional[Dict[str, Any]] = None
     ) -> List[ComplianceCheck]:
         """Genera la tabla de resumen de cumplimiento."""
         checks = []
         
+        # Usar datos raw de Wireshark si están disponibles, sino usar procesados
+        raw_summary = wireshark_raw.get("summary", {}) if wireshark_raw else {}
+        raw_btm = raw_summary.get("btm", {})
+        
+        # BTM Requests y Responses desde raw Wireshark
+        raw_btm_requests = raw_btm.get("requests", btm_requests)
+        raw_btm_responses = raw_btm.get("responses", btm_responses)
+        raw_btm_accept = raw_btm.get("responses_accept", 0)
+        raw_btm_reject = raw_btm.get("responses_reject", 0)
+        
         # 1. BTM Support (802.11v)
         btm_stats = band_counters.get("btm_stats", {})
-        has_btm_responses = btm_responses > 0
+        has_btm_responses = raw_btm_responses > 0
         
         # Recopilar todos los códigos detectados (éxitos y rechazos)
         status_codes_raw = btm_stats.get("status_codes", [])
@@ -364,13 +456,30 @@ class BTMAnalyzer:
         
         status_info = "\n" + "\n".join(status_lines) if status_lines else ""
         
-        # Si hubo peticiones pero 0 respuestas, falla. Si hubo respuestas pero todas rechazo, también se muestran.
-        if btm_requests > 0 and btm_responses == 0:
+        # Nueva lógica estricta basada SOLO en lo que ve Wireshark:
+        # - PASÓ: hay Requests, hay Responses y al menos un Accept (status 0)
+        # - FALLÓ: hubo Requests pero 0 Responses, o solo Rejects
+        # - Captura sin BTM: marcar como FALLÓ pero explicando que no se observó BTM
+        if raw_btm_requests == 0 and raw_btm_responses == 0:
             passed_btm = False
-            details = f"Request: {btm_requests}, Response: {btm_responses}{status_info}"
+            details = "BTM no observado en la captura (REQUESTS: 0, RESPONSES: 0)"
+        elif raw_btm_requests > 0 and raw_btm_responses == 0:
+            passed_btm = False
+            details = f"BTM solicitado pero sin respuesta del cliente. REQUESTS: {raw_btm_requests}, RESPONSES: 0{status_info}"
         else:
-            passed_btm = has_btm_responses or kvr.v_support
-            details = f"Requests: {btm_requests}, Responses: {btm_responses}{status_info}"
+            has_accept = raw_btm_accept > 0
+            passed_btm = has_accept
+            if has_accept:
+                details = (
+                    f"REQUESTS: {raw_btm_requests}, RESPONSES: {raw_btm_responses}, "
+                    f"ACCEPT: {raw_btm_accept}{status_info}"
+                )
+            else:
+                details = (
+                    f"RESPUESTAS BTM sin Accept (solo rechazo). "
+                    f"REQUESTS: {raw_btm_requests}, RESPONSES: {raw_btm_responses}, "
+                    f"ACCEPT: 0{status_info}"
+                )
         
         checks.append(ComplianceCheck(
             check_name="Soporte BTM (802.11v)",
@@ -383,33 +492,46 @@ class BTMAnalyzer:
         ))
         
         # 2. Asociación y Reasociación (Lógica Refinada y Segura)
+        # Usar datos raw de Wireshark si están disponibles
+        raw_assoc = raw_summary.get("assoc", {}) if raw_summary else {}
+        raw_reassoc = raw_summary.get("reassoc", {}) if raw_summary else {}
+        raw_deauth = raw_summary.get("deauth", {}) if raw_summary else {}
+        raw_disassoc = raw_summary.get("disassoc", {}) if raw_summary else {}
+        
+        # Contadores desde raw Wireshark
+        assoc_req = raw_assoc.get("requests", 0)
+        assoc_resp = raw_assoc.get("responses", 0)
+        assoc_resp_success = raw_assoc.get("responses_success", 0)
+        assoc_resp_fail = raw_assoc.get("responses_fail", 0)
+        
+        reassoc_req = raw_reassoc.get("requests", 0)
+        reassoc_resp = raw_reassoc.get("responses", 0)
+        reassoc_resp_success = raw_reassoc.get("responses_success", 0)
+        reassoc_resp_fail = raw_reassoc.get("responses_fail", 0)
+        
+        deauth_count = raw_deauth.get("count", 0)
+        disassoc_count = raw_disassoc.get("count", 0)
+        
         primary_client = device_info.mac_address if device_info else None
         
         # Filtros inteligentes para Deauth/Disassoc
+        # Siempre usamos DeauthValidator sobre los eventos crudos para detectar
+        # desconexiones FORZADAS dirigidas al cliente, independientemente de que
+        # exista o no raw_summary.
         forced_deauth_count = 0
         forced_disassoc_count = 0
         
-        # Contadores brutos para el detalle visual
-        assoc_req = 0
-        assoc_resp = 0
-        reassoc_req = 0
-        reassoc_resp = 0
-        
         for e in (steering_events or []):
             st = e.get("subtype")
-            # Contar ráfaga de handshakes (esto es general)
-            if st == 0: assoc_req += 1
-            elif st == 1: assoc_resp += 1
-            elif st == 2: reassoc_req += 1
-            elif st == 3: reassoc_resp += 1
-            
             # Análisis de desconexiones (SOLO SI ES EL CLIENTE ANALIZADO)
-            elif st in [10, 12] and primary_client:
+            if st in [10, 12] and primary_client:
                 is_forced, classification, desc = DeauthValidator.validate_and_classify(e, primary_client)
                 
                 if is_forced:
-                    if st == 10: forced_disassoc_count += 1
-                    else: forced_deauth_count += 1
+                    if st == 10:
+                        forced_disassoc_count += 1
+                    else:
+                        forced_deauth_count += 1
                 else:
                     logger.debug(f"Deauth/Disassoc ignorado en cumplimiento: {desc}")
         
@@ -438,33 +560,87 @@ class BTMAnalyzer:
             category="association",
             passed=assoc_passed,
             severity="medium",
-            details=f"Assoc: {assoc_req}/{assoc_resp}, Reassoc: {reassoc_req}/{reassoc_resp}\nDisassoc: {forced_disassoc_count}, Deauth: {forced_deauth_count}",
+            details=(
+                f"ASSOC: {assoc_req}/{assoc_resp_success}, REASSOC: {reassoc_req}/{reassoc_resp_success} "
+                f"DISASSOC: {disassoc_count} (forzados: {forced_disassoc_count}), "
+                f"DEAUTH: {deauth_count} (forzados: {forced_deauth_count})"
+            ),
             recommendation=rec
         ))
         
         # 3. Transición de Bandas (Steering Efectivo)
-        # FILOSOFÍA SIMPLE: Si hubo cambios exitosos de banda, el steering funcionó
-        band_changes = success_count_override
+        # FILOSOFÍA CORREGIDA: Steering efectivo puede ser:
+        # - Cambios de banda (2.4 -> 5GHz o viceversa) - IDEAL
+        # - Transiciones exitosas entre BSSIDs (mismo banda) - VÁLIDO
+        # - BTM responses exitosos (status_code 0) - VÁLIDO (indica cooperación del cliente)
         
-        # CRITERIO DE ÉXITO SIMPLIFICADO: ¿Hubo al menos 1 cambio exitoso?
-        steering_passed = band_changes >= 1
+        # Contar transiciones con cambio de banda exitosas
+        band_change_transitions = sum(1 for t in transitions if t.is_successful and t.is_band_change)
+        
+        # Contar transiciones exitosas entre BSSIDs distintos (roaming dentro de la misma banda)
+        bssid_change_transitions = sum(
+            1
+            for t in transitions
+            if t.is_successful
+            and t.from_bssid
+            and t.to_bssid
+            and t.from_bssid != t.to_bssid
+        )
+        
+        # Usar datos raw de Wireshark para BTM responses exitosos
+        btm_successful_responses = raw_btm_accept if raw_btm_accept > 0 else sum(1 for e in (steering_events or []) 
+                                       if e.get("type") == "btm" 
+                                       and e.get("event_type") == "response"
+                                       and (e.get("status_code") == 0 or str(e.get("status_code")) == "0"))
+        
+        # Contar transiciones exitosas totales (para información general)
+        successful_transitions_count = success_count_override if success_count_override > 0 else sum(1 for t in transitions if t.is_successful)
+        
+        # Steering efectivo SOLO si hay:
+        # 1. Al menos 1 cambio de banda exitoso, O
+        # 2. Al menos 1 transición exitosa entre BSSIDs distintos
+        # NOTA: BTM Accept solo cuenta si también hay cambio de banda o BSSID
+        # (un BTM Accept sin cambio físico no es steering efectivo)
+        steering_effective_count = max(band_change_transitions, bssid_change_transitions)
+        
+        # Si hay BTM Accept PERO también hay cambio de banda/BSSID, es steering efectivo
+        # Si solo hay BTM Accept sin cambios físicos, NO es steering efectivo
+        if btm_successful_responses > 0 and steering_effective_count == 0:
+            # BTM Accept sin cambio físico: no es steering efectivo
+            steering_passed = False
+            logger.warning(f"⚠️ BTM Accept detectado ({btm_successful_responses}) pero sin cambios de banda/BSSID → NO es steering efectivo")
+        else:
+            steering_passed = steering_effective_count >= 1
         
         # Logging para diagnóstico
-        logger.info(f"🔍 Evaluación Steering Efectivo: cambios_exitosos={band_changes}, resultado={'PASÓ' if steering_passed else 'FALLÓ'}")
+        logger.info(f"🔍 Evaluación Steering Efectivo:")
+        logger.info(f"   - Cambios de banda exitosos: {band_change_transitions}")
+        logger.info(f"   - Transiciones exitosas totales: {successful_transitions_count}")
+        logger.info(f"   - Transiciones exitosas entre BSSIDs distintos: {bssid_change_transitions}")
+        logger.info(f"   - BTM responses exitosos (raw): {raw_btm_accept}")
+        logger.info(f"   - Total efectivo: {steering_effective_count}, resultado={'PASÓ' if steering_passed else 'FALLÓ'}")
         
-        # Recomendación solo si no hubo cambios
-        if band_changes == 0:
-            rec_steering = "No se detectaron transiciones de banda efectivas. Verificar que la captura contenga el flujo completo de steering."
+        # Recomendación solo si no hubo steering efectivo
+        if not steering_passed:
+            rec_steering = "No se detectaron transiciones de steering efectivas. Verificar que la captura contenga el flujo completo de steering y que el cliente responda a las solicitudes BTM."
         else:
             rec_steering = None
 
+        # Usar datos raw de Wireshark en el detalle, mostrando claramente qué cuenta como steering efectivo
+        if band_change_transitions > 0:
+            details = f"TRANSICIONES CON CAMBIO DE BANDA: {band_change_transitions} | TRANSICIONES TOTALES: {successful_transitions_count} | BTM ACCEPT: {raw_btm_accept}"
+        elif bssid_change_transitions > 0:
+            details = f"TRANSICIONES ENTRE BSSIDs: {bssid_change_transitions} | TRANSICIONES TOTALES: {successful_transitions_count} | BTM ACCEPT: {raw_btm_accept}"
+        else:
+            details = f"TRANSICIONES EXITOSAS: {successful_transitions_count} (sin cambio de banda/BSSID) | BTM ACCEPT: {raw_btm_accept}"
+        
         checks.append(ComplianceCheck(
             check_name="Steering Efectivo",
-            description="Se deben realizar cambios de banda estables (2.4 -> 5GHz)",
+            description="Se deben realizar transiciones de steering exitosas (cambio de banda o entre BSSIDs)",
             category="performance",
             passed=steering_passed,
             severity="high",
-            details=f"Cambios detectados: {band_changes}",
+            details=details,
             recommendation=rec_steering
         ))
 
@@ -502,19 +678,48 @@ class BTMAnalyzer:
             logger.warning("❌ Soporte BTM fallido -> FAILED")
             return "FAILED"
 
-        # Regla 3: Si hay transiciones exitosas (Criterio del usuario)
-        if success_count > 0:
-            # Si KVR no pasó, aún es FAILED (el agente explicará en texto que hubo transiciones pero faltaron protocolos)
+        # Regla 3: Si hay steering efectivo (transiciones exitosas O BTM responses exitosos)
+        # El check de "Steering Efectivo" ahora considera:
+        # - Cambios de banda exitosos
+        # - Transiciones exitosas (con o sin cambio de banda)
+        # - BTM responses exitosos (status_code 0)
+        if performance_check and performance_check.passed:
+            # Si el check de performance pasó, hay steering efectivo
+            # Verificar KVR solo si es crítico (puede ser opcional dependiendo del contexto)
             if kvr_check and not kvr_check.passed:
-                logger.warning("⚠️ Transición exitosa pero sin soporte KVR adecuado -> FAILED (se explicará en el análisis)")
-                return "FAILED" 
+                logger.warning("⚠️ Steering efectivo pero sin soporte KVR adecuado -> SUCCESS (se explicará en el análisis)")
+                # Aún es SUCCESS porque el steering funcionó, solo falta KVR completo
             return "SUCCESS"
             
-        # Regla 4: Éxito vía BTM aunque no hayamos visto la reasociación completa
+        # Regla 4: Si hay transiciones exitosas directamente (fallback)
+        # IMPORTANTE: Solo es SUCCESS si hay steering efectivo real
+        if success_count > 0:
+            # Verificar si hay steering efectivo antes de dar SUCCESS
+            if performance_check and performance_check.passed:
+                # Hay steering efectivo, es SUCCESS
+                if kvr_check and not kvr_check.passed:
+                    logger.warning("⚠️ Transición exitosa pero sin soporte KVR adecuado -> SUCCESS (se explicará en el análisis)")
+                return "SUCCESS"
+            # Si hay transiciones exitosas pero NO hay steering efectivo, es PARTIAL
+            if btm_check and btm_check.passed:
+                logger.warning("⚠️ Transiciones exitosas sin steering efectivo -> PARTIAL (cliente cooperó pero no ejecutó cambio)")
+                return "PARTIAL"
+            # Si no hay BTM pero hay transiciones, puede ser roaming espontáneo
+            # En este caso, si no es efectivo, es FAILED
+            return "FAILED"
+            
+        # Regla 5: Éxito vía BTM aunque no hayamos visto la reasociación completa
+        # IMPORTANTE: BTM Accept sin cambio físico no es SUCCESS, es PARTIAL
         if btm_check and btm_check.passed and btm_rate > 0.5:
+            if performance_check and not performance_check.passed:
+                # Cliente cooperó (BTM Accept) pero no ejecutó cambio físico
+                logger.warning("⚠️ BTM Accept sin steering efectivo -> PARTIAL (cliente cooperó pero no ejecutó cambio)")
+                return "PARTIAL"
+            # Si hay steering efectivo, ya se retornó SUCCESS arriba en Regla 3
+            # Si llegamos aquí y performance_check no existe, es un caso edge
             return "SUCCESS"
             
-        # Regla 5: Si no hay transiciones pero hay steering preventivo confirmado
+        # Regla 6: Si no hay transiciones pero hay steering preventivo confirmado
         if performance_check and performance_check.passed:
             # Si el check de performance pasó es porque detectó steering preventivo basado en tráfico
             return "SUCCESS"

@@ -6,7 +6,7 @@ Enfocada específicamente en auditoría de Band Steering (802.11).
 import logging
 import os
 from collections import Counter
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from openai import OpenAI
 from ..settings import settings
@@ -24,7 +24,112 @@ class WiresharkTool:
         )
         self.llm_model = settings.llm_model
 
-    def _extract_basic_stats(self, file_path: str, max_packets: int = 2000) -> Dict[str, Any]:
+    def _normalize_subtype(self, subtype_str: str) -> int:
+        """Normaliza el subtype de tshark a un entero.
+        tshark puede devolver: '8', '0x08', '0x0008', o el valor combinado type_subtype.
+        wlan.fc.type_subtype viene como: type * 256 + subtype
+        - Type 0 (Management): Subtype 8 (Beacon) = 0*256 + 8 = 8
+        - Type 0 (Management): Subtype 0 (Assoc Req) = 0*256 + 0 = 0
+        """
+        if not subtype_str or not subtype_str.strip():
+            return -1
+        try:
+            subtype_clean = subtype_str.strip()
+            val = -1
+            
+            # Si viene como hex (0x...)
+            if subtype_clean.startswith('0x'):
+                val = int(subtype_clean, 16)
+            # Si es un número decimal
+            elif subtype_clean.isdigit() or (subtype_clean.startswith('-') and subtype_clean[1:].isdigit()):
+                val = int(subtype_clean)
+            else:
+                # Intentar parsear como hex sin prefijo
+                try:
+                    val = int(subtype_clean, 16)
+                except:
+                    return -1
+            
+            # wlan.fc.type_subtype viene como type * 256 + subtype
+            # Extraer solo el subtype (módulo 256)
+            # Si el valor es >= 256, es type_subtype combinado, extraer subtype
+            if val >= 256:
+                subtype_only = val % 256
+                return subtype_only
+            else:
+                # Si es < 256, asumimos que ya es solo el subtype
+                return val
+        except (ValueError, AttributeError):
+            return -1
+    
+    def _normalize_frequency(self, freq_str: str) -> int:
+        """Normaliza la frecuencia de tshark a MHz.
+        tshark puede devolver frecuencia en diferentes formatos.
+        """
+        if not freq_str or not freq_str.strip():
+            return 0
+        try:
+            freq_val = float(freq_str.strip())
+            # Si es muy grande, probablemente está en kHz, convertir a MHz
+            if freq_val > 10000:
+                freq_val = freq_val / 1000.0
+            return int(freq_val)
+        except (ValueError, AttributeError):
+            return 0
+    
+    def _normalize_status_code(self, status_str: str) -> int:
+        """Normaliza un status code (hex o decimal) a entero."""
+        if not status_str or not status_str.strip():
+            return -1
+        try:
+            status_clean = status_str.strip()
+            if status_clean.startswith('0x'):
+                return int(status_clean, 16)
+            elif status_clean.isdigit() or (status_clean.startswith('-') and status_clean[1:].isdigit()):
+                return int(status_clean)
+            else:
+                # Intentar como hex sin prefijo
+                return int(status_clean, 16)
+        except (ValueError, AttributeError):
+            return -1
+    
+    def _determine_frame_direction(self, subtype_int: int, bssid: str, wlan_sa: str, wlan_da: str) -> tuple:
+        """Determina correctamente source y destination según el tipo de frame.
+        Retorna (source, destination, client_mac, ap_mac)
+        """
+        # Para Management frames, la dirección puede variar según el tipo
+        if subtype_int in [0, 2]:  # Association/Reassociation Request
+            # Cliente envía al AP
+            return (wlan_sa or 'N/A', wlan_da or 'Broadcast', wlan_sa, wlan_da)
+        elif subtype_int in [1, 3]:  # Association/Reassociation Response
+            # AP envía al cliente
+            return (wlan_sa or bssid or 'N/A', wlan_da or 'N/A', wlan_da, wlan_sa or bssid)
+        elif subtype_int == 8:  # Beacon
+            # AP envía, no hay destino específico (broadcast)
+            return (bssid or wlan_sa or 'N/A', 'Broadcast', None, bssid or wlan_sa)
+        elif subtype_int in [10, 12]:  # Disassociation, Deauthentication
+            # Puede venir del AP o del cliente
+            if bssid and wlan_sa and wlan_sa.lower() == bssid.lower():
+                # AP envía al cliente
+                return (wlan_sa, wlan_da or 'N/A', wlan_da, wlan_sa)
+            else:
+                # Cliente envía
+                return (wlan_sa or 'N/A', wlan_da or bssid or 'Broadcast', wlan_sa, wlan_da or bssid)
+        elif subtype_int == 13:  # Action Frame (BTM)
+            # Necesitamos verificar el action_code para saber dirección
+            # Por ahora, usar valores por defecto
+            return (wlan_sa or bssid or 'N/A', wlan_da or 'Broadcast', wlan_da, wlan_sa or bssid)
+        else:
+            # Default: usar valores directos
+            return (wlan_sa or 'N/A', wlan_da or 'Broadcast', wlan_sa, wlan_da)
+
+    def _extract_basic_stats(
+        self,
+        file_path: str,
+        max_packets: int = 2000,
+        ssid_filter: Optional[str] = None,
+        client_mac_hint: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Extrae estadísticas detalladas de la captura con enfoque en band steering.
         Analiza secuencias temporales, transiciones de BSSID, y métricas de calidad.
@@ -123,6 +228,55 @@ class WiresharkTool:
 
         # Lista temporal para muestras de señal (para gráfica continua)
         temp_signal_samples = []
+        
+        # ========================================================================
+        # WIRESHARK RAW: Fuente de verdad - Capturar datos exactos de tshark
+        # ========================================================================
+        wireshark_raw = {
+            "summary": {
+                "total_lines": len(lines),
+                "total_packets": 0,
+                "total_wlan_packets": 0,
+                "btm": {
+                    "requests": 0,
+                    "responses": 0,
+                    "responses_accept": 0,  # status_code == 0
+                    "responses_reject": 0,   # status_code != 0
+                    "status_codes": []
+                },
+                "assoc": {
+                    "requests": 0,
+                    "responses": 0,
+                    "responses_success": 0,  # status_code == 0
+                    "responses_fail": 0      # status_code != 0
+                },
+                "reassoc": {
+                    "requests": 0,
+                    "responses": 0,
+                    "responses_success": 0,
+                    "responses_fail": 0
+                },
+                "deauth": {
+                    "count": 0,
+                    "reason_codes": []
+                },
+                "disassoc": {
+                    "count": 0,
+                    "reason_codes": []
+                },
+                "freq_band_map": {}  # frecuencia -> banda detectada
+            },
+            "sample": [],  # Paquetes importantes para band steering (con filtrado inteligente de Beacons)
+            "general_sample": [],  # Muestra general de primeros N paquetes para referencia
+            "general_sample_limit": 50,
+            "truncated": False,
+            # Tracking para filtrado inteligente de Beacons
+            "beacon_tracking": {
+                "bssids_seen": {},  # BSSID -> {first_seen_time, count, last_saved_time}
+                "max_beacons_per_bssid": 3,  # Máximo de Beacons a guardar por BSSID
+                "beacon_window_sec": 5.0  # Ventana de tiempo para considerar Beacons "cercanos" a eventos
+            }
+        }
 
         for line in lines:
             if not line.strip():
@@ -139,14 +293,142 @@ class WiresharkTool:
              assoc_status_code, signal_strength) = fields[:20] # Tomar solo los campos esperados
 
             total_packets += 1
+            wireshark_raw["summary"]["total_packets"] += 1
+            
+            # Normalizar campos
+            timestamp_float = float(timestamp) if timestamp and timestamp.strip() else 0.0
+            subtype_int = self._normalize_subtype(subtype) if subtype else -1
+            freq_normalized = self._normalize_frequency(frequency) if frequency else 0
+            bssid_clean = bssid.strip() if bssid else ""
+            wlan_sa_clean = wlan_sa.strip() if wlan_sa else ""
+            wlan_da_clean = wlan_da.strip() if wlan_da else ""
+            ssid_clean = ssid.strip() if ssid else ""
+            frame_len_int = int(frame_len) if frame_len and frame_len.strip().isdigit() else 0
+            
+            # Normalizar status codes
+            btm_status_normalized = self._normalize_status_code(btm_status_code) if btm_status_code else -1
+            assoc_status_normalized = self._normalize_status_code(assoc_status_code) if assoc_status_code else -1
+            reason_code_normalized = self._normalize_status_code(reason_code) if reason_code else -1
+            
+            # Normalizar category y action codes
+            category_normalized = self._normalize_status_code(category_code) if category_code else -1
+            action_normalized = self._normalize_status_code(action_code) if action_code else -1
+            
+            # Normalizar RSSI
+            rssi_normalized = None
+            if signal_strength and signal_strength.strip():
+                try:
+                    rssi_val = float(signal_strength.strip())
+                    if -120 <= rssi_val <= 0:  # Rango válido de RSSI
+                        rssi_normalized = int(rssi_val)
+                except (ValueError, AttributeError):
+                    pass
+            
+            # Determinar dirección correcta según tipo de frame
+            source, destination, client_mac, ap_mac = self._determine_frame_direction(
+                subtype_int, bssid_clean, wlan_sa_clean, wlan_da_clean
+            )
             
             # Registrar MACs para determinar cliente
-            if wlan_sa: all_client_macs.append(wlan_sa)
-            if wlan_da: all_client_macs.append(wlan_da)
+            if wlan_sa_clean: all_client_macs.append(wlan_sa_clean)
+            if wlan_da_clean: all_client_macs.append(wlan_da_clean)
             
             # Detectar si es paquete WLAN y actualizar contadores
             if protocols and "wlan" in protocols.lower():
                 total_wlan_packets += 1
+                wireshark_raw["summary"]["total_wlan_packets"] += 1
+            
+            # Guardar muestra raw: Paquetes importantes con filtrado inteligente de Beacons
+            is_important_packet = False
+            is_beacon = False
+            should_save_beacon = False
+            
+            # Determinar si es un paquete importante para band steering
+            if subtype_int >= 0:
+                    
+                # Detectar Beacon (subtype 8)
+                if subtype_int == 8:
+                    is_beacon = True
+                    is_important_packet = True  # Temporal, luego decidimos si guardarlo
+                # Paquetes críticos: SIEMPRE guardar (BTM, Association, Reassociation, Deauth, Disassoc)
+                elif subtype_int in [0, 1, 2, 3, 10, 12, 13]:
+                    is_important_packet = True
+                    # Para Action frames, verificar si es BTM
+                    if subtype_int == 13:
+                        if category_normalized == 10:  # WNM (802.11v)
+                            is_important_packet = True
+                        else:
+                            is_important_packet = False  # Solo guardar Action frames de WNM
+            
+            # Lógica especial para Beacons: filtrado inteligente
+            if is_beacon:
+                beacon_tracking = wireshark_raw["beacon_tracking"]
+                max_per_bssid = beacon_tracking["max_beacons_per_bssid"]
+                
+                # Usar BSSID o un identificador único si no hay BSSID
+                beacon_id = bssid_clean if bssid_clean else f"no_bssid_{freq_normalized}" if freq_normalized else "unknown"
+                
+                if beacon_id not in beacon_tracking["bssids_seen"]:
+                    # Nuevo BSSID: guardar el primer Beacon
+                    beacon_tracking["bssids_seen"][beacon_id] = {
+                        "first_seen_time": timestamp_float,
+                        "saved_count": 0,  # Contador de Beacons guardados (no totales)
+                        "last_saved_time": timestamp_float
+                    }
+                    should_save_beacon = True
+                    beacon_tracking["bssids_seen"][beacon_id]["saved_count"] = 1
+                else:
+                    bssid_info = beacon_tracking["bssids_seen"][beacon_id]
+                    
+                    # Guardar solo los primeros N Beacons por BSSID
+                    if bssid_info["saved_count"] < max_per_bssid:
+                        should_save_beacon = True
+                        bssid_info["saved_count"] += 1
+                        bssid_info["last_saved_time"] = timestamp_float
+                    else:
+                        # Ya guardamos suficientes Beacons de este BSSID
+                        should_save_beacon = False
+            
+            # Guardar paquetes importantes (no-Beacons siempre, Beacons solo si pasan el filtro)
+            if is_important_packet and (not is_beacon or should_save_beacon):
+                raw_row = {
+                    "timestamp": str(timestamp_float),  # Mantener como string para preservar precisión
+                    "protocols": protocols.strip() if protocols else "",
+                    "subtype": str(subtype_int) if subtype_int >= 0 else subtype if subtype else "",
+                    "bssid": bssid_clean,
+                    "wlan_sa": wlan_sa_clean,
+                    "wlan_da": wlan_da_clean,
+                    "source": source,  # Dirección corregida según tipo de frame
+                    "destination": destination,  # Dirección corregida según tipo de frame
+                    "frequency": str(freq_normalized) if freq_normalized > 0 else frequency if frequency else "",
+                    "reason_code": str(reason_code_normalized) if reason_code_normalized >= 0 else reason_code if reason_code else "",
+                    "ssid": ssid_clean,
+                    "category_code": str(category_normalized) if category_normalized >= 0 else category_code if category_code else "",
+                    "action_code": str(action_normalized) if action_normalized >= 0 else action_code if action_code else "",
+                    "btm_status_code": str(btm_status_normalized) if btm_status_normalized >= 0 else btm_status_code if btm_status_code else "",
+                    "assoc_status_code": str(assoc_status_normalized) if assoc_status_normalized >= 0 else assoc_status_code if assoc_status_code else "",
+                    "signal_strength": str(rssi_normalized) if rssi_normalized is not None else signal_strength if signal_strength else "",
+                    "frame_len": str(frame_len_int) if frame_len_int > 0 else frame_len if frame_len else "",
+                    "ip_src": ip_src.strip() if ip_src else "",
+                    "ip_dst": ip_dst.strip() if ip_dst else "",
+                    "client_mac": client_mac if client_mac else "",
+                    "ap_mac": ap_mac if ap_mac else ""
+                }
+                wireshark_raw["sample"].append(raw_row)
+            
+            # También guardar una muestra general (primeras N filas) para referencia
+            if len(wireshark_raw.get("general_sample", [])) < 50:
+                if "general_sample" not in wireshark_raw:
+                    wireshark_raw["general_sample"] = []
+                wireshark_raw["general_sample"].append({
+                    "timestamp": timestamp,
+                    "protocols": protocols,
+                    "subtype": subtype,
+                    "bssid": bssid,
+                    "wlan_sa": wlan_sa,
+                    "wlan_da": wlan_da,
+                    "frequency": frequency
+                })
             
             # Contadores de protocolos
             if protocols:
@@ -193,6 +475,32 @@ class WiresharkTool:
                         if ac_val == 7: # BTM Request
                              logger.info(f"✅ BTM REQUEST detectado")
                              band_counters["btm_stats"]["requests"] += 1
+                             # Capturar en raw summary
+                             wireshark_raw["summary"]["btm"]["requests"] += 1
+                             # Mapear frecuencia a banda
+                             if frequency:
+                                 try:
+                                     freq_val = int(frequency) if isinstance(frequency, str) and frequency.isdigit() else float(frequency)
+                                     freq_key = str(freq_val)
+                                     if freq_key not in wireshark_raw["summary"]["freq_band_map"]:
+                                         if 2400 <= freq_val <= 2500:
+                                             wireshark_raw["summary"]["freq_band_map"][freq_key] = "2.4GHz"
+                                         elif 5000 <= freq_val <= 6000:
+                                             wireshark_raw["summary"]["freq_band_map"][freq_key] = "5GHz"
+                                 except (ValueError, TypeError):
+                                     pass
+                             
+                             # Calcular banda desde frecuencia si está disponible (corregir inconsistencia)
+                             btm_band = current_band
+                             if frequency:
+                                 try:
+                                     freq_val = int(frequency) if isinstance(frequency, str) and frequency.isdigit() else float(frequency)
+                                     if 2400 <= freq_val <= 2500:
+                                         btm_band = "2.4GHz"
+                                     elif 5000 <= freq_val <= 6000:
+                                         btm_band = "5GHz"
+                                 except (ValueError, TypeError):
+                                     pass
                              
                              # Registrar evento para gráfica
                              steering_events.append({
@@ -205,7 +513,7 @@ class WiresharkTool:
                                  "ap_bssid": wlan_sa,   # En Request, el AP es el origen
                                  "wlan_sa": wlan_sa,
                                  "wlan_da": wlan_da,
-                                 "band": current_band,
+                                 "band": btm_band,
                                  "frequency": int(frequency) if frequency else 0,
                                  "rssi": int(signal_strength) if signal_strength else None,
                                  "status_code": None
@@ -214,6 +522,32 @@ class WiresharkTool:
                         elif ac_val == 8: # BTM Response
                             logger.info(f"✅ BTM RESPONSE detectado. Status Code={btm_status_code}")
                             band_counters["btm_stats"]["responses"] += 1
+                            # Capturar en raw summary
+                            wireshark_raw["summary"]["btm"]["responses"] += 1
+                            # Procesar status code
+                            if btm_status_code:
+                                try:
+                                    status_int = int(btm_status_code) if str(btm_status_code).isdigit() else int(btm_status_code, 16)
+                                    if str(status_int) not in wireshark_raw["summary"]["btm"]["status_codes"]:
+                                        wireshark_raw["summary"]["btm"]["status_codes"].append(str(status_int))
+                                    if status_int == 0:
+                                        wireshark_raw["summary"]["btm"]["responses_accept"] += 1
+                                    else:
+                                        wireshark_raw["summary"]["btm"]["responses_reject"] += 1
+                                except (ValueError, TypeError):
+                                    pass
+                            
+                            # Calcular banda desde frecuencia si está disponible (corregir inconsistencia)
+                            btm_response_band = current_band
+                            if frequency:
+                                try:
+                                    freq_val = int(frequency) if isinstance(frequency, str) and frequency.isdigit() else float(frequency)
+                                    if 2400 <= freq_val <= 2500:
+                                        btm_response_band = "2.4GHz"
+                                    elif 5000 <= freq_val <= 6000:
+                                        btm_response_band = "5GHz"
+                                except (ValueError, TypeError):
+                                    pass
                             
                             # Registrar evento para gráfica
                             steering_events.append({
@@ -226,7 +560,7 @@ class WiresharkTool:
                                  "ap_bssid": wlan_da,   # En Response, el AP es el destino
                                  "wlan_sa": wlan_sa,
                                  "wlan_da": wlan_da,
-                                 "band": current_band,
+                                 "band": btm_response_band,
                                  "frequency": int(frequency) if frequency else 0,
                                  "rssi": int(signal_strength) if signal_strength else None,
                                  "status_code": int(btm_status_code) if btm_status_code and btm_status_code.isdigit() else None
@@ -353,6 +687,44 @@ class WiresharkTool:
                         event_type = "Deauthentication"
                     
                     if event_type:
+                        # Capturar datos raw para eventos importantes
+                        if subtype_int == 0:  # Association Request
+                            wireshark_raw["summary"]["assoc"]["requests"] += 1
+                        elif subtype_int == 1:  # Association Response
+                            wireshark_raw["summary"]["assoc"]["responses"] += 1
+                            if assoc_status_code:
+                                try:
+                                    s_code = int(assoc_status_code) if assoc_status_code.isdigit() else int(assoc_status_code, 16)
+                                    if s_code == 0:
+                                        wireshark_raw["summary"]["assoc"]["responses_success"] += 1
+                                    else:
+                                        wireshark_raw["summary"]["assoc"]["responses_fail"] += 1
+                                except (ValueError, TypeError):
+                                    pass
+                        elif subtype_int == 2:  # Reassociation Request
+                            wireshark_raw["summary"]["reassoc"]["requests"] += 1
+                        elif subtype_int == 3:  # Reassociation Response
+                            wireshark_raw["summary"]["reassoc"]["responses"] += 1
+                            if assoc_status_code:
+                                try:
+                                    s_code = int(assoc_status_code) if assoc_status_code.isdigit() else int(assoc_status_code, 16)
+                                    if s_code == 0:
+                                        wireshark_raw["summary"]["reassoc"]["responses_success"] += 1
+                                    else:
+                                        wireshark_raw["summary"]["reassoc"]["responses_fail"] += 1
+                                except (ValueError, TypeError):
+                                    pass
+                        elif subtype_int == 10:  # Disassociation
+                            wireshark_raw["summary"]["disassoc"]["count"] += 1
+                            if reason_code:
+                                if reason_code not in wireshark_raw["summary"]["disassoc"]["reason_codes"]:
+                                    wireshark_raw["summary"]["disassoc"]["reason_codes"].append(reason_code)
+                        elif subtype_int == 12:  # Deauthentication
+                            wireshark_raw["summary"]["deauth"]["count"] += 1
+                            if reason_code:
+                                if reason_code not in wireshark_raw["summary"]["deauth"]["reason_codes"]:
+                                    wireshark_raw["summary"]["deauth"]["reason_codes"].append(reason_code)
+                        
                         # Determinar banda
                         band = None
                         if frequency:
@@ -362,8 +734,28 @@ class WiresharkTool:
                                     band = "2.4GHz"
                                 elif 5000 <= freq_mhz <= 6000:
                                     band = "5GHz"
+                                # Mapear frecuencia a banda en raw
+                                freq_key = str(int(freq_mhz))
+                                if freq_key not in wireshark_raw["summary"]["freq_band_map"]:
+                                    wireshark_raw["summary"]["freq_band_map"][freq_key] = band
                             except ValueError:
                                 pass
+                        
+                        # Determinar client_mac correctamente: el cliente es el que NO es el BSSID
+                        # En Deauth/Disassoc: si viene del AP (SA=BSSID), el cliente es DA
+                        # Si viene del cliente (SA=cliente), el cliente es SA
+                        client_mac_value = None
+                        if bssid:
+                            if wlan_sa and wlan_sa.lower() == bssid.lower():
+                                client_mac_value = wlan_da  # AP envía, cliente recibe
+                            elif wlan_da and wlan_da.lower() == bssid.lower():
+                                client_mac_value = wlan_sa  # Cliente envía, AP recibe
+                            else:
+                                # Fallback: usar el que no sea broadcast/multicast
+                                client_mac_value = wlan_da if wlan_da and wlan_da != "ff:ff:ff:ff:ff:ff" else wlan_sa
+                        else:
+                            # Sin BSSID, usar el que no sea broadcast
+                            client_mac_value = wlan_da if wlan_da and wlan_da != "ff:ff:ff:ff:ff:ff" else wlan_sa
                         
                         event = {
                             "timestamp": float(timestamp) if timestamp else 0,
@@ -371,7 +763,7 @@ class WiresharkTool:
                             "subtype": subtype_int,
                             "sa": wlan_sa,
                             "da": wlan_da,
-                            "client_mac": wlan_sa or wlan_da,
+                            "client_mac": client_mac_value or wlan_sa or wlan_da,
                             "bssid": bssid,
                             "ssid": ssid,
                             "band": band,
@@ -428,7 +820,11 @@ class WiresharkTool:
                 }.get(subtype_val, f"Unknown (0x{subtype_val:02x})")
                 logger.info(f"  - {frame_name}: {count}")
         
-        # 1. Determinar MAC de Cliente (la más frecuente que sea UNICAST y no sea BSSID)
+        # 1. Determinar MAC de Cliente (preciso y robusto)
+        # Evitar seleccionar MACs de AP/BSSID o direcciones circunstanciales.
+        # Priorizamos evidencia fuerte: Assoc/Reassoc Request, BTM Response,
+        # y también RSSI samples (emisor real). Si el usuario proporciona
+        # explícitamente una MAC de cliente, se respeta siempre que sea válida.
         client_mac = "Desconocido"
         
         def is_valid_client_mac(mac: str) -> bool:
@@ -440,15 +836,117 @@ class WiresharkTool:
             except: return False
             return True
 
-        potential_clients = [m for m in all_client_macs if is_valid_client_mac(m) and m not in bssid_info]
-        if potential_clients:
-            client_mac = Counter(potential_clients).most_common(1)[0][0]
+        def _normalize_mac(mac: str) -> str:
+            return (mac or "").lower().replace("-", ":").strip()
+
+        known_bssids = set(_normalize_mac(b) for b in (bssid_info or {}).keys() if b)
+
+        # Si el usuario proporcionó explícitamente la MAC del cliente y es válida,
+        # respetarla siempre que no sea un BSSID conocido.
+        if client_mac_hint:
+            hint_norm = _normalize_mac(client_mac_hint)
+            if is_valid_client_mac(hint_norm) and hint_norm not in known_bssids:
+                client_mac = hint_norm
+
+        # Score por MAC con pesos por tipo de evidencia (solo si no hay hint fiable)
+        mac_score = Counter()
+
+        # A) Evidencia desde eventos 802.11 (steering_events)
+        # - Association/Reassociation Request: el cliente es el emisor (SA)
+        # - BTM Response: el cliente es el emisor del response
+        for ev in steering_events:
+            subtype = ev.get("subtype")
+            ev_type = ev.get("type")
+            ev_event_type = ev.get("event_type")
+
+            # Candidate via client_mac calculado (cuando exista)
+            cand = _normalize_mac(ev.get("client_mac"))
+            if cand and is_valid_client_mac(cand) and cand not in known_bssids:
+                # Peso base
+                mac_score[cand] += 1
+
+            # Association/Reassociation Request -> SA del evento
+            if subtype in [0, 2]:
+                cand_sa = _normalize_mac(ev.get("sa") or ev.get("wlan_sa"))
+                if cand_sa and is_valid_client_mac(cand_sa) and cand_sa not in known_bssids:
+                    mac_score[cand_sa] += 5
+
+            # BTM Response explícito (formato WiresharkTool)
+            if ev_type == "btm" and ev_event_type == "response":
+                cand_cli = _normalize_mac(ev.get("client_mac"))
+                if cand_cli and is_valid_client_mac(cand_cli) and cand_cli not in known_bssids:
+                    mac_score[cand_cli] += 8
+
+        # B) Evidencia desde RSSI samples: el cliente es el emisor real de frames con RSSI
+        for s in temp_signal_samples:
+            cand_sa = _normalize_mac(s.get("sa"))
+            if cand_sa and is_valid_client_mac(cand_sa) and cand_sa not in known_bssids:
+                mac_score[cand_sa] += 2
+
+        # C) Fallback: frecuencia de aparición global en all_client_macs (menos confiable)
+        fallback_clients = [
+            _normalize_mac(m)
+            for m in all_client_macs
+            if is_valid_client_mac(_normalize_mac(m)) and _normalize_mac(m) not in known_bssids
+        ]
+        if fallback_clients:
+            mac_score.update(Counter(fallback_clients))
+
+        if client_mac == "Desconocido" and mac_score:
+            client_mac = mac_score.most_common(1)[0][0]
 
         # 2. Análisis de sesiones de clientes y transiciones
         steering_analysis = self._analyze_steering_patterns(steering_events, bssid_info, band_counters, client_mac)
         
         # 3. Evaluación de calidad de captura para band steering
         capture_quality = self._evaluate_capture_quality(steering_analysis, steering_events)
+
+        # ---------------------------------------------------------------
+        # ⚠️ IMPORTANTE: Fuente de verdad numérica
+        # ---------------------------------------------------------------
+        # A partir de este punto construimos el bloque `diagnostics`, que
+        # es consumido por el resto del backend como **única** fuente de
+        # verdad numérica sobre la captura. Cualquier otro servicio que
+        # necesite métricas (BTM, transiciones, KVR, etc.) debe leerlas
+        # desde aquí y NO recalcularlas desde cero.
+        #
+        # Campos clave:
+        # - diagnostics.wireshark_raw.summary.*  -> contadores exactos
+        # - diagnostics.band_counters           -> vistas agregadas
+        # - steering_analysis                   -> resumen de steering
+        #
+        # `BTMAnalyzer` y `BandSteeringService` combinan estos valores
+        # pero no los modifican; cuando necesiten ajustes, se debe
+        # cambiar esta función y mantener el resto como consumidores
+        # pasivos.
+        # ---------------------------------------------------------------
+        # Roles sugeridos para BSSIDs (maestro/esclavo) según banda.
+        # Convención: 5GHz suele ser el objetivo (maestro) y 2.4GHz el fallback (esclavo).
+        # Si solo existe una banda, ese BSSID queda como maestro.
+        bssid_roles: Dict[str, Any] = {}
+        try:
+            bssids_5 = [
+                b for b, v in (bssid_info or {}).items()
+                if isinstance(v, dict) and str(v.get("band", "")).lower().startswith("5")
+            ]
+            bssids_24 = [
+                b for b, v in (bssid_info or {}).items()
+                if isinstance(v, dict) and ("2.4" in str(v.get("band", "")).lower() or "2,4" in str(v.get("band", "")).lower())
+            ]
+
+            if bssids_5 and bssids_24:
+                for b in bssids_5:
+                    bssid_roles[b] = {"role": "maestro", "band": "5GHz"}
+                for b in bssids_24:
+                    bssid_roles[b] = {"role": "esclavo", "band": "2.4GHz"}
+            elif bssids_5:
+                for b in bssids_5:
+                    bssid_roles[b] = {"role": "maestro", "band": "5GHz"}
+            elif bssids_24:
+                for b in bssids_24:
+                    bssid_roles[b] = {"role": "maestro", "band": "2.4GHz"}
+        except Exception:
+            bssid_roles = {}
 
         diagnostics = {
             "tcp_retransmissions": tcp_retransmissions,
@@ -457,9 +955,11 @@ class WiresharkTool:
             "steering_events_count": len(steering_events),
             "unique_bssid_count": len(bssid_info),
             "bssid_info": bssid_info,
+            "bssid_roles": bssid_roles,
             "client_mac": client_mac,
             "capture_quality": capture_quality,
             "band_counters": band_counters,  # Nuevo: Contadores para steering preventivo
+            "wireshark_raw": wireshark_raw,  # Fuente de verdad: datos exactos de tshark
         }
 
         # 4. Filtrar muestras de señal para gráfica continua
@@ -521,11 +1021,25 @@ class WiresharkTool:
         # Ordenar eventos por timestamp
         sorted_events = sorted(events, key=lambda x: x["timestamp"])
         
-        # Agrupar por cliente
+        # Filtrar BSSIDs conocidos para evitar agrupar eventos por BSSID en lugar de cliente
+        known_bssids_set = set(bssid_info.keys()) if bssid_info else set()
+        
+        def is_bssid(mac: str) -> bool:
+            """Verifica si una MAC es un BSSID conocido"""
+            if not mac:
+                return True
+            mac_normalized = mac.lower().replace('-', ':')
+            for bssid in known_bssids_set:
+                if bssid.lower().replace('-', ':') == mac_normalized:
+                    return True
+            return False
+        
+        # Agrupar por cliente, filtrando BSSIDs
         client_events = {}
         for event in sorted_events:
-            client = event["client_mac"]
-            if client and client != "":
+            client = event.get("client_mac")
+            # Solo agregar si tiene client_mac válido y no es un BSSID conocido
+            if client and client != "" and not is_bssid(client):
                 if client not in client_events:
                     client_events[client] = []
                 client_events[client].append(event)
@@ -538,22 +1052,54 @@ class WiresharkTool:
         # Si hubo BTM Accept, el cliente cooperó exitosamente, aunque no hayamos visto el paquete Reassoc
         if band_counters and "btm_stats" in band_counters:
             btm_stats = band_counters["btm_stats"]
-            status_codes = btm_stats.get("status_codes", [])
-            requests = btm_stats.get("requests", 0)
+            
+            # Contar solo BTM Requests del cliente principal si está especificado
+            if primary_client_mac:
+                btm_requests_count = sum(
+                    1 for event in sorted_events 
+                    if event.get("type") == "btm" 
+                    and event.get("event_type") == "request"
+                    and event.get("client_mac") == primary_client_mac
+                )
+            else:
+                # Si no hay cliente principal, contar todos los requests
+                btm_requests_count = btm_stats.get("requests", 0)
             
             # Si hubo BTM Requests, contar como intentos de steering
-            if requests > 0:
-                total_steering_attempts += requests
-                logger.info(f"✅ Contando {requests} BTM Request(s) como intento(s) de steering")
+            if btm_requests_count > 0:
+                total_steering_attempts += btm_requests_count
+                logger.info(f"✅ Contando {btm_requests_count} BTM Request(s) como intento(s) de steering para cliente {primary_client_mac or 'todos'}")
             
-            # Si hubo Status 0 (Accept), contar como éxito
-            if any(str(c) == "0" or str(c) == "0x00" for c in status_codes):
-                successful_transitions += 1
-                logger.info("✅ Contando BTM Accept como transición exitosa inicial")
+            # Contar TODOS los responses exitosos (status_code 0) desde los eventos
+            # Solo contar eventos del cliente principal si está especificado
+            # No solo verificar si existe uno, sino contar todos los éxitos reales
+            btm_successful_responses = sum(
+                1 for event in sorted_events 
+                if event.get("type") == "btm" 
+                and event.get("event_type") == "response"
+                and (event.get("status_code") == 0 or str(event.get("status_code")) == "0")
+                and (not primary_client_mac or event.get("client_mac") == primary_client_mac)
+            )
+            
+            if btm_successful_responses > 0:
+                successful_transitions += btm_successful_responses
+                logger.info(f"✅ Contando {btm_successful_responses} BTM Accept(s) como transición(es) exitosa(s)")
 
         failed_transitions = 0
         loop_detected = False
         transition_times = []
+        
+        # Función auxiliar para normalizar bandas y evitar falsos negativos
+        def normalize_band(band):
+            """Normaliza el formato de banda para comparación consistente."""
+            if not band:
+                return None
+            band_str = str(band).lower()
+            if '5' in band_str:
+                return '5GHz'
+            if '2.4' in band_str or '2,4' in band_str:
+                return '2.4GHz'
+            return band
         
         # Analizar cada cliente
         for client_mac, client_event_list in client_events.items():
@@ -570,7 +1116,9 @@ class WiresharkTool:
                 # CASO 1: Steering agresivo (Deauth/Disassoc → Reassoc)
                 if event_subtype in [10, 12]:  # Disassoc o Deauth
                     deauth_band = event["band"]
+                    deauth_time = event["timestamp"]
                     reason_code = event["reason_code"]
+                    deauth_bssid = event.get("bssid")
                     
                     # VALIDAR DEAUTH: Solo contar si es dirigido y forzado
                     is_forced, classification, desc = DeauthValidator.validate_and_classify(event, client_mac)
@@ -618,7 +1166,10 @@ class WiresharkTool:
                                 break
                     
                     transition_time = (reassoc_time - deauth_time) if reassoc_time else None
-                    is_band_change = (deauth_band and new_band and deauth_band != new_band)
+                    # Normalizar bandas antes de comparar
+                    deauth_band_norm = normalize_band(deauth_band)
+                    new_band_norm = normalize_band(new_band)
+                    is_band_change = (deauth_band_norm and new_band_norm and deauth_band_norm != new_band_norm)
                     is_bssid_change = (deauth_bssid and new_bssid and deauth_bssid != new_bssid)
                     
                     # Detectar bucles
@@ -681,7 +1232,10 @@ class WiresharkTool:
                         if current_bssid in bssid_info:
                             old_band = bssid_info[current_bssid].get("band")
                         
-                        is_band_change = (old_band and new_band and old_band != new_band)
+                        # Normalizar bandas antes de comparar
+                        old_band_norm = normalize_band(old_band)
+                        new_band_norm = normalize_band(new_band)
+                        is_band_change = (old_band_norm and new_band_norm and old_band_norm != new_band_norm)
                         is_bssid_change = True  # Por definición, ya verificamos que cambió
                         
                         # Detectar bucles (volver a BSSID anterior)
@@ -949,7 +1503,14 @@ class WiresharkTool:
         if bssid_info:
             bssid_summary = "BSSID DETECTADOS:\n"
             for bssid, info in bssid_info.items():
-                bssid_summary += f"- {bssid}: {info['band']} ({info['ssid']})\n"
+                # Validar que info sea un diccionario (puede ser float en algunos casos)
+                if isinstance(info, dict):
+                    band = info.get('band', 'Unknown')
+                    ssid = info.get('ssid', 'N/A')
+                    bssid_summary += f"- {bssid}: {band} ({ssid})\n"
+                else:
+                    # Si info no es un dict, solo mostrar el BSSID
+                    bssid_summary += f"- {bssid}: (info no disponible)\n"
             bssid_summary += "\n"
         return bssid_summary
 
@@ -1107,6 +1668,25 @@ class WiresharkTool:
                 transitions_summary += f"... y {len(sa['transitions']) - 5} transiciones más\n"
             transitions_summary += "\n"
         
+        # Bloque de métricas canónicas en formato tabla simple para el LLM.
+        # Cualquier número que el modelo necesite mencionar en el informe
+        # DEBE provenir de aquí y no inferirse.
+        canonical_metrics_block = (
+            "## TABLA DE MÉTRICAS CANÓNICAS (NO INVENTAR NÚMEROS)\n\n"
+            f"- archivo: {file_name}\n"
+            f"- total_wlan_packets: {stats['total_wlan_packets']}\n"
+            f"- steering_attempts: {sa['steering_attempts']}\n"
+            f"- successful_transitions: {sa['successful_transitions']}\n"
+            f"- btm_requests: {bc.get('btm_stats', {}).get('requests', 0) if isinstance(bc, dict) else 0}\n"
+            f"- btm_responses: {bc.get('btm_stats', {}).get('responses', 0) if isinstance(bc, dict) else 0}\n"
+            f"- btm_accept: {d.get('wireshark_raw', {}).get('summary', {}).get('btm', {}).get('responses_accept', 0)}\n"
+            f"- deauth_count: {d.get('wireshark_raw', {}).get('summary', {}).get('deauth', {}).get('count', 0)}\n"
+            f"- disassoc_count: {d.get('wireshark_raw', {}).get('summary', {}).get('disassoc', {}).get('count', 0)}\n"
+            f"- k_support: {d.get('band_counters', {}).get('kvr_stats', {}).get('11k', False)}\n"
+            f"- v_support: {d.get('band_counters', {}).get('kvr_stats', {}).get('11v', False)}\n"
+            f"- r_support: {d.get('band_counters', {}).get('kvr_stats', {}).get('11r', False)}\n\n"
+        )
+
         return (
             f"# ANÁLISIS DE CAPTURA WIRESHARK - BAND STEERING\n\n"
             f"{btm_success_note}"
@@ -1125,6 +1705,7 @@ class WiresharkTool:
             f"**Tiempo promedio de transición:** {sa['avg_transition_time']}s\n"
             f"**Tiempo máximo de transición:** {sa['max_transition_time']}s\n\n"
             f"---\n\n"
+            f"{canonical_metrics_block}"
             f"{preventive_summary}"
             f"{kvr_summary}"
             f"{btm_summary}"
@@ -1151,7 +1732,7 @@ class WiresharkTool:
             "- **Completo**: Cubriendo todos los aspectos técnicos relevantes\n"
             "- **Profesional**: Con estructura lógica y conclusiones claras\n\n"
             
-            "## REGLA DE ORO: FIDELIDAD A LA TABLA DE CUMPLIMIENTO\n"
+            "## REGLA DE ORO: FIDELIDAD A LA TABLA DE CUMPLIMIENTO Y A LA TABLA DE MÉTRICAS\n"
             "El resumen técnico incluye una sección '❌ CHECKS QUE FALLARON' y '✅ CHECKS QUE PASARON'.\n\n"
             
             "**PARA EL VEREDICTO:**\n"
@@ -1183,6 +1764,12 @@ class WiresharkTool:
             "críticos que no se cumplieron. Las transiciones exitosas se mencionan como contexto técnico,\n"
             "pero no cambian el veredicto.'\n\n"
             
+            "## TABLA DE MÉTRICAS CANÓNICAS (IMPORTANTE)\n"
+            "El resumen técnico incluye una sección llamada 'TABLA DE MÉTRICAS CANÓNICAS (NO INVENTAR NÚMEROS)'.\n"
+            "- Esa tabla contiene todos los números que puedes usar (paquetes, intentos de steering, éxitos, BTM, deauth, etc.).\n"
+            "- Si necesitas mencionar un número, COPIA exactamente el valor de esa tabla.\n"
+            "- Está TERMINANTEMENTE PROHIBIDO inferir, redondear o inventar cantidades que no estén en esa tabla.\n\n"
+
             "## ESTRUCTURA DEL REPORTE (ADAPTATIVA)\n\n"
             
             "Debes crear un reporte con las secciones que sean relevantes según los datos encontrados.\n"
@@ -1243,7 +1830,8 @@ class WiresharkTool:
             "## REGLAS ESTRICTAS\n"
             "1. **CONSISTENCIA**: Si la tabla dice SUCCESS, tu conclusión es EXITOSA.\n"
             "2. **TONO**: Si es SUCCESS, el tono debe ser positivo, reconociendo el cumplimiento de los estándares.\n"
-            "3. **IDIOMA**: ESPAÑOL.\n"
+            "3. **NÚMEROS**: SOLO puedes usar los números que aparecen en 'TABLA DE MÉTRICAS CANÓNICAS'. No estimes ni cambies valores.\n"
+            "4. **IDIOMA**: ESPAÑOL.\n"
         )
 
         completion = self.client.chat.completions.create(

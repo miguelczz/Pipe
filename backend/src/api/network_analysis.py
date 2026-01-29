@@ -9,7 +9,8 @@ import os
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form
+import json
 from fastapi.responses import JSONResponse
 
 from ..services.band_steering_service import BandSteeringService
@@ -26,7 +27,10 @@ _executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_pre
 
 
 @router.post("/analyze")
-async def analyze_network_capture(file: UploadFile = File(...)):
+async def analyze_network_capture(
+    file: UploadFile = File(...),
+    user_metadata: str | None = Form(None),
+):
     """
     Sube un archivo de captura y realiza el proceso completo de Band Steering.
     """
@@ -54,14 +58,26 @@ async def analyze_network_capture(file: UploadFile = File(...)):
 
         logger.info(f"[NetworkAnalysis] Iniciando proceso Band Steering para: {file.filename}")
 
+        # Parsear metadata opcional del usuario (SSID, MAC cliente, etc.)
+        metadata_dict = None
+        if user_metadata:
+            try:
+                metadata_dict = json.loads(user_metadata)
+            except json.JSONDecodeError:
+                logger.warning(f"[NetworkAnalysis] user_metadata no es JSON válido: {user_metadata}")
+                metadata_dict = None
+
         # Ejecutar el servicio en un thread separado (tshark es bloqueante)
         loop = asyncio.get_event_loop()
         result_pkg = await loop.run_in_executor(
             _executor,
-            lambda: asyncio.run(band_steering_service.process_capture(
-                str(temp_path),
-                original_filename=file.filename
-            ))
+            lambda: asyncio.run(
+                band_steering_service.process_capture(
+                    str(temp_path),
+                    user_metadata=metadata_dict,
+                    original_filename=file.filename,
+                )
+            )
         )
 
         analysis = result_pkg["analysis"]

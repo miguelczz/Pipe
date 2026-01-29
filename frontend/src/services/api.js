@@ -269,9 +269,23 @@ export const networkAnalysisService = {
    * @param {File} file - Archivo de captura
    * @returns {Promise} - Análisis y estadísticas básicas
    */
-  async analyzeCapture(file) {
+  async analyzeCapture(file, metadata = {}) {
     const formData = new FormData()
     formData.append('file', file)
+
+    // Enviar metadata de usuario (SSID, MAC cliente) como JSON si existe
+    try {
+      const cleaned = {}
+      if (metadata && typeof metadata === 'object') {
+        if (metadata.ssid && metadata.ssid.trim()) cleaned.ssid = metadata.ssid.trim()
+        if (metadata.client_mac && metadata.client_mac.trim()) cleaned.client_mac = metadata.client_mac.trim()
+      }
+      if (Object.keys(cleaned).length > 0) {
+        formData.append('user_metadata', JSON.stringify(cleaned))
+      }
+    } catch (e) {
+      console.warn('No se pudo serializar user_metadata:', e)
+    }
 
     const uploadClient = axios.create({
       baseURL: API_URL,

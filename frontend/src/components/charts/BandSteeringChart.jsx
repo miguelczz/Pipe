@@ -205,7 +205,7 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
         </div>
       </div>
 
-      <div className="relative w-full h-[450px] bg-dark-bg-secondary/30 rounded-2xl p-4 border border-dark-border-primary/50 overflow-hidden">
+      <div className="relative w-full h-[300px] bg-dark-bg-secondary/30 rounded-2xl p-4 border border-dark-border-primary/50 overflow-hidden">
         {/* Línea de umbral crítica visual (SVG superpuesto para máxima nitidez) */}
         <div className="absolute left-0 right-0 border-t border-dashed border-red-500/30 z-0" style={{ top: '75%' }}>
             <span className="absolute right-4 -top-5 text-[10px] text-red-500/50 font-bold uppercase">Umbral Crítico (-75dBm)</span>
@@ -218,13 +218,69 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
         />
       </div>
 
-      <div className="flex items-start gap-3 p-4 rounded-xl bg-dark-accent-primary/5 border border-dark-accent-primary/20">
-          <ShieldAlert className="w-5 h-5 text-dark-accent-primary flex-shrink-0 mt-0.5" />
-          <div className="text-xs text-dark-text-secondary leading-relaxed">
-              <span className="text-dark-text-primary font-bold">Interpretación del flujo:</span> Las burbujas de colores indican eventos de red. 
-              Si ves un marcador <span className="text-red-400 font-bold">rojo</span> seguido de uno <span className="text-green-400 font-bold">verde</span>, 
-              significa que el equipo de red intervino para mejorar tu conexión moviéndote de banda.
+      {/* Tabla Explicativa de Elementos Visuales */}
+      <div className="bg-dark-surface-primary rounded-xl border border-dark-border-primary p-4">
+        <h4 className="text-sm font-semibold text-dark-text-primary mb-3 flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4 text-dark-accent-primary" />
+          Guía de Elementos Visuales
+        </h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Líneas de Señal */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-dark-text-muted uppercase tracking-wider mb-2">Líneas de Señal</p>
+            <div className="flex items-center gap-2 text-xs">
+              <div className="w-8 h-0.5 bg-blue-500"></div>
+              <span className="text-dark-text-secondary">2.4 GHz</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <div className="w-8 h-0.5 bg-green-500"></div>
+              <span className="text-dark-text-secondary">5 GHz</span>
+            </div>
           </div>
+
+          {/* Marcadores de Eventos */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-dark-text-muted uppercase tracking-wider mb-2">Marcadores de Eventos</p>
+            <div className="flex items-center gap-2 text-xs">
+              <div className="w-3 h-3 rounded bg-yellow-500"></div>
+              <span className="text-dark-text-secondary">Sugerencia AP / Respuesta Cliente</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <div className="w-3 h-3 rounded bg-red-500"></div>
+              <span className="text-dark-text-secondary">Inicio de Salto / Destierro</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <div className="w-3 h-3 rounded bg-green-500"></div>
+              <span className="text-dark-text-secondary">Conectado Exitosamente</span>
+            </div>
+          </div>
+
+          {/* Zonas de Señal */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-dark-text-muted uppercase tracking-wider mb-2">Zonas de Calidad</p>
+            <div className="flex items-center gap-2 text-xs">
+              <div className="w-3 h-3 rounded bg-blue-500/20 border border-blue-500/30"></div>
+              <span className="text-dark-text-secondary"><strong>&gt; -65 dBm:</strong> Estabilidad</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <div className="w-3 h-3 rounded bg-yellow-500/20 border border-yellow-500/30"></div>
+              <span className="text-dark-text-secondary"><strong>-65 a -75 dBm:</strong> Zona de Steering</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <div className="w-3 h-3 rounded bg-red-500/20 border border-red-500/30"></div>
+              <span className="text-dark-text-secondary"><strong>&lt; -80 dBm:</strong> Crítica</span>
+            </div>
+          </div>
+
+          {/* Interpretación */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-dark-text-muted uppercase tracking-wider mb-2">Interpretación</p>
+            <div className="text-xs text-dark-text-secondary leading-relaxed">
+              <p className="mb-1">Los marcadores muestran eventos clave del proceso de steering.</p>
+              <p>Una secuencia <span className="text-red-400 font-semibold">rojo</span> → <span className="text-green-400 font-semibold">verde</span> indica un salto exitoso entre bandas.</p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )
