@@ -210,19 +210,73 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
             }))
         })
 
-        // Construir lista de cambios de banda desde transiciones (misma lógica que zonas de banda)
-        const transitionBandChanges = []
-        transitions.forEach(t => {
-            if (t.is_successful && t.is_band_change && t.from_band && t.to_band) {
-                const tRel = normalizeTime(t.start_time)
+        // Construir lista de cambios de banda desde transiciones
+        // IMPORTANTE: Procesar las transiciones PRIMERO para detectar cambios de banda corregidos
+        // antes de generar smoothedPoints, para que getBandFromTransitions funcione correctamente
+        let transitionBandChanges = []
+        
+        // Procesar transiciones primero para construir transitionBandChanges con correcciones
+        const sortedTransitionsForBandChanges = [...(transitions || [])].sort((a, b) => a.start_time - b.start_time)
+        
+        sortedTransitionsForBandChanges.forEach((t, idx) => {
+            if (!t || !t.start_time) return
+            
+            const fromBandNorm = normalizeBand(t.from_band)
+            const toBandNorm = normalizeBand(t.to_band)
+            let actualFromBand = fromBandNorm
+            let actualToBand = toBandNorm
+            let isBandChange = t.is_band_change === true
+            
+            // SIEMPRE comparar con la transición anterior para detectar cambios de banda reales
+            // incluso si el backend no los marca correctamente
+            if (idx > 0) {
+                const prevTransition = sortedTransitionsForBandChanges[idx - 1]
+                if (prevTransition && prevTransition.to_band) {
+                    const prevBandNorm = normalizeBand(prevTransition.to_band)
+                    const currentBandNorm = toBandNorm || fromBandNorm
+                    
+                    // Si hay un cambio de banda real comparando con la transición anterior
+                    if (prevBandNorm && currentBandNorm && prevBandNorm !== currentBandNorm) {
+                        // Hay un cambio de banda real, incluso si el backend no lo marcó
+                        actualFromBand = prevBandNorm
+                        actualToBand = currentBandNorm
+                        isBandChange = true
+                    } else if (isBandChange && fromBandNorm === toBandNorm) {
+                        // El backend dice que hay cambio pero las bandas son iguales
+                        // Si la transición anterior tiene la misma banda, entonces no hay cambio real
+                        if (prevBandNorm === toBandNorm) {
+                            isBandChange = false
+                        } else if (prevBandNorm && prevBandNorm !== toBandNorm) {
+                            // Hay cambio real comparando con la anterior
+                            actualFromBand = prevBandNorm
+                            actualToBand = toBandNorm
+                        }
+                    }
+                }
+            }
+            
+            // Agregar a transitionBandChanges si es un cambio de banda exitoso con bandas corregidas
+            if (isBandChange && t.is_successful && actualFromBand && actualToBand && actualFromBand !== actualToBand) {
+                const timestampToUse = (t.end_time) ? t.end_time : t.start_time
+                const tRel = normalizeTime(timestampToUse)
                 transitionBandChanges.push({
                     time: tRel,
-                    fromBand: normalizeBand(t.from_band),
-                    toBand: normalizeBand(t.to_band)
+                    fromBand: actualFromBand,
+                    toBand: actualToBand
                 })
             }
         })
+        
         transitionBandChanges.sort((a, b) => a.time - b.time)
+        
+        console.log(`[TransitionBandChanges] Construido ANTES de smoothedPoints:`, {
+            count: transitionBandChanges.length,
+            changes: transitionBandChanges.map(c => ({
+                time: c.time,
+                fromBand: c.fromBand,
+                toBand: c.toBand
+            }))
+        })
 
         // Función para obtener la banda basándose en transiciones (misma lógica que zonas de banda)
         const getBandFromTransitions = (timeInSeconds, fallbackBand = null) => {
@@ -537,6 +591,9 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
         // Primero, ordenar transiciones por tiempo para poder comparar consecutivas
         const sortedTransitions = [...filteredTransitions].sort((a, b) => a.start_time - b.start_time)
 
+        // transitionBandChanges ya está construido arriba, no necesitamos reconstruirlo
+        // pero podemos agregar cambios adicionales si se detectan durante el procesamiento de marcadores
+
         sortedTransitions.forEach((t, idx) => {
             if (!t || !t.start_time) return
 
@@ -550,30 +607,50 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
             // 
             // SOLUCIÓN: Si is_band_change es true pero las bandas son iguales, buscar la transición anterior
             // para obtener el from_band real, o calcularlo comparando con la transición anterior.
+            // TAMBIÉN: Detectar cambios de banda incluso si el backend no los marca, comparando transiciones consecutivas.
             let actualFromBand = fromBandNorm
             let actualToBand = toBandNorm
             let isBandChange = t.is_band_change === true
 
-            // Si el backend dice que hay cambio de banda pero las bandas son iguales,
-            // comparar con la transición anterior para encontrar el cambio real
-            if (isBandChange && fromBandNorm === toBandNorm && idx > 0) {
+            // SIEMPRE comparar con la transición anterior para detectar cambios de banda reales
+            // incluso si el backend no los marca correctamente
+            if (idx > 0) {
                 const prevTransition = sortedTransitions[idx - 1]
                 if (prevTransition && prevTransition.to_band) {
                     const prevBandNorm = normalizeBand(prevTransition.to_band)
-                    if (prevBandNorm && prevBandNorm !== toBandNorm) {
-                        // El cambio de banda ocurrió entre la transición anterior y esta
+                    const currentBandNorm = toBandNorm || fromBandNorm
+                    
+                    // Si hay un cambio de banda real comparando con la transición anterior
+                    if (prevBandNorm && currentBandNorm && prevBandNorm !== currentBandNorm) {
+                        // Hay un cambio de banda real, incluso si el backend no lo marcó
                         actualFromBand = prevBandNorm
-                        actualToBand = toBandNorm
-                        console.log(`[Transición ${idx}] Cambio de banda detectado comparando con transición anterior:`, {
+                        actualToBand = currentBandNorm
+                        isBandChange = true
+                        console.log(`[Transición ${idx}] ✅ Cambio de banda detectado comparando con transición anterior:`, {
                             prev_band: prevBandNorm,
-                            current_band: toBandNorm,
+                            current_band: currentBandNorm,
                             from_band_corregido: actualFromBand,
-                            to_band_corregido: actualToBand
+                            to_band_corregido: actualToBand,
+                            is_band_change_backend: t.is_band_change,
+                            is_band_change_corregido: isBandChange
                         })
-                    } else {
-                        // Si las bandas siguen siendo iguales, no es realmente un cambio de banda
-                        isBandChange = false
-                        console.log(`[Transición ${idx}] is_band_change=true pero no hay diferencia de banda real, marcando como false`)
+                    } else if (isBandChange && fromBandNorm === toBandNorm) {
+                        // El backend dice que hay cambio pero las bandas son iguales
+                        // Si la transición anterior tiene la misma banda, entonces no hay cambio real
+                        if (prevBandNorm === toBandNorm) {
+                            isBandChange = false
+                            console.log(`[Transición ${idx}] ⚠️ is_band_change=true pero no hay diferencia de banda real, marcando como false`)
+                        } else if (prevBandNorm && prevBandNorm !== toBandNorm) {
+                            // Hay cambio real comparando con la anterior
+                            actualFromBand = prevBandNorm
+                            actualToBand = toBandNorm
+                            console.log(`[Transición ${idx}] ✅ Cambio de banda corregido comparando con transición anterior:`, {
+                                prev_band: prevBandNorm,
+                                current_band: toBandNorm,
+                                from_band_corregido: actualFromBand,
+                                to_band_corregido: actualToBand
+                            })
+                        }
                     }
                 }
             }
@@ -601,6 +678,23 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
             // Para otras transiciones, usar start_time.
             const timestampToUse = (isBandChange && t.end_time) ? t.end_time : t.start_time
             const tRel = normalizeTime(timestampToUse)
+            
+            // Verificar si este cambio de banda ya está en transitionBandChanges
+            // Si no está, agregarlo (puede pasar si se detecta una corrección adicional)
+            if (isBandChange && t.is_successful && actualFromBand && actualToBand && actualFromBand !== actualToBand) {
+                const alreadyExists = transitionBandChanges.some(c => 
+                    Math.abs(c.time - tRel) < 0.1 && c.fromBand === actualFromBand && c.toBand === actualToBand
+                )
+                if (!alreadyExists) {
+                    transitionBandChanges.push({
+                        time: tRel,
+                        fromBand: actualFromBand,
+                        toBand: actualToBand
+                    })
+                    transitionBandChanges.sort((a, b) => a.time - b.time)
+                }
+            }
+            
             const yPos = findRssiAt(tRel)
 
             console.log(`[Transición ${idx}] Posicionamiento del marcador:`, {
@@ -683,6 +777,16 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
                 borderColor: transBorderColor,
                 backgroundColor: transBgColor
             })
+        })
+
+        // transitionBandChanges ya está ordenado, solo log final
+        console.log(`[TransitionBandChanges] Final después de procesar marcadores:`, {
+            count: transitionBandChanges.length,
+            changes: transitionBandChanges.map(c => ({
+                time: c.time,
+                fromBand: c.fromBand,
+                toBand: c.toBand
+            }))
         })
 
         // -------------------------------------------------------------------------
@@ -1318,6 +1422,25 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
                                 <div className="w-2 h-2 bg-red-500 rotate-45"></div>
                                 <span className="text-dark-text-secondary">Fallido</span>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Umbrales RSSI */}
+                <div className="mt-4 pt-4 border-t border-dark-border-primary">
+                    <p className="text-xs font-semibold text-dark-text-muted uppercase tracking-wider mb-3">Umbrales RSSI</p>
+                    <div className="flex items-center gap-4 flex-wrap">
+                        <div className="flex items-center gap-2 text-xs">
+                            <div className="w-8 h-0.5 border-t border-t-emerald-500 border-dashed" style={{ borderTopWidth: '1px', borderTopStyle: 'dashed' }}></div>
+                            <span className="text-dark-text-secondary">Excelente (-67 dBm)</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                            <div className="w-8 h-0.5 border-t border-t-amber-500 border-dashed" style={{ borderTopWidth: '2px', borderTopStyle: 'dashed' }}></div>
+                            <span className="text-dark-text-secondary">Límite (-70 dBm)</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                            <div className="w-8 h-0.5 border-t border-t-red-500 border-dashed" style={{ borderTopWidth: '1px', borderTopStyle: 'dashed' }}></div>
+                            <span className="text-dark-text-secondary">Malo (-75 dBm)</span>
                         </div>
                     </div>
                 </div>
