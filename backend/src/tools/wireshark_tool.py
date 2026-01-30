@@ -187,8 +187,6 @@ class WiresharkTool:
             "-e", "wlan_radio.signal_dbm",        # RSSI / Intensidad de Señal
         ]
 
-        logger.info(f"Ejecutando tshark en: {file_path}")
-        logger.debug(f"Comando tshark: {' '.join(cmd)}")
 
         result = subprocess.run(
             cmd,
@@ -199,18 +197,15 @@ class WiresharkTool:
         )
 
         if result.returncode != 0:
-            logger.error(f"Error en tshark: {result.stderr}")
             raise RuntimeError(result.stderr or "Error ejecutando tshark")
 
         # Logging de diagnóstico
         lines = result.stdout.splitlines()
-        logger.info(f"Total de líneas extraídas por tshark: {len(lines)}")
         
         # Mostrar primeras 3 líneas para diagnóstico
         if lines:
-            logger.debug("Primeras líneas de salida de tshark:")
             for i, line in enumerate(lines[:3], 1):
-                logger.debug(f"  Línea {i}: {line[:200]}")  # Primeros 200 caracteres
+                pass
 
         # Contador de paquetes WLAN para diagnóstico
         wlan_packets_with_subtype = 0
@@ -473,7 +468,6 @@ class WiresharkTool:
                             band_counters["btm_stats"] = {"requests": 0, "responses": 0, "status_codes": []}
 
                         if ac_val == 7: # BTM Request
-                             logger.info(f"✅ BTM REQUEST detectado")
                              band_counters["btm_stats"]["requests"] += 1
                              # Capturar en raw summary
                              wireshark_raw["summary"]["btm"]["requests"] += 1
@@ -520,7 +514,6 @@ class WiresharkTool:
                              })
                              
                         elif ac_val == 8: # BTM Response
-                            logger.info(f"✅ BTM RESPONSE detectado. Status Code={btm_status_code}")
                             band_counters["btm_stats"]["responses"] += 1
                             # Capturar en raw summary
                             wireshark_raw["summary"]["btm"]["responses"] += 1
@@ -633,7 +626,6 @@ class WiresharkTool:
                         # 11k: Category 5 (Radio Measurement)
                         if cat_val == 5:
                             band_counters["kvr_stats"]["11k"] = True
-                            logger.info(f"✅ 802.11k (Radio Measurement) detectado.")
 
                         # 11v: Category 10 (WNM)
                         if cat_val == 10:
@@ -658,7 +650,6 @@ class WiresharkTool:
                         try:
                             s_code = int(assoc_status_code) if assoc_status_code.isdigit() else int(assoc_status_code, 16)
                             if s_code != 0:
-                                logger.warning(f"❌ Fallo de asociación detectado: MAC {wlan_da} -> Status {s_code}")
                                 # Registrar fallo explícito en contadores de diagnóstico si es necesario
                                 if "association_failures" not in band_counters:
                                     band_counters["association_failures"] = []
@@ -791,17 +782,9 @@ class WiresharkTool:
                     wlan_packets_without_subtype += 1
 
         # Logging de resultados
-        logger.info(f"Paquetes procesados: {total_packets}")
-        logger.info(f"Paquetes WLAN: {total_wlan_packets}")
-        logger.info(f"Paquetes WLAN con subtype: {wlan_packets_with_subtype}")
-        logger.info(f"Paquetes WLAN sin subtype: {wlan_packets_without_subtype}")
-        logger.info(f"Eventos 802.11 capturados: {len(steering_events)}")
-        logger.info(f"BSSIDs únicos: {len(bssid_info)}")
-        logger.info(f"Contadores BTM capturados: {band_counters.get('btm_stats', 'Ninguno')}")
         
         # Mostrar tipos de frames más comunes
         if subtype_counter:
-            logger.info("Tipos de frames WLAN detectados (top 10):")
             for subtype_val, count in subtype_counter.most_common(10):
                 frame_name = {
                     0: "Association Request",
@@ -818,7 +801,6 @@ class WiresharkTool:
                     25: "Block Ack",
                     28: "QoS Data"
                 }.get(subtype_val, f"Unknown (0x{subtype_val:02x})")
-                logger.info(f"  - {frame_name}: {count}")
         
         # 1. Determinar MAC de Cliente (preciso y robusto)
         # Evitar seleccionar MACs de AP/BSSID o direcciones circunstanciales.
@@ -995,6 +977,7 @@ class WiresharkTool:
         Analiza patrones de band steering en los eventos capturados.
         
         Soporta:
+            pass
         1. Steering agresivo (Deauth → Reassoc)
         2. Steering asistido (Reassoc directa)
         3. Steering preventivo (Client Steering silenciando 2.4GHz)
@@ -1068,7 +1051,6 @@ class WiresharkTool:
             # Si hubo BTM Requests, contar como intentos de steering
             if btm_requests_count > 0:
                 total_steering_attempts += btm_requests_count
-                logger.info(f"✅ Contando {btm_requests_count} BTM Request(s) como intento(s) de steering para cliente {primary_client_mac or 'todos'}")
             
             # Contar TODOS los responses exitosos (status_code 0) desde los eventos
             # Solo contar eventos del cliente principal si está especificado
@@ -1083,7 +1065,6 @@ class WiresharkTool:
             
             if btm_successful_responses > 0:
                 successful_transitions += btm_successful_responses
-                logger.info(f"✅ Contando {btm_successful_responses} BTM Accept(s) como transición(es) exitosa(s)")
 
         failed_transitions = 0
         loop_detected = False
@@ -1123,7 +1104,6 @@ class WiresharkTool:
                     # VALIDAR DEAUTH: Solo contar si es dirigido y forzado
                     is_forced, classification, desc = DeauthValidator.validate_and_classify(event, client_mac)
                     if not is_forced:
-                        logger.debug(f"Deauth ignorado para steering count: {desc}")
                         continue
                     
                     total_steering_attempts += 1
@@ -1162,7 +1142,6 @@ class WiresharkTool:
                             else:
                                 # Fallo: AP rechazó (Status != 0)
                                 reassoc_found = False
-                                logger.warning(f"❌ Transición fallida por Status Code: {s_val} en BSSID {next_event.get('bssid')}")
                                 break
                     
                     transition_time = (reassoc_time - deauth_time) if reassoc_time else None
@@ -1341,6 +1320,7 @@ class WiresharkTool:
         Detecta Steering Preventivo (Client Steering) o Selección de Banda Exitosa.
         
         Criterio (más flexible):
+            pass
         1. La red 2.4GHz está disponible (Beacons > 0).
         2. El cliente genera tráfico de datos.
         3. La inmensa mayoría del tráfico (>90%) ocurre en 5GHz.
@@ -1412,7 +1392,6 @@ class WiresharkTool:
                     
                     if is_targeted and not is_graceful:
                         forced_disconnects += 1
-                        logger.warning(f"⚠️ Desconexión forzada REAL en cliente {client_mac}: Reason {reason}")
 
         if forced_disconnects > 0:
             return "FAILED"  # Fallo automático por inestabilidad real

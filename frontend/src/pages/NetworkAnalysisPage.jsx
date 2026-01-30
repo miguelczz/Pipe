@@ -209,7 +209,6 @@ export function NetworkAnalysisPage() {
             }
             return parsed
         } catch (e) {
-            console.error('Error parsing saved result:', e)
             return null
         }
     })
@@ -249,7 +248,6 @@ export function NetworkAnalysisPage() {
                 const sanitized = sanitizeResultForStorage(result)
                 localStorage.setItem('networkAnalysisResult', JSON.stringify(sanitized))
             } catch (err) {
-                console.warn('No se pudo guardar en localStorage (posiblemente excede la cuota):', err)
                 // Si falla, intentar guardar sin los datos raw
                 try {
                     const minimal = sanitizeResultForStorage(result)
@@ -259,7 +257,6 @@ export function NetworkAnalysisPage() {
                     }
                     localStorage.setItem('networkAnalysisResult', JSON.stringify(minimal))
                 } catch (err2) {
-                    console.error('No se pudo guardar ni siquiera la versión mínima:', err2)
                 }
             }
         }
@@ -328,7 +325,6 @@ export function NetworkAnalysisPage() {
             })
 
             // Debug: Ver estructura de datos
-            console.log('Respuesta del análisis:', res)
 
             // Guardar en persistencia (con sanitización para evitar QuotaExceededError)
             setResult(res)
@@ -337,7 +333,6 @@ export function NetworkAnalysisPage() {
                 localStorage.setItem('networkAnalysisResult', JSON.stringify(sanitized))
                 localStorage.setItem('networkAnalysisFileMeta', JSON.stringify(meta))
             } catch (err) {
-                console.warn('No se pudo guardar en localStorage (posiblemente excede la cuota):', err)
                 // Guardar versión mínima sin sample completo
                 try {
                     const minimal = sanitizeResultForStorage(res)
@@ -348,12 +343,10 @@ export function NetworkAnalysisPage() {
                     localStorage.setItem('networkAnalysisResult', JSON.stringify(minimal))
                     localStorage.setItem('networkAnalysisFileMeta', JSON.stringify(meta))
                 } catch (err2) {
-                    console.error('No se pudo guardar ni siquiera la versión mínima:', err2)
                 }
             }
 
         } catch (err) {
-            console.error('Error al analizar captura:', err)
             const message =
                 err?.message ||
                 err?.data?.detail ||
@@ -442,10 +435,13 @@ export function NetworkAnalysisPage() {
                         <span>Análisis de Capturas de Red</span>
                     </h1>
                     <p className="text-dark-text-secondary text-xs sm:text-[13px] leading-relaxed break-words text-wrap">
-                        Indica la red y el dispositivo bajo prueba y luego sube la captura en formato{' '}
+                        Sube un archivo de captura de red en formato 
                         <code className="px-1 py-0.5 rounded bg-dark-bg-secondary text-dark-accent-primary text-[11px] font-mono">
                             .pcap / .pcapng
-                        </code>
+                        </code> y NetMind generará un análisis
+                        detallado del tráfico observado usando inteligencia artificial.
+
+                        
                         .
                     </p>
                 </div>
@@ -580,9 +576,9 @@ export function NetworkAnalysisPage() {
                 <div className="space-y-6">
 
                     {/* Fila Superior: Estadísticas (3 cards) + Gráfica de Band Steering */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
                         {/* Panel lateral izquierdo: 3 Cards de estadísticas */}
-                        <div className="lg:col-span-1 space-y-4">
+                        <div className="lg:col-span-1 flex flex-col space-y-4 h-full">
 
                             {/* Identidad del Dispositivo*/}
                             {result.band_steering?.device && (
@@ -643,7 +639,6 @@ export function NetworkAnalysisPage() {
                                         <div className="space-y-1">
                                             {(() => {
                                                 const rawInfo = result.stats?.diagnostics?.bssid_info || {}
-                                                const roles = result.stats?.diagnostics?.bssid_roles || {}
                                                 const macRegex = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i
                                                 const onlyBssids = Object.keys(rawInfo).filter(key => macRegex.test(key))
 
@@ -669,14 +664,14 @@ export function NetworkAnalysisPage() {
                             </Card>
 
                             {/* Métricas de Band Steering */}
-                            <Card className="p-4">
+                            <Card className="p-4 flex-1 flex flex-col">
                                 <div className="flex items-center gap-2 mb-3">
                                     <Activity className="w-4 h-4 text-dark-accent-primary" />
                                     <h3 className="text-sm font-semibold text-dark-text-primary">
                                         Métricas de Steering
                                     </h3>
                                 </div>
-                                <div className="space-y-3">
+                                <div className="space-y-5 flex-1">
                                     <div className="p-2 rounded-lg bg-dark-bg-secondary/50">
                                         <p className="text-xs text-dark-text-muted mb-1">Estándares KVR Identificados</p>
                                         <p className="text-sm font-semibold text-dark-text-primary">
@@ -716,25 +711,25 @@ export function NetworkAnalysisPage() {
                                                     if (bandStr.includes('2.4') || bandStr.includes('2,4')) return '2.4GHz'
                                                     return band
                                                 }
-                                                
+
                                                 const transitions = result.band_steering?.transitions || []
-                                                
+
                                                 // Ordenar transiciones por tiempo para comparar consecutivas
                                                 const sortedTransitions = [...transitions].sort((a, b) => a.start_time - b.start_time)
-                                                
+
                                                 // Analizar cada transición exitosa
                                                 let bandChangeCount = 0
                                                 let associationOnlyCount = 0
-                                                
+
                                                 sortedTransitions.forEach((t, idx) => {
                                                     if (!t.is_successful) return
-                                                    
+
                                                     const fromBand = normalizeBand(t.from_band)
                                                     const toBand = normalizeBand(t.to_band)
-                                                    
+
                                                     // Verificar si hay cambio de banda
                                                     let isBandChange = t.is_band_change === true
-                                                    
+
                                                     // Si el backend dice que hay cambio pero las bandas son iguales,
                                                     // comparar con la transición anterior
                                                     if (isBandChange && fromBand === toBand && idx > 0) {
@@ -753,7 +748,7 @@ export function NetworkAnalysisPage() {
                                                         // Si las bandas son diferentes pero el backend no lo marcó
                                                         isBandChange = true
                                                     }
-                                                    
+
                                                     if (isBandChange) {
                                                         bandChangeCount++
                                                     } else {
@@ -795,86 +790,75 @@ export function NetworkAnalysisPage() {
                                         </div>
                                     </div>
                                     <div className="p-2 rounded-lg bg-dark-bg-secondary/50 min-h-[60px] flex flex-col justify-between">
-                                        <p className="text-xs text-dark-text-muted mb-1">Tiempo promedio</p>
+                                        <p className="text-xs text-dark-text-muted mb-1">Tiempo medido</p>
                                         <p className="text-sm font-semibold text-dark-text-primary">
                                             {(() => {
-                                                // Función para normalizar bandas (misma lógica que en "Intentos de steering")
-                                                const normalizeBand = (band) => {
-                                                    if (!band) return null
-                                                    const bandStr = band.toString().toLowerCase()
-                                                    if (bandStr.includes('5')) return '5GHz'
-                                                    if (bandStr.includes('2.4') || bandStr.includes('2,4')) return '2.4GHz'
-                                                    return band
+                                                // Obtener la MAC del dispositivo analizado
+                                                const clientMac = result.stats?.diagnostics?.user_provided_client_mac ||
+                                                    result.stats?.diagnostics?.client_mac ||
+                                                    result.band_steering?.devices?.[0]?.mac_address
+
+                                                if (!clientMac) {
+                                                    return 'N/A'
                                                 }
 
-                                                const transitions = result.band_steering?.transitions || []
-                                                
-                                                // Ordenar transiciones por tiempo para comparar consecutivas (misma lógica)
-                                                const sortedTransitions = [...transitions].sort((a, b) => a.start_time - b.start_time)
-                                                
-                                                // PRIMERO: Filtrar solo por cambio de banda (sin verificar duración todavía)
-                                                const bandChangeTransitions = sortedTransitions.filter((t, idx) => {
-                                                    if (!t.is_successful) return false
-                                                    
-                                                    const fromBand = normalizeBand(t.from_band)
-                                                    const toBand = normalizeBand(t.to_band)
-                                                    
-                                                    // Verificar si hay cambio de banda (misma lógica que en "Intentos de steering")
-                                                    let isBandChange = t.is_band_change === true
-                                                    
-                                                    // Si el backend dice que hay cambio pero las bandas son iguales,
-                                                    // comparar con la transición anterior
-                                                    if (isBandChange && fromBand === toBand && idx > 0) {
-                                                        const prevTransition = sortedTransitions[idx - 1]
-                                                        if (prevTransition && prevTransition.to_band) {
-                                                            const prevBand = normalizeBand(prevTransition.to_band)
-                                                            if (prevBand && prevBand !== toBand) {
-                                                                isBandChange = true
-                                                            } else {
-                                                                isBandChange = false
-                                                            }
-                                                        } else {
-                                                            isBandChange = false
-                                                        }
-                                                    } else if (!isBandChange && fromBand && toBand && fromBand !== toBand) {
-                                                        // Si las bandas son diferentes pero el backend no lo marcó
-                                                        isBandChange = true
-                                                    }
-                                                    
-                                                    return isBandChange
+                                                // Normalizar MAC para comparación (sin separadores, minúsculas)
+                                                const normalizeMac = (mac) => {
+                                                    if (!mac) return null
+                                                    return mac.toLowerCase().replace(/[:-]/g, '')
+                                                }
+
+                                                const normalizedClientMac = normalizeMac(clientMac)
+
+                                                // Obtener paquetes de Wireshark para el dispositivo analizado
+                                                const wiresharkSample = result.stats?.diagnostics?.wireshark_raw?.sample || []
+
+                                                // Filtrar paquetes del dispositivo analizado
+                                                const devicePackets = wiresharkSample.filter(packet => {
+                                                    const wlanSa = normalizeMac(packet.wlan_sa)
+                                                    const wlanDa = normalizeMac(packet.wlan_da)
+
+                                                    return wlanSa === normalizedClientMac || wlanDa === normalizedClientMac
                                                 })
-                                                
-                                                if (bandChangeTransitions.length > 0) {
-                                                    // SEGUNDO: Calcular duración para cada transición con cambio de banda
-                                                    const durations = bandChangeTransitions.map((t, idx) => {
-                                                        let d = 0
-                                                        
-                                                        // Intentar usar duration del objeto
-                                                        if (t.duration && t.duration > 0) {
-                                                            d = t.duration
-                                                        } 
-                                                        // Si no hay duration, calcular desde timestamps
-                                                        else if (t.start_time && t.end_time && t.end_time > t.start_time) {
-                                                            d = t.end_time - t.start_time
-                                                        } 
-                                                        // Si no hay end_time, intentar usar solo start_time de la siguiente transición
-                                                        else if (t.start_time && idx < bandChangeTransitions.length - 1) {
-                                                            const nextTransition = bandChangeTransitions[idx + 1]
-                                                            if (nextTransition && nextTransition.start_time && nextTransition.start_time > t.start_time) {
-                                                                d = nextTransition.start_time - t.start_time
-                                                            }
-                                                        }
-                                                        
-                                                        return d
-                                                    }).filter(d => d > 0)
-                                                    
-                                                    if (durations.length > 0) {
-                                                        const avg = durations.reduce((sum, d) => sum + d, 0) / durations.length
-                                                        return `${avg.toFixed(3)}s`
-                                                    }
+
+                                                if (devicePackets.length === 0) {
+                                                    return 'N/A'
                                                 }
 
-                                                return 'N/A'
+                                                // Extraer timestamps y convertir a números
+                                                const timestamps = devicePackets
+                                                    .map(p => {
+                                                        const ts = p.timestamp
+                                                        if (typeof ts === 'string') {
+                                                            return parseFloat(ts)
+                                                        }
+                                                        return ts
+                                                    })
+                                                    .filter(ts => !isNaN(ts) && ts > 0)
+
+                                                if (timestamps.length === 0) {
+                                                    return 'N/A'
+                                                }
+
+                                                // Calcular tiempo medido (diferencia entre primer y último paquete)
+                                                const minTime = Math.min(...timestamps)
+                                                const maxTime = Math.max(...timestamps)
+                                                const measuredTime = maxTime - minTime
+
+                                                if (measuredTime <= 0) {
+                                                    return 'N/A'
+                                                }
+
+                                                // Formatear tiempo
+                                                if (measuredTime < 1) {
+                                                    return `${(measuredTime * 1000).toFixed(2)}ms`
+                                                } else if (measuredTime < 60) {
+                                                    return `${measuredTime.toFixed(3)}s`
+                                                } else {
+                                                    const minutes = Math.floor(measuredTime / 60)
+                                                    const seconds = (measuredTime % 60).toFixed(3)
+                                                    return `${minutes}m ${seconds}s`
+                                                }
                                             })()}
                                         </p>
                                     </div>
@@ -884,7 +868,7 @@ export function NetworkAnalysisPage() {
                         </div>
 
                         {/* Panel derecho: Gráfica de Band Steering */}
-                        <Card className="lg:col-span-2 p-6 min-h-[400px] flex flex-col">
+                        <Card className="lg:col-span-2 p-6 flex flex-col h-full">
                             <div className="flex items-center gap-2 mb-4">
                                 <Activity className="w-5 h-5 text-dark-accent-primary" />
                                 <h3 className="text-lg font-semibold text-dark-text-primary">
@@ -941,13 +925,12 @@ export function NetworkAnalysisPage() {
                                     const isPartial = partialVerdicts.includes(backendVerdict)
 
                                     return (
-                                        <div className={`px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 ${
-                                            isSuccess
+                                        <div className={`px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 ${isSuccess
                                                 ? 'bg-green-500/20 text-green-400 border border-green-500/30'
                                                 : isPartial
-                                                ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
-                                                : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                                        }`}>
+                                                    ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                                                    : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                                            }`}>
                                             {isSuccess ? '✅' : isPartial ? '⚠️' : '❌'}
                                             <span>{formatVerdict(backendVerdict).toUpperCase()}</span>
                                         </div>
@@ -978,7 +961,7 @@ export function NetworkAnalysisPage() {
                                                         {/* Detalles técnicos (Justo debajo del título) */}
                                                         {check.details && (
                                                             <div className="mt-0.5">
-                                                                <p className="text-[11px] text-dark-text-muted font-mono leading-tight opacity-80 uppercase tracking-tight">
+                                                                <p className="text-[11px] text-dark-text-primary/90 font-mono leading-tight uppercase tracking-tight">
                                                                     {check.details}
                                                                 </p>
                                                             </div>
@@ -1030,7 +1013,7 @@ export function NetworkAnalysisPage() {
 
                 </div>
             )}
-            
+
             {/* Estilos para impresión */}
             <style dangerouslySetInnerHTML={{ __html: PRINT_STYLES }} />
         </div>

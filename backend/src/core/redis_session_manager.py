@@ -36,7 +36,6 @@ class RedisSessionManager:
         
         # Si no hay URL de Redis, usar fallback en memoria directamente
         if not redis_connection_url:
-            logger.info("[RedisSessionManager] No se proporcionó REDIS_URL. Usando sesiones en memoria.")
             self.redis_available = False
             self.redis_client = None
             self._fallback_sessions: Dict[str, AgentState] = {}
@@ -44,7 +43,6 @@ class RedisSessionManager:
         
         try:
             # Intentar conectar a Redis
-            logger.info(f"[RedisSessionManager] Intentando conectar a Redis: {self._mask_redis_url(redis_connection_url)}")
             
             # Configurar SSL si es rediss:// (Redis con SSL)
             # Para Heroku Redis y otros servicios con certificados autofirmados
@@ -66,9 +64,7 @@ class RedisSessionManager:
             # Probar conexión
             self.redis_client.ping()
             self.redis_available = True
-            logger.info(f"[RedisSessionManager] ✅ Conectado exitosamente a Redis: {self._mask_redis_url(redis_connection_url)}")
         except Exception as e:
-            logger.warning(f"[RedisSessionManager] ⚠️ No se pudo conectar a Redis: {e}. Usando fallback en memoria.")
             self.redis_available = False
             self.redis_client = None
             # Fallback: usar diccionario en memoria
@@ -80,6 +76,7 @@ class RedisSessionManager:
         Soporta formato estándar y formato Upstash (REST URL + Token).
         
         Upstash proporciona:
+            pass
         - REST URL: https://xxx.upstash.io (para REST API)
         - Redis URL: redis://xxx.upstash.io:6379 (para Redis protocol)
         - Token: para autenticación
@@ -101,11 +98,9 @@ class RedisSessionManager:
             # Upstash requiere SSL para Redis protocol
             # Construir URL: rediss://default:TOKEN@HOST:6379
             redis_protocol_url = f"rediss://default:{redis_token}@{host}:6379"
-            logger.info(f"[RedisSessionManager] Construyendo URL de Redis desde Upstash REST URL: {host}")
             return redis_protocol_url
         
         # Si no se puede determinar el formato, retornar None
-        logger.warning(f"[RedisSessionManager] Formato de REDIS_URL no reconocido: {redis_url[:50]}...")
         return None
     
     def _mask_redis_url(self, url: str) -> str:
@@ -170,10 +165,9 @@ class RedisSessionManager:
                     if user_id:
                         state.user_id = user_id
                         self.update_session(session_id, state)
-                    logger.debug(f"[RedisSessionManager] Sesión recuperada de Redis: {session_id}")
                     return state
             except Exception as e:
-                logger.warning(f"[RedisSessionManager] Error al obtener sesión de Redis: {e}")
+                pass
         
         # Crear nueva sesión (Redis no disponible o sesión no existe)
         new_state = AgentState(session_id=session_id, user_id=user_id)
@@ -183,7 +177,7 @@ class RedisSessionManager:
             try:
                 self.update_session(session_id, new_state)
             except Exception as e:
-                logger.warning(f"[RedisSessionManager] Error al guardar nueva sesión en Redis: {e}")
+                pass
         else:
             # Fallback: guardar en memoria
             self._fallback_sessions[session_id] = new_state
@@ -203,9 +197,7 @@ class RedisSessionManager:
                     self.ttl_seconds,
                     serialized
                 )
-                logger.debug(f"[RedisSessionManager] Sesión actualizada en Redis: {session_id}")
             except Exception as e:
-                logger.warning(f"[RedisSessionManager] Error al actualizar sesión en Redis: {e}")
                 # Fallback: guardar en memoria
                 self._fallback_sessions[session_id] = state
         else:
@@ -217,9 +209,7 @@ class RedisSessionManager:
         if self.redis_available and self.redis_client:
             try:
                 self.redis_client.delete(f"session:{session_id}")
-                logger.debug(f"[RedisSessionManager] Sesión limpiada en Redis: {session_id}")
             except Exception as e:
-                logger.warning(f"[RedisSessionManager] Error al limpiar sesión en Redis: {e}")
                 # Fallback: limpiar de memoria
                 if session_id in self._fallback_sessions:
                     self._fallback_sessions[session_id].context_window = []
@@ -233,9 +223,7 @@ class RedisSessionManager:
         if self.redis_available and self.redis_client:
             try:
                 self.redis_client.delete(f"session:{session_id}")
-                logger.debug(f"[RedisSessionManager] Sesión eliminada de Redis: {session_id}")
             except Exception as e:
-                logger.warning(f"[RedisSessionManager] Error al eliminar sesión de Redis: {e}")
                 # Fallback: eliminar de memoria
                 self._fallback_sessions.pop(session_id, None)
         else:
@@ -251,6 +239,5 @@ class RedisSessionManager:
             return self._fallback_sessions.copy()
         
         # Para Redis, sería necesario hacer SCAN, pero no es crítico
-        logger.warning("[RedisSessionManager] get_all_sessions no implementado para Redis")
         return {}
 

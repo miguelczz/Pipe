@@ -84,7 +84,6 @@ export function useChat() {
           setMessages([])
         }
       } catch (err) {
-        console.error('Error al cargar historial de sesión:', err)
         // Si falla el backend, usar cache de localStorage si existe
         const messagesKey = `${SESSION_CONFIG.STORAGE_KEY}_messages`
         const cachedMessages = getStorageItem(messagesKey, [])
@@ -223,7 +222,6 @@ export function useChat() {
       abortControllerRef.current = cancelStream
     } catch (err) {
       // Manejo de errores síncronos (no debería ocurrir con el nuevo enfoque)
-      console.error('Error inesperado en sendMessage:', err)
       
       setMessages((prev) =>
         prev.map((msg) =>
@@ -251,7 +249,6 @@ export function useChat() {
       // Limpiar sesión en el backend
       await agentService.clearSession(sessionId)
     } catch (error) {
-      console.error('Error al limpiar sesión en el backend:', error)
       // Continuar limpiando el frontend aunque falle el backend
     }
     
@@ -264,7 +261,6 @@ export function useChat() {
     try {
       localStorage.removeItem(messagesKey)
     } catch (err) {
-      console.error('Error al limpiar cache de mensajes:', err)
     }
     
     if (abortControllerRef.current) {

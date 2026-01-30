@@ -151,8 +151,9 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
         let endTime = rawSamples[rawSamples.length - 1].ts
         let totalDuration = endTime - startTime
 
-        // Determinar ventana de suavizado dinámicamente (aumentada para más suavizado)
-        const WINDOW_SIZE_MS = totalDuration > 60000 ? 2000 : 1000
+        // Determinar ventana de suavizado dinámicamente (moderado-alto para reducir picos)
+        // Usar ventanas moderadas para reducir picos pero mantener algo de variación
+        const WINDOW_SIZE_MS = totalDuration > 60000 ? 1500 : 800
 
         // Función para normalizar tiempo (debe estar definida después de startTime)
         const normalizeTime = (tsRaw) => parseFloat(((toMs(tsRaw) - startTime) / 1000).toFixed(2))
@@ -193,15 +194,6 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
         // antes de generar smoothedPoints, para que getBandFromTransitions funcione correctamente
         let transitionBandChanges = []
         
-        // LOG: Ver qué transiciones están llegando del backend
-        console.log(`🔍 [DEBUG] Transiciones recibidas del backend:`, transitions?.map(t => ({
-            start_time: t.start_time,
-            end_time: t.end_time,
-            from_band: t.from_band,
-            to_band: t.to_band,
-            is_band_change: t.is_band_change,
-            is_successful: t.is_successful
-        })) || [])
         
         // Procesar transiciones primero para construir transitionBandChanges con correcciones
         const sortedTransitionsForBandChanges = [...(transitions || [])].sort((a, b) => a.start_time - b.start_time)
@@ -252,45 +244,14 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
                     fromBand: actualFromBand,
                     toBand: actualToBand
                 })
-                console.log(`✅ [TransitionBandChanges] Agregado cambio de banda:`, {
-                    idx,
-                    time: tRel.toFixed(2),
-                    fromBand: actualFromBand,
-                    toBand: actualToBand,
-                    backend_is_band_change: t.is_band_change,
-                    backend_from: t.from_band,
-                    backend_to: t.to_band
-                })
-            } else {
-                console.log(`❌ [TransitionBandChanges] NO agregado:`, {
-                    idx,
-                    isBandChange,
-                    is_successful: t.is_successful,
-                    actualFromBand,
-                    actualToBand,
-                    bandsEqual: actualFromBand === actualToBand,
-                    backend_is_band_change: t.is_band_change,
-                    backend_from: t.from_band,
-                    backend_to: t.to_band
-                })
             }
         })
         
         transitionBandChanges.sort((a, b) => a.time - b.time)
-        
-        console.log(`🔵 [TransitionBandChanges] Construido ANTES de smoothedPoints:`, {
-            count: transitionBandChanges.length,
-            changes: transitionBandChanges.map(c => ({
-                time: c.time.toFixed(2),
-                fromBand: c.fromBand,
-                toBand: c.toBand
-            }))
-        })
 
         // Función para obtener la banda basándose en transiciones (misma lógica que zonas de banda)
         const getBandFromTransitions = (timeInSeconds, fallbackBand = null) => {
             if (transitionBandChanges.length === 0) {
-                console.log(`⚠️ [getBandFromTransitions] No hay transitionBandChanges, usando fallback: "${fallbackBand}" para tiempo ${timeInSeconds.toFixed(2)}s`)
                 return fallbackBand // No hay cambios de banda conocidos, usar fallback
             }
             
@@ -298,26 +259,17 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
             // Si el tiempo es anterior al primer cambio, usar fromBand del primer cambio
             if (timeInSeconds < transitionBandChanges[0].time) {
                 const initialBand = transitionBandChanges[0].fromBand || fallbackBand
-                if (timeInSeconds < 5 || (timeInSeconds >= 40 && timeInSeconds <= 50) || (timeInSeconds >= 85 && timeInSeconds <= 95) || (timeInSeconds >= 145 && timeInSeconds <= 155)) {
-                    console.log(`🔵 [getBandFromTransitions] Tiempo ${timeInSeconds.toFixed(2)}s < primer cambio (${transitionBandChanges[0].time.toFixed(2)}s), retornando banda inicial: "${initialBand}"`)
-                }
                 return initialBand
             }
             
             // Encontrar el último cambio de banda que ocurrió antes o en este momento
             let currentBand = transitionBandChanges[0].fromBand // Banda inicial (fromBand del primer cambio)
-            let lastChangeTime = 0
             for (const change of transitionBandChanges) {
                 if (change.time <= timeInSeconds) {
                     currentBand = change.toBand
-                    lastChangeTime = change.time
                 } else {
                     break
                 }
-            }
-            
-            if (timeInSeconds < 5 || (timeInSeconds >= 40 && timeInSeconds <= 50) || (timeInSeconds >= 85 && timeInSeconds <= 95) || (timeInSeconds >= 145 && timeInSeconds <= 155)) {
-                console.log(`🟢 [getBandFromTransitions] Tiempo ${timeInSeconds.toFixed(2)}s, último cambio en ${lastChangeTime.toFixed(2)}s, retornando: "${currentBand}"`)
             }
             
             return currentBand
@@ -344,7 +296,6 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
     // para asegurar que la línea se pinte correctamente en todo el rango temporal
     const MIN_SAMPLES_FOR_GOOD_COVERAGE = 10
     if (rawSamples.length < MIN_SAMPLES_FOR_GOOD_COVERAGE && transitionBandChanges.length > 0) {
-        console.log(`⚠️ [SyntheticSamples] Solo hay ${rawSamples.length} muestras, generando puntos sintéticos adicionales`)
         
         // Calcular el rango temporal completo
         const allTimestamps = [
@@ -431,7 +382,6 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
         endTime = rawSamples[rawSamples.length - 1].ts
         totalDuration = endTime - startTime
         
-        console.log(`✅ [SyntheticSamples] Generados ${syntheticSamples.length} puntos sintéticos. Total muestras: ${rawSamples.length} (rango: ${(totalDuration / 1000).toFixed(2)}s)`)
     }
 
     const smoothedPoints = []
@@ -464,7 +414,6 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
                     // Esto garantiza que la línea coincida con las zonas de banda
                     finalBand = getBandFromTransitions(tiempoSegundos, rawDominant)
                     // Normalizar para asegurar formato consistente
-                    const originalFinalBand = finalBand
                     if (finalBand && finalBand.includes('5')) {
                         finalBand = '5GHz'
                     } else if (finalBand && (finalBand.includes('2.4') || finalBand.includes('2,4'))) {
@@ -473,37 +422,13 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
                         // Si getBandFromTransitions retorna null/vacío pero hay cambios, usar la banda del último cambio
                         const lastChange = transitionBandChanges[transitionBandChanges.length - 1]
                         finalBand = lastChange ? lastChange.toBand : rawDominant
-                        console.log(`⚠️ [Punto] getBandFromTransitions retornó vacío para ${tiempoSegundos.toFixed(2)}s, usando último cambio: "${finalBand}"`)
-                    }
-                    
-                    // Log para puntos críticos
-                    if (tiempoSegundos < 5 || (tiempoSegundos >= 40 && tiempoSegundos <= 50) || (tiempoSegundos >= 85 && tiempoSegundos <= 95) || (tiempoSegundos >= 145 && tiempoSegundos <= 155)) {
-                        console.log(`📊 [Punto] Tiempo: ${tiempoSegundos.toFixed(2)}s | finalBand: "${finalBand}" (original: "${originalFinalBand}") | rawDominant: "${rawDominant}" | transitionBandChanges.length: ${transitionBandChanges.length}`)
                     }
                 } else {
                     // Solo usar fallbacks si NO hay cambios de banda en transiciones
                     const logicalBand = getLogicalBand(currentWindowStart, rawDominant)
                     finalBand = logicalBand ? (logicalBand.includes('5') ? '5GHz' : '2.4GHz') : rawDominant
-                    if (tiempoSegundos < 5) {
-                        console.log(`⚠️ [Punto] NO hay transitionBandChanges, usando fallback. Tiempo: ${tiempoSegundos.toFixed(2)}s | finalBand: "${finalBand}" | logicalBand: "${logicalBand}" | rawDominant: "${rawDominant}"`)
-                    }
                 }
                 
-                // Log solo para puntos críticos (alrededor de cambios de banda conocidos)
-                if ((tiempoSegundos < 5 || 
-                    (tiempoSegundos >= 42 && tiempoSegundos <= 46) || 
-                    (tiempoSegundos >= 88 && tiempoSegundos <= 92) || 
-                    (tiempoSegundos >= 150 && tiempoSegundos <= 154))) {
-                    const bandFromTransitionsDebug = transitionBandChanges.length > 0 
-                        ? getBandFromTransitions(tiempoSegundos, rawDominant) 
-                        : null
-                    console.log(`[Punto ${smoothedPoints.length}] Tiempo: ${tiempoSegundos.toFixed(2)}s - finalBand: "${finalBand}"`, {
-                        hasTransitionBandChanges: transitionBandChanges.length > 0,
-                        bandFromTransitions: `"${bandFromTransitionsDebug}"`,
-                        rawDominant: `"${rawDominant}"`
-                    })
-                }
-
                 smoothedPoints.push({
                     x: parseFloat(((currentWindowStart - startTime) / 1000).toFixed(2)),
                     y: Math.round(avgRssi * 10) / 10,
@@ -514,31 +439,28 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
             currentWindowStart += WINDOW_SIZE_MS
         }
 
-        // 1b. SUAVIZADO SECUNDARIO (Gaussiano de 7 puntos - Más suavizado)
+        // 1b. SUAVIZADO SECUNDARIO (Reducido - Solo vecinos inmediatos)
         // Si no hay puntos suavizados, crear puntos mínimos desde rawSamples
         let finalPoints = []
 
 
         if (smoothedPoints.length > 0) {
             finalPoints = smoothedPoints.map((p, i, arr) => {
-                // Tomamos vecinos más lejanos para una curva más "cremosa"
-                const p3_prev = arr[i - 3] || arr[i - 2] || arr[i - 1] || p
-                const p2_prev = arr[i - 2] || arr[i - 1] || p
-                const p1_prev = arr[i - 1] || p
-                const p1_next = arr[i + 1] || p
-                const p2_next = arr[i + 2] || arr[i + 1] || p
-                const p3_next = arr[i + 3] || arr[i + 2] || arr[i + 1] || p
+                // Suavizado secundario moderado-alto para reducir picos
+                // Aplicar suavizado si hay suficientes puntos
+                let finalY = p.y
+                if (arr.length > 50) {
+                    // Usar vecinos inmediatos con pesos moderados-alto
+                    const p1_prev = arr[i - 1] || p
+                    const p1_next = arr[i + 1] || p
 
-                // Peso gaussiano extendido: 1-2-4-6-4-2-1 (más peso al centro)
-                const weightedAvg = (
-                    p3_prev.y +
-                    (p2_prev.y * 2) +
-                    (p1_prev.y * 4) +
-                    (p.y * 6) +
-                    (p1_next.y * 4) +
-                    (p2_next.y * 2) +
-                    p3_next.y
-                ) / 20
+                    // Promedio moderado-alto (preserva ~60% del valor original, suaviza ~40%)
+                    finalY = (
+                        (p1_prev.y * 0.2) +
+                        (p.y * 0.6) +
+                        (p1_next.y * 0.2)
+                    )
+                }
                 
                 // CRÍTICO: Recalcular la banda después del suavizado usando EXACTAMENTE la misma lógica que las zonas de banda
                 // Esto asegura que la línea se pinte correctamente incluso después del suavizado
@@ -547,7 +469,6 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
                     // Usar SOLO getBandFromTransitions cuando hay cambios de banda conocidos
                     correctedBand = getBandFromTransitions(p.x, p.band)
                     // Normalizar para asegurar formato consistente
-                    const originalCorrectedBand = correctedBand
                     if (correctedBand && correctedBand.includes('5')) {
                         correctedBand = '5GHz'
                     } else if (correctedBand && (correctedBand.includes('2.4') || correctedBand.includes('2,4'))) {
@@ -556,12 +477,6 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
                         // Si getBandFromTransitions retorna null/vacío pero hay cambios, usar la banda del último cambio
                         const lastChange = transitionBandChanges[transitionBandChanges.length - 1]
                         correctedBand = lastChange ? lastChange.toBand : p.band
-                        console.log(`⚠️ [Suavizado] getBandFromTransitions retornó vacío para ${p.x.toFixed(2)}s, usando último cambio: "${correctedBand}"`)
-                    }
-                    
-                    // Log si la banda cambió después del suavizado
-                    if (p.band !== correctedBand && (p.x < 5 || (p.x >= 40 && p.x <= 50) || (p.x >= 85 && p.x <= 95) || (p.x >= 145 && p.x <= 155))) {
-                        console.log(`🔄 [Suavizado] Banda corregida: ${p.x.toFixed(2)}s | original: "${p.band}" -> corregida: "${correctedBand}" (getBandFromTransitions retornó: "${originalCorrectedBand}")`)
                     }
                 } else {
                     // Si no hay cambios de banda, mantener la banda original del punto
@@ -570,7 +485,7 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
                 
                 return { 
                     ...p, 
-                    y: Number(weightedAvg.toFixed(2)),
+                    y: Number(finalY.toFixed(2)),
                     band: correctedBand
                 }
             })
@@ -739,15 +654,6 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
                     Math.abs(c.time - tRel) < 0.1 && c.fromBand === actualFromBand && c.toBand === actualToBand
                 )
                 if (!alreadyExists) {
-                    console.log(`🟢 [Marker] Agregando cambio de banda faltante a transitionBandChanges:`, {
-                        time: tRel.toFixed(2),
-                        fromBand: actualFromBand,
-                        toBand: actualToBand,
-                        transition_idx: idx,
-                        backend_is_band_change: t.is_band_change,
-                        backend_from: t.from_band,
-                        backend_to: t.to_band
-                    })
                     transitionBandChanges.push({
                         time: tRel,
                         fromBand: actualFromBand,
@@ -755,19 +661,6 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
                     })
                     transitionBandChanges.sort((a, b) => a.time - b.time)
                 }
-            } else if (isBandChange && t.is_successful) {
-                // Log para diagnosticar por qué no se agregó (bandas iguales o faltantes)
-                console.warn(`⚠️ [Marker] Cambio de banda detectado pero NO agregado a transitionBandChanges:`, {
-                    time: tRel.toFixed(2),
-                    isBandChange,
-                    is_successful: t.is_successful,
-                    actualFromBand,
-                    actualToBand,
-                    fromBandEqual: actualFromBand === actualToBand,
-                    backend_from: t.from_band,
-                    backend_to: t.to_band,
-                    transition_idx: idx
-                })
             }
             
             const yPos = findRssiAt(tRel)
@@ -817,11 +710,23 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
             }
 
 
+            // Traducir steering_type a español
+            // Normalizar el valor a minúsculas para asegurar la comparación
+            const steeringTypeNormalized = (t.steering_type || '').toLowerCase()
+            const steeringTypeLabel = {
+                'aggressive': 'Agresivo (Deauth)',
+                'assisted': 'Asistido (BTM)',
+                'preventive': 'Preventivo',
+                'unknown': 'Espontáneo'
+            }[steeringTypeNormalized] || (t.steering_type || 'Espontáneo')
+
+            const finalDescription = `Transición: ${descriptionFromBand} ➡ ${descriptionToBand} (${steeringTypeLabel})`
+            
             markers.push({
                 x: tRel, y: yPos,
                 type: 'transition',
                 label: label,
-                description: `Transición: ${descriptionFromBand} ➡ ${descriptionToBand} (${t.steering_type})`,
+                description: finalDescription,
 
                 color: transColor,
 
@@ -876,6 +781,18 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
             }
         }
 
+        // Calcular xMax antes de crear zonas para extenderlas hasta el final completo
+        let calculatedXMax = 0
+        if (finalPoints.length > 0) {
+            calculatedXMax = finalPoints[finalPoints.length - 1].x + 5 // Márgen de 5 segundos
+        } else if (clusteredMarkers.length > 0) {
+            const eventTimes = clusteredMarkers.map(m => m.x).sort((a, b) => a - b)
+            calculatedXMax = eventTimes[eventTimes.length - 1] + 5
+        } else if (rawSamples.length > 0) {
+            const lastSample = rawSamples[rawSamples.length - 1]
+            calculatedXMax = parseFloat(((lastSample.ts - startTime) / 1000).toFixed(2)) + 5
+        }
+
         // Si hay cambios de banda en transiciones, usarlos para crear zonas
         if (transitionBandChanges.length > 0 && finalPoints.length > 0) {
             // Usar fromBand del primer cambio como banda inicial (no finalPoints[0]?.band que puede estar mal)
@@ -898,19 +815,17 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
                 zoneStart = change.time
             }
 
-            // Cerrar última zona hasta el final
-            const lastX = finalPoints[finalPoints.length - 1]?.x || 0
-            if (zoneStart < lastX) {
+            // Cerrar última zona hasta el final completo de la gráfica
+            if (zoneStart < calculatedXMax) {
                 bandZones.push({
                     band: currentBand,
                     xStart: zoneStart,
-                    xEnd: lastX,
+                    xEnd: calculatedXMax,
                     yMin: yMin,
                     yMax: yMax
                 })
             }
             
-            console.log(`🟡 [BandZones] ✅ Total zonas creadas: ${bandZones.length}`, bandZones.map(z => ({ band: z.band, xStart: z.xStart.toFixed(2), xEnd: z.xEnd.toFixed(2) })))
         } else if (finalPoints.length > 0) {
             // Fallback: usar solo puntos de RSSI si no hay transiciones con cambio de banda
             let currentZone = null
@@ -918,7 +833,8 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
                 const point = finalPoints[i]
                 const band = point.band || '2.4GHz'
                 const xStart = point.x
-                const xEnd = i < finalPoints.length - 1 ? finalPoints[i + 1].x : point.x
+                // Usar calculatedXMax para la última zona, o el siguiente punto si no es el último
+                const xEnd = i < finalPoints.length - 1 ? finalPoints[i + 1].x : (calculatedXMax || point.x)
 
                 if (!currentZone || currentZone.band !== band) {
                     if (currentZone) {
@@ -937,30 +853,23 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
                 }
             }
             if (currentZone) {
+                // Asegurar que la última zona llegue hasta el final completo de la gráfica
+                currentZone.xEnd = calculatedXMax || currentZone.xEnd
                 bandZones.push(currentZone)
             }
         }
-
-        // LOG RESUMEN: Ver qué bandas tienen los puntos finales
-        if (finalPoints.length > 0) {
-            const bandDistribution = finalPoints.reduce((acc, p) => {
-                const band = p.band || 'unknown'
-                acc[band] = (acc[band] || 0) + 1
-                return acc
-            }, {})
-            console.log(`📈 [RESUMEN] Puntos finales: ${finalPoints.length} | Distribución de bandas:`, bandDistribution)
-            console.log(`📈 [RESUMEN] Primeros 10 puntos:`, finalPoints.slice(0, 10).map(p => ({ x: p.x.toFixed(2), band: p.band })))
-            console.log(`📈 [RESUMEN] Últimos 10 puntos:`, finalPoints.slice(-10).map(p => ({ x: p.x.toFixed(2), band: p.band })))
-            
-            // Verificar puntos alrededor de cambios de banda conocidos
-            if (transitionBandChanges.length > 0) {
-                transitionBandChanges.forEach((change, idx) => {
-                    const pointsAroundChange = finalPoints.filter(p => Math.abs(p.x - change.time) < 5)
-                    console.log(`📈 [RESUMEN] Puntos alrededor del cambio ${idx + 1} (${change.time.toFixed(2)}s, ${change.fromBand} -> ${change.toBand}):`, 
-                        pointsAroundChange.map(p => ({ x: p.x.toFixed(2), band: p.band })))
-                })
-            }
+        
+        // Si no hay puntos pero hay eventos, crear una zona por defecto desde 0 hasta el final
+        if (bandZones.length === 0 && calculatedXMax > 0) {
+            bandZones.push({
+                band: '2.4GHz',
+                xStart: 0,
+                xEnd: calculatedXMax,
+                yMin: yMin,
+                yMax: yMax
+            })
         }
+
 
         // Asegurar que siempre haya al menos un dataset con datos para que Chart.js renderice
         const hasEvents = clusteredMarkers.length > 0
@@ -986,25 +895,11 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
 
         // Dataset de señal (solo si hay datos de señal)
         if (hasSignalData) {
-            // Verificar que todos los puntos tengan la propiedad band
-            const pointsWithoutBand = finalPoints.filter(p => !p.band)
-            if (pointsWithoutBand.length > 0) {
-                console.warn(`⚠️ [Dataset] ${pointsWithoutBand.length} puntos sin propiedad 'band':`, pointsWithoutBand.slice(0, 5))
-            }
-            
-            // Log de muestra de puntos para verificar estructura
-            console.log(`🔍 [Dataset] Muestra de puntos finales (primeros 5):`, finalPoints.slice(0, 5).map(p => ({
-                x: p.x,
-                y: p.y,
-                band: p.band,
-                hasBand: !!p.band
-            })))
-            
             datasets.push({
                 label: 'Señal Promedio',
-                data: finalPoints, // Usamos data con doble suavizado
+                data: finalPoints, // Usamos data con suavizado mínimo
                 borderWidth: 3,
-                tension: 0.4, // Reducido para que los cambios de color sean más visibles
+                tension: 0, // Sin suavizado de curva para mostrar cambios más precisos
                 fill: false,
                 pointRadius: 0,
                 pointHoverRadius: 6,
@@ -1025,33 +920,6 @@ export function BandSteeringChart({ btmEvents = [], transitions = [], signalSamp
                         const currentBand = (p0Band && p1Band && p0Band !== p1Band) ? p1Band : (p0Band || p1Band || '');
                         const is5GHz = currentBand.includes('5') || currentBand === '5GHz';
                         const color = is5GHz ? '#10b981' : '#3b82f6';
-
-                        // Log para segmentos que cruzan cambios de banda o están cerca de cambios conocidos
-                        const p0_x = ctx.p0?.parsed?.x || 0
-                        const p1_x = ctx.p1?.parsed?.x || 0
-                        const crossesBandChange = p0Band && p1Band && p0Band !== p1Band
-                        
-                        // Log cuando hay cambio de banda en el segmento o está cerca de cambios conocidos (0.01s, 125.48s, 201.83s)
-                        const isNearKnownChange = (p0_x >= 0 && p0_x <= 5) || 
-                                                  (p0_x >= 120 && p0_x <= 130) || 
-                                                  (p0_x >= 196 && p0_x <= 206) ||
-                                                  (p1_x >= 0 && p1_x <= 5) || 
-                                                  (p1_x >= 120 && p1_x <= 130) || 
-                                                  (p1_x >= 196 && p1_x <= 206)
-                        
-                        if (crossesBandChange || isNearKnownChange) {
-                            console.log(`🎨 [Segment Color] Segmento ${p0_x.toFixed(2)}s -> ${p1_x.toFixed(2)}s:`, {
-                                p0_band: `"${p0Band}"`,
-                                p1_band: `"${p1Band}"`,
-                                crosses_band_change: crossesBandChange,
-                                currentBand: `"${currentBand}"`,
-                                is5GHz,
-                                color,
-                                p0_raw: p0Raw,
-                                p1_raw: p1Raw
-                            })
-                        }
-
                         return color;
                     }
                 },

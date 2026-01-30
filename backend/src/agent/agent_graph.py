@@ -147,6 +147,7 @@ def generate_from_conversation_context(context_text: str, user_prompt: str) -> s
 Basándote en la siguiente conversación previa, responde la pregunta del usuario de forma DIRECTA, COMPACTA y enfocada en lo que realmente le interesa.
 
 IMPORTANTE:
+    pass
 - Sé CONCISO: ve directo al punto, sin rodeos ni explicaciones innecesarias
 - Responde SOLO lo que el usuario pregunta, sin información adicional no solicitada
 - Si la pregunta es sobre algo mencionado anteriormente, elabora SOLO sobre eso específicamente
@@ -154,11 +155,13 @@ IMPORTANTE:
 - Máximo 3-4 párrafos, preferiblemente menos
 
 Conversación previa:
+    pass
 {context_text}
 
 Pregunta del usuario: {user_prompt}
 
 Respuesta (directa y compacta):
+    pass
 """
     return llm.generate(followup_prompt).strip()
 
@@ -207,6 +210,7 @@ def planner_node(state: GraphState) -> Dict[str, Any]:
     Analiza el mensaje del usuario y define el plan de ejecución.
     
     Este nodo SOLO accede a:
+        pass
     - state.messages: para obtener el prompt del usuario y contexto
     - state.plan_steps: para escribir el plan generado
     
@@ -232,7 +236,6 @@ def planner_node(state: GraphState) -> Dict[str, Any]:
     # Verificar si la pregunta fue rechazada por estar fuera de tema
     if decision.get("rejection_message"):
         rejection_msg = decision.get("rejection_message")
-        logger.info(f"[Planner] Pregunta rechazada: {rejection_msg}")
         
         thought_chain = add_thought(
             state.thought_chain or [],
@@ -274,6 +277,7 @@ def orchestrator_node(state: GraphState) -> Dict[str, Any]:
     Evalúa el plan generado y decide qué componente necesita activar.
     
     Este nodo SOLO accede a:
+        pass
     - state.plan_steps: para evaluar el plan generado
     - state.messages: para obtener el contexto del usuario
     - state.results: para verificar si hay resultados pendientes de procesar
@@ -369,6 +373,7 @@ def ejecutor_agent_node(state: GraphState, config: Optional[RunnableConfig] = No
     Combina la selección de herramienta y su ejecución en un solo nodo.
     
     Este nodo SOLO accede a:
+        pass
     - state.plan_steps: para leer y modificar (quitar el paso actual)
     - state.messages: para obtener el prompt original del usuario (contexto)
     - state.current_step: para escribir el paso actual (temporal)
@@ -424,7 +429,6 @@ def ejecutor_agent_node(state: GraphState, config: Optional[RunnableConfig] = No
         else:
             result = {"error": "tool_not_found"}
     except Exception as e:
-        logger.error(f"Error al ejecutar herramienta {tool_name}: {e}", exc_info=True)
         result = {"error": f"Error ejecutando {tool_name}: {str(e)}"}
     
     # Guardar resultado en la lista acumulada
@@ -477,6 +481,7 @@ async def supervisor_node(state: GraphState, config: Optional[RunnableConfig] = 
     Asegura que la respuesta cumple con estándares de calidad antes de enviarla al usuario.
     
     Este nodo SOLO accede a:
+        pass
     - state.final_output: para leer la respuesta generada
     - state.messages: para obtener el contexto del usuario
     - state.supervised_output: para escribir la respuesta supervisada/corregida
@@ -502,12 +507,10 @@ async def supervisor_node(state: GraphState, config: Optional[RunnableConfig] = 
                 # Extraer contextos de los resultados si están disponibles
                 contexts = []
                 if state.results:
-                    logger.info(f"[RAGAS] 🔍 Analizando {len(state.results)} resultado(s) para extraer contextos...")
                     for i, result in enumerate(state.results):
                         if isinstance(result, dict):
                             # Log de la estructura del resultado para debugging
                             result_keys = list(result.keys())
-                            logger.info(f"[RAGAS] Resultado {i+1} - Claves: {result_keys}")
                             
                             # Buscar contextos directamente (el RAG tool los retorna aquí)
                             if "contexts" in result:
@@ -516,37 +519,30 @@ async def supervisor_node(state: GraphState, config: Optional[RunnableConfig] = 
                                     # Filtrar contextos vacíos o None
                                     valid_contexts = [c for c in result_contexts if c and isinstance(c, str) and c.strip()]
                                     contexts.extend(valid_contexts)
-                                    logger.info(f"[RAGAS] ✅ Encontrados {len(valid_contexts)} contextos válidos en campo 'contexts' (de {len(result_contexts)} totales)")
                                 else:
-                                    logger.warning(f"[RAGAS] ⚠️ Campo 'contexts' existe pero no es una lista: {type(result_contexts)}")
+                                    pass
                             # Si no hay contextos pero hay answer, puede ser resultado de RAG
-                            elif "answer" in result:
+                            if "answer" in result:
                                 # El RAG tool retorna {"answer": ..., "hits": número, "contexts": [...]}
                                 # Si no está "contexts", puede ser que se usó contexto de conversación
                                 source = result.get("source", "unknown")
                                 hits = result.get("hits", 0)
                                 
                                 if source == "conversation_context" or source == "conversation_context_fallback":
-                                    logger.info(f"[RAGAS] ⚠️ Resultado usa contexto de conversación (sin contextos de documentos) - Source: {source}")
+                                    pass
                                 elif hits > 0:
                                     # Hay hits pero no contextos - esto es un problema
-                                    logger.warning(f"[RAGAS] ⚠️ Resultado RAG tiene {hits} hits pero NO tiene campo 'contexts'. Source: {source}")
-                                    logger.warning(f"[RAGAS] ⚠️ Esto puede indicar un problema en execute_rag_tool o rag_tool.query()")
+                                    pass
                                 else:
-                                    logger.info(f"[RAGAS] ℹ️ Resultado sin contextos ni hits - Source: {source}")
+                                    pass
                         else:
-                            logger.warning(f"[RAGAS] ⚠️ Resultado {i+1} no es un diccionario: {type(result)}")
+                            pass
                 else:
-                    logger.warning(f"[RAGAS] ⚠️ No hay resultados en el estado para extraer contextos")
-                
-                logger.info(f"[RAGAS] 📝 Total de contextos extraídos: {len(contexts)} chunks")
+                    pass
                 
                 # Si no hay contextos, intentar obtenerlos de otras fuentes
                 if not contexts:
-                    logger.warning(f"[RAGAS] ⚠️ No se encontraron contextos en los resultados. Posibles causas:")
-                    logger.warning(f"[RAGAS]   1. El agente usó contexto de conversación en lugar de consultar documentos")
-                    logger.warning(f"[RAGAS]   2. El RAG tool no retornó contextos correctamente")
-                    logger.warning(f"[RAGAS]   3. Los contextos se perdieron en el flujo del grafo")
+                    pass
                 
                 # Capturar para evaluación
                 evaluator.capture_evaluation(
@@ -571,35 +567,29 @@ async def supervisor_node(state: GraphState, config: Optional[RunnableConfig] = 
                         def evaluate_in_background():
                             """Ejecuta la evaluación de RAGAS en un thread separado"""
                             try:
-                                logger.info("[RAGAS] 🔄 Iniciando evaluación en background...")
                                 metrics = evaluator.evaluate_captured_data()
                                 if metrics:
-                                    logger.info(f"[RAGAS] 📈 Métricas RAGAS calculadas:")
                                     for metric_name, value in metrics.items():
                                         emoji = "✅" if value >= 0.7 else "⚠️" if value >= 0.5 else "❌"
-                                        logger.info(f"[RAGAS]   {emoji} {metric_name}: {value:.4f}")
                                     avg_score = sum(metrics.values()) / len(metrics) if metrics else 0.0
-                                    logger.info(f"[RAGAS] 📊 Puntuación promedio: {avg_score:.4f}")
                                 else:
-                                    logger.debug("[RAGAS] No se obtuvieron métricas de la evaluación")
+                                    pass
                             except Exception as bg_error:
                                 error_msg = str(bg_error)
                                 if "BlockingError" in error_msg or "blocking" in error_msg.lower():
-                                    logger.warning(f"[RAGAS] ⚠️ BlockingError en evaluación background. Para solucionarlo, ejecuta con 'langgraph dev --allow-blocking' o configura BG_JOB_ISOLATED_LOOPS=true")
+                                    pass
                                 else:
-                                    logger.debug(f"[RAGAS] Error en evaluación background: {str(bg_error)}")
+                                    pass
                         
                         # Iniciar thread en background (daemon=True para que no bloquee el cierre)
                         eval_thread = Thread(target=evaluate_in_background, daemon=True)
                         eval_thread.start()
-                        logger.info("[RAGAS] ✅ Evaluación iniciada en background (no bloquea la respuesta)")
                     except Exception as e:
                         error_msg = str(e)
-                        logger.warning(f"[RAGAS] ⚠️ Error al iniciar evaluación en background: {error_msg}")
                         # No fallar si hay error al iniciar el thread
     except Exception as e:
         # No fallar si Ragas no está disponible o hay error
-        logger.debug(f"[RAGAS] Error al capturar evaluación: {str(e)}")
+        pass
     
     if not final_output:
         thought_chain = add_thought(
@@ -646,7 +636,6 @@ async def supervisor_node(state: GraphState, config: Optional[RunnableConfig] = 
             rag_missed_info = True
 
     if rag_missed_info:
-        logger.info("[Supervisor] Detectada falta de información en documentos - Generando respuesta alternativa con conocimiento general")
         
         fallback_prompt = f"""
 El sistema RAG no encontró información en los documentos para la pregunta del usuario, pero el usuario requiere una respuesta de NetMind.
@@ -655,12 +644,14 @@ Genera una respuesta basada en tu CONOCIMIENTO GENERAL como experto en redes WiF
 Pregunta del usuario: "{user_prompt}"
 
 INSTRUCCIONES CRÍTICAS:
+    pass
 1. Comienza la respuesta EXACTAMENTE con esta frase: "⚠️ **Nota:** No encontré esta información específica en tus documentos técnicos, pero basado en estándares generales de redes WiFi:"
 2. Proporciona una respuesta técnica, precisa y útil sobre el tema.
 3. CONTEXTO OBLIGATORIO: Cualquier término como 'asociación' debe interpretarse EXCLUSIVAMENTE como 'asociación inalámbrica 802.11'. NO hables de ámbitos sociales o económicos.
 4. Si la pregunta solicita una lista, enuméralos claramente.
 
 Genera la respuesta técnica y profesional:
+    pass
 """
         try:
             # ASYNC CHANGE
@@ -678,8 +669,8 @@ Genera la respuesta técnica y profesional:
                 "thought_chain": thought_chain
             }
         except Exception as e:
-            logger.error(f"[Supervisor] Error en fallback de conocimiento general: {e}")
             # Si falla, continuar con flujo normal (probablemente mejorará la respuesta "no se" original)
+            pass
     
     # Obtener callback de streaming si existe (para mejoras)
     stream_callback = None
@@ -689,6 +680,7 @@ Genera la respuesta técnica y profesional:
     # Validar calidad de la respuesta usando LLM
     quality_prompt = f"""
 Evalúa la siguiente respuesta generada para el usuario y determina:
+    pass
 1. Si responde directamente a la pregunta del usuario
 2. Si es clara y concisa
 3. Si contiene información relevante
@@ -698,9 +690,11 @@ Evalúa la siguiente respuesta generada para el usuario y determina:
 Pregunta del usuario: "{user_prompt}"
 
 Respuesta generada:
+    pass
 {final_output}
 
 INSTRUCCIONES DE PUNTUACIÓN:
+    pass
 - Si la respuesta indica CORRECTAMENTE que la pregunta está fuera de tema, asigna un puntaje de 10 (Excelente manejo de límites).
 - Si la respuesta es técnica y correcta, asigna puntaje alto.
 - Si la respuesta es vaga, incorrecta o no responde, asigna puntaje bajo.
@@ -734,11 +728,13 @@ Analiza la siguiente pregunta y determina su complejidad:
 Pregunta: "{user_prompt}"
 
 Determina si es:
+    pass
 1. "simple" - Pregunta directa que requiere una respuesta breve (ej: "¿Qué es X?", "¿Cuál es Y?")
 2. "moderada" - Pregunta que requiere una explicación con algunos detalles O incluye operaciones de red (ej: "¿Cómo funciona X?", "Explica Y", "haz ping a X", "¿Qué es X? y haz Y")
 3. "compleja" - Pregunta que requiere una explicación detallada, múltiples aspectos, O una lista completa de elementos (ej: "Compara X e Y", "Explica todos los aspectos de Z", "¿Cuáles son las capas del modelo OSI?", "Menciona todos los tipos de X", "Lista todas las capas", "¿Cuáles son todas las...?")
 
 IMPORTANTE: 
+    pass
 - Si la pregunta combina una explicación Y una operación (ej: "¿Qué es X? y haz Y"), es "moderada" o "compleja", NO "simple".
 - Si la pregunta requiere una LISTA COMPLETA de elementos (ej: "capas del modelo OSI", "tipos de firewalls", "protocolos de red", "todas las capas", "cuáles son las capas"), debe ser marcada como "compleja" para asegurar que se incluyan TODOS los elementos sin omitir ninguno.
 
@@ -760,7 +756,6 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
             else:  # moderada o simple con operaciones de red
                 max_appropriate_length = 3000 if has_network_operation else 1500  # Aumentado significativamente
         except Exception as e:
-            logger.warning(f"[Supervisor] Error al analizar complejidad: {e}. Usando longitud moderada por defecto.")
             complexity = "moderada"  # Valor por defecto
             max_appropriate_length = 2000  # Aumentado de 800 a 2000
         
@@ -781,6 +776,7 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
             
             improvement_prompt = f"""
 La siguiente respuesta tiene problemas de calidad o no está adaptada a la complejidad de la pregunta. Mejórala para que:
+    pass
 1. Responda DIRECTAMENTE a la pregunta del usuario de manera clara y natural
 2. Sea ADAPTADA a la complejidad de la pregunta: {length_guidance}
 3. Mantenga FIDELIDAD TOTAL a la información proporcionada (NO inventes, NO agregues conocimiento general)
@@ -788,6 +784,7 @@ La siguiente respuesta tiene problemas de calidad o no está adaptada a la compl
 5. Esté bien estructurada y organizada
 
 INSTRUCCIONES:
+    pass
 - FIDELIDAD: Usa SOLO la información de la respuesta original. NO inventes información.
 - LONGITUD ADAPTATIVA: {length_guidance}
 - LENGUAJE NATURAL: Habla como un experto explicando a un usuario, de manera clara y accesible
@@ -799,9 +796,11 @@ INSTRUCCIONES:
 Pregunta del usuario: "{user_prompt}"
 
 Respuesta original (con problemas o no adaptada):
+    pass
 {final_output[:2000]}{"..." if len(final_output) > 2000 else ""}
 
 Respuesta mejorada (clara, natural, adaptada a la complejidad y fiel a la información):
+    pass
 """
             try:
                 improved_output = await llm.agenerate(
@@ -854,6 +853,7 @@ Respuesta mejorada (clara, natural, adaptada a la complejidad y fiel a la inform
 Ajusta la siguiente respuesta para que sea apropiada en longitud según la complejidad de la pregunta, manteniendo la información esencial y un lenguaje natural.
 
 INSTRUCCIONES:
+    pass
 - FIDELIDAD: Mantén SOLO la información de la respuesta original. NO inventes información.
 - LONGITUD ADAPTATIVA: {length_guidance}
 - LENGUAJE NATURAL: Mantén un tono claro y comprensible
@@ -866,9 +866,11 @@ INSTRUCCIONES:
 Pregunta: "{user_prompt}"
 
 Respuesta actual (muy larga para esta pregunta):
+    pass
 {supervised_output[:min(max_appropriate_length + 500, len(supervised_output))]}...
 
 Respuesta ajustada (adaptada a la complejidad, natural y fiel a la información):
+    pass
 """
                 try:
                     # DESHABILITADO: El usuario prefiere respuestas largas a que se "cambie" el texto frente a sus ojos.
@@ -887,7 +889,6 @@ Respuesta ajustada (adaptada a la complejidad, natural y fiel a la información)
                         "success"
                     )
                 except Exception as e:
-                    logger.warning(f"Error al procesar respuesta: {e}, usando respuesta original")
                     supervised_output = final_output
                     thought_chain = add_thought(
                         thought_chain,
@@ -950,6 +951,7 @@ async def synthesizer_node(state: GraphState, config: Optional[RunnableConfig] =
     Si solo se usó una herramienta, devuelve el resultado directamente sin modificar.
     
     Este nodo SOLO accede a:
+        pass
     - state.results: para leer los resultados de las herramientas
     - state.messages: para obtener el prompt original del usuario (contexto para síntesis)
     - state.final_output: para escribir la respuesta final
@@ -1036,6 +1038,7 @@ Analiza la siguiente pregunta y determina su complejidad:
 Pregunta: "{user_prompt}"
 
 Determina si es:
+    pass
 1. "simple" - Pregunta directa que requiere una respuesta breve (ej: "¿Qué es X?", "¿Cuál es Y?")
 2. "moderada" - Pregunta que requiere una explicación con algunos detalles (ej: "¿Cómo funciona X?", "Explica Y")
 3. "compleja" - Pregunta que requiere una explicación detallada, múltiples aspectos, O una lista completa de elementos (ej: "Compara X e Y", "Explica todos los aspectos de Z", "¿Cuáles son las capas del modelo OSI?", "Menciona todos los tipos de X", "Lista todas las capas", "¿Cuáles son todas las...?")
@@ -1067,7 +1070,6 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
                     length_guidance = "Respuesta EQUILIBRADA: 100-200 palabras con explicación clara. Si la pregunta requiere una lista, incluye todos los elementos importantes."
                     max_tokens_synthesis = 500  # Aumentado de 300 a 500
             except Exception as e:
-                logger.warning(f"[Synthesizer] Error al analizar complejidad: {e}. Usando longitud moderada por defecto.")
                 complexity = "moderada"
                 length_guidance = "Respuesta EQUILIBRADA: 80-150 palabras con explicación clara."
                 max_tokens_synthesis = 300
@@ -1118,7 +1120,6 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
                     "thought_chain": thought_chain
                 }
             except Exception as e:
-                logger.warning(f"Error al procesar respuesta RAG con LLM: {e}, usando respuesta original")
                 # Fallback: usar respuesta original completa sin truncar
                 final_answer = combined_raw
                 thought_chain = add_thought(
@@ -1150,7 +1151,6 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
                 comparison_key = tuple(sorted([ip1, ip2]))  # Ordenar para que sea único sin importar el orden
                 
                 if comparison_key in seen_comparisons:
-                    logger.info(f"[Sintetizador] Omitiendo comparación duplicada entre {ip1} y {ip2}")
                     continue
                 seen_comparisons.add(comparison_key)
             
@@ -1197,7 +1197,6 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
                 "thought_chain": thought_chain
             }
         except Exception as e:
-            logger.warning(f"Error al procesar resultados IP con LLM: {e}, usando formato original")
             # Fallback: usar resultados originales
             thought_chain = add_thought(
                 thought_chain,
@@ -1257,7 +1256,6 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
                 "thought_chain": thought_chain
             }
         except Exception as e:
-            logger.warning(f"Error al procesar resultados DNS con LLM: {e}, usando formato original")
             # Fallback: usar resultados originales
             thought_chain = add_thought(
                 thought_chain,
@@ -1295,7 +1293,6 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
                         comparison_key = tuple(sorted([ip1, ip2]))
                         
                         if comparison_key in seen_comparisons:
-                            logger.info(f"[Sintetizador] Omitiendo comparación duplicada entre {ip1} y {ip2}")
                             continue
                         seen_comparisons.add(comparison_key)
                     
@@ -1408,6 +1405,7 @@ def route_from_orchestrator(state: GraphState) -> str:
     Decide desde el Orquestador a qué componente dirigirse.
     
     Esta función SOLO accede a:
+        pass
     - state.next_component: para saber a qué componente ir
     - state.plan_steps: para verificar si hay pasos pendientes
     - state.results: para verificar si hay resultados
@@ -1447,6 +1445,7 @@ def route_from_executor(state: GraphState) -> str:
     Decide desde el Agente Ejecutor a dónde ir.
     
     Esta función SOLO accede a:
+        pass
     - state.plan_steps: para verificar si hay pasos pendientes
     
     NO debe acceder a otros campos del state.
@@ -1570,6 +1569,7 @@ def get_config_with_ragas_callbacks(config: Optional[Dict[str, Any]] = None) -> 
     Útil para usar con LangGraph Studio cuando se ejecuta el grafo directamente.
     
     Ejemplo de uso en LangGraph Studio:
+        pass
     ```python
     from src.agent.agent_graph import get_config_with_ragas_callbacks
     config = get_config_with_ragas_callbacks()

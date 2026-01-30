@@ -18,7 +18,6 @@ apiClient.interceptors.response.use(
   (error) => {
     if (error.response) {
       // El servidor respondió con un código de error
-      console.error('API Error:', error.response.data)
       return Promise.reject({
         message: error.response.data?.detail || 'Error en la petición',
         status: error.response.status,
@@ -26,10 +25,6 @@ apiClient.interceptors.response.use(
       })
     } else if (error.request) {
       // La petición se hizo pero no hubo respuesta
-      console.error('Network Error:', error.request)
-      console.error('Request URL:', error.config?.url)
-      console.error('Base URL:', error.config?.baseURL)
-      console.error('Full URL:', error.config?.baseURL + error.config?.url)
       return Promise.reject({
         message: `No se pudo conectar con el servidor en ${error.config?.baseURL || API_URL}. Verifica que el backend esté corriendo.`,
         status: 0,
@@ -37,7 +32,6 @@ apiClient.interceptors.response.use(
       })
     } else {
       // Algo más causó el error
-      console.error('Error:', error.message)
       return Promise.reject({
         message: error.message || 'Error desconocido',
         status: 0,
@@ -64,7 +58,6 @@ export const agentService = {
       if (error.status === 404) {
         return { session_id: sessionId, messages: [], context_length: 0 }
       }
-      console.error('Error al obtener historial de sesión:', error)
       return { session_id: sessionId, messages: [], context_length: 0 }
     }
   },
@@ -79,7 +72,6 @@ export const agentService = {
       const response = await apiClient.delete(`${API_ENDPOINTS.AGENT_SESSION}/${sessionId}`)
       return response.data
     } catch (error) {
-      console.error('Error al limpiar sesión:', error)
       throw error
     }
   },
@@ -183,7 +175,6 @@ export const agentService = {
                   return
                 }
               } catch (e) {
-                console.error('Error al parsear chunk SSE:', e, line)
               }
             }
           }
@@ -191,7 +182,6 @@ export const agentService = {
       })
       .catch((error) => {
         if (error.name === 'AbortError') {
-          console.log('Streaming cancelado')
         } else {
           onError(error)
         }
@@ -238,7 +228,6 @@ export const filesService = {
       const response = await apiClient.get(API_ENDPOINTS.FILES_LIST)
       return response.data || []
     } catch (error) {
-      console.error('Error al obtener archivos:', error)
       // Si es un error 404 o la lista está vacía, retornar array vacío
       if (error.status === 404) {
         return []
@@ -284,7 +273,6 @@ export const networkAnalysisService = {
         formData.append('user_metadata', JSON.stringify(cleaned))
       }
     } catch (e) {
-      console.warn('No se pudo serializar user_metadata:', e)
     }
 
     const uploadClient = axios.create({

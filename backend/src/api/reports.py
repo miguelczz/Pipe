@@ -46,13 +46,12 @@ async def list_reports():
                                 "verdict": data.get("verdict")
                             })
                     except Exception as e:
-                        logger.warning(f"Error al leer reporte {analysis_file}: {e}")
+                        pass
         
         # Ordenar por fecha descendente
         reports.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
         return reports
     except Exception as e:
-        logger.error(f"Error al listar reportes: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/{analysis_id}")
@@ -67,7 +66,6 @@ async def delete_report(analysis_id: str):
         for analysis_file in base_dir.glob(f"**/{analysis_id}.json"):
             analysis_file.unlink()
             found = True
-            logger.info(f"Reporte {analysis_id} eliminado exitosamente.")
             break
             
         if not found:
@@ -77,7 +75,6 @@ async def delete_report(analysis_id: str):
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
-        logger.error(f"Error al eliminar reporte {analysis_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{analysis_id}")
@@ -97,5 +94,4 @@ async def get_report(analysis_id: str):
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
-        logger.error(f"Error al obtener reporte {analysis_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

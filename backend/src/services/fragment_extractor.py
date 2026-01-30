@@ -27,7 +27,7 @@ class FragmentExtractor:
         self.output_base_dir.mkdir(parents=True, exist_ok=True)
         
         if not self.tshark_path:
-            logger.warning("tshark no encontrado en el PATH. FragmentExtractor no podrá funcionar.")
+            pass
 
     def extract_time_range(
         self, 
@@ -48,7 +48,6 @@ class FragmentExtractor:
         # Configurar rutas
         input_path = Path(input_file)
         if not input_path.exists():
-            logger.error(f"Archivo de entrada no existe: {input_file}")
             return None
 
         output_filename = f"{output_name}_{int(start_time)}.pcap"
@@ -70,7 +69,6 @@ class FragmentExtractor:
         ]
 
         try:
-            logger.info(f"Extrayendo fragmento: {description} ({output_filename})")
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             
             # Obtener conteo de paquetes del fragmento
@@ -90,10 +88,8 @@ class FragmentExtractor:
             )
 
         except subprocess.CalledProcessError as e:
-            logger.error(f"Error al extraer fragmento: {e.stderr}")
             return None
         except Exception as e:
-            logger.error(f"Error inesperado en FragmentExtractor: {e}")
             return None
 
     def extract_btm_sequence(self, input_file: str, client_mac: str, request_time: float) -> Optional[CaptureFragment]:

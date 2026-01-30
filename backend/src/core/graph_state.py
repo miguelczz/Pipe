@@ -21,6 +21,7 @@ class GraphState(BaseModel):
     y todos los demás nodos observen los cambios automáticamente.
     
     LangGraph maneja automáticamente la propagación del estado usando los canales:
+        pass
     - add_messages: Para mensajes (acumula)
     - LastValue: Para valores simples (reemplaza)
     """
@@ -112,7 +113,6 @@ class GraphState(BaseModel):
         MAX_THOUGHT_CHAIN = 50
         if len(current_chain) > MAX_THOUGHT_CHAIN:
             current_chain = current_chain[-MAX_THOUGHT_CHAIN:]
-            logger.debug(f"[GraphState] Limpiada thought_chain, manteniendo {MAX_THOUGHT_CHAIN} más recientes")
         
         return current_chain
     
@@ -129,7 +129,6 @@ class GraphState(BaseModel):
         if len(self.messages) > max_messages * 2:  # Solo limpiar si hay más del doble
             # Mantener solo los últimos max_messages
             self.messages = self.messages[-max_messages:]
-            logger.debug(f"[GraphState] Limpiados mensajes antiguos, manteniendo {max_messages} más recientes")
     
     def cleanup_large_results(self, max_results: int = 10):
         """
@@ -142,7 +141,6 @@ class GraphState(BaseModel):
         if self.results and len(self.results) > max_results * 2:  # Solo limpiar si hay más del doble
             # Mantener solo los últimos max_results
             self.results = self.results[-max_results:]
-            logger.debug(f"[GraphState] Limpiados resultados antiguos, manteniendo {max_results} más recientes")
 
 
 class StateObserver:
@@ -175,7 +173,7 @@ class StateObserver:
             try:
                 observer(state, changes)
             except Exception as e:
-                logger.warning(f"Error en observador de estado: {e}")
+                pass
 
 
 # Instancia global del observador (opcional, para uso futuro)

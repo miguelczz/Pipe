@@ -18,6 +18,7 @@ class RAGASCallbackHandler(BaseCallbackHandler):
     para evaluación posterior con RAGAS.
     
     Captura:
+        pass
     - Preguntas del usuario
     - Respuestas generadas
     - Contextos utilizados (de RAG)
@@ -56,7 +57,6 @@ class RAGASCallbackHandler(BaseCallbackHandler):
                 last_message = messages[-1]
                 if hasattr(last_message, "content"):
                     self.current_question = last_message.content
-                    logger.info(f"[RAGAS] 📝 Capturada pregunta: {self.current_question[:50]}...")
     
     def on_tool_start(
         self, serialized: Dict[str, Any], input_str: str, **kwargs: Any
@@ -68,7 +68,6 @@ class RAGASCallbackHandler(BaseCallbackHandler):
         # Detectar qué herramienta se está ejecutando
         tool_name = serialized.get("name", "")
         self.current_tool = tool_name
-        logger.info(f"[RAGAS] 🔧 Herramienta ejecutándose: {tool_name}")
     
     def on_tool_end(self, output: str, **kwargs: Any) -> None:
         """Se llama cuando termina la ejecución de una herramienta"""
@@ -141,13 +140,6 @@ class RAGASCallbackHandler(BaseCallbackHandler):
         if self.current_question and self.current_answer:
             contexts_list = self.current_contexts.copy() if self.current_contexts else []
             
-            logger.info(
-                f"[RAGAS] ✅ Datos capturados - "
-                f"Pregunta: {self.current_question[:50]}..., "
-                f"Respuesta: {len(self.current_answer)} chars, "
-                f"Contextos: {len(contexts_list)}"
-            )
-            
             self.evaluator.capture_evaluation(
                 question=self.current_question,
                 answer=self.current_answer,
@@ -163,28 +155,20 @@ class RAGASCallbackHandler(BaseCallbackHandler):
             if contexts_list:
                 try:
                     total_captured = len(self.evaluator.evaluation_data)
-                    logger.info(f"[RAGAS] 📊 Total de evaluaciones capturadas: {total_captured}")
                     
                     # Evaluar todos los casos capturados hasta ahora
                     # Ragas puede evaluar con un solo caso, aunque es mejor con múltiples
                     if total_captured >= 1:
                         metrics = self.evaluator.evaluate_captured_data()
                         if metrics:
-                            logger.info(f"[RAGAS] 📈 Métricas RAGAS calculadas:")
                             for metric_name, value in metrics.items():
                                 # Formatear el valor con 4 decimales y agregar emoji según el valor
                                 emoji = "✅" if value >= 0.7 else "⚠️" if value >= 0.5 else "❌"
-                                logger.info(f"[RAGAS]   {emoji} {metric_name}: {value:.4f}")
                             
                             # Calcular promedio general
                             avg_score = sum(metrics.values()) / len(metrics) if metrics else 0.0
-                            logger.info(f"[RAGAS] 📊 Puntuación promedio: {avg_score:.4f}")
-                        else:
-                            logger.debug("[RAGAS] Métricas no disponibles (Ragas no instalado o sin datos suficientes)")
                 except Exception as e:
-                    logger.warning(f"[RAGAS] ⚠️ Error al calcular métricas: {str(e)}")
-            else:
-                logger.debug("[RAGAS] No se capturaron contextos, métricas no disponibles")
+                    pass
             
             # Limpiar datos temporales
             self.current_question = None
@@ -200,7 +184,6 @@ class RAGASCallbackHandler(BaseCallbackHandler):
         if not self.enabled:
             return
         
-        logger.warning(f"Error capturado en callback: {error}")
         # Limpiar datos temporales en caso de error
         self.current_question = None
         self.current_contexts.clear()

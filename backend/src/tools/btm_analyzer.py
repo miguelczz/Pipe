@@ -73,10 +73,6 @@ class BTMAnalyzer:
         if ws_attempts > 0 or ws_success > 0:
             btm_requests = ws_attempts
             successful_transitions = ws_success
-            logger.info(
-                "📊 Usando métricas agregadas de WiresharkTool como fuente de verdad: "
-                f"{ws_success}/{ws_attempts} transiciones"
-            )
         else:
             # 2) Intentar usar directamente los contadores crudos de Wireshark
             raw_btm = None
@@ -94,20 +90,12 @@ class BTMAnalyzer:
                     raw_accepts,
                     sum(1 for t in transitions if t.is_successful),
                 )
-                logger.info(
-                    "📊 Usando contadores crudos de wireshark_raw.summary.btm: "
-                    f"{successful_transitions}/{btm_requests} (Accept={raw_accepts})"
-                )
             else:
                 # 3) Fallback: Solo si no hay datos ni agregados ni crudos,
                 # calculamos desde transitions. Este modo se considera
                 # heurístico y se usa típicamente en capturas muy pequeñas.
                 btm_requests = max(btm_stats.get("requests", 0), len(transitions))
                 successful_transitions = sum(1 for t in transitions if t.is_successful)
-                logger.info(
-                    "📊 Fuente de verdad limitada: calculando métricas desde transitions locales "
-                    f"(fallback) -> {successful_transitions}/{btm_requests}"
-                )
         
         failed_transitions = max(0, btm_requests - successful_transitions)
         
@@ -263,15 +251,34 @@ class BTMAnalyzer:
             last_btm_req = None
             last_deauth = None
             
+            
             for i, ev in enumerate(sorted_events):
                 etype = ev.get("type")
                 subtype = ev.get("subtype")
+                event_type = ev.get("event_type")  # Para eventos BTM: "request" o "response"
+                timestamp = ev.get("timestamp", 0)
                 
                 # 1. Detectar inicio de transición
-                if etype == "BTM Request" or (subtype == 13 and ev.get("action_code") == 7):
+                # Los eventos BTM tienen type="btm" y event_type="request" o "response"
+                # También verificar por subtype 13 y action_code 7 (BTM Request)
+                is_btm_request = (
+                    (etype == "btm" and event_type == "request") or
+                    (subtype == 13 and str(ev.get("action_code", "")) == "7") or
+                    (subtype == 13 and ev.get("action_code") == 7)
+                )
+                
+                if is_btm_request:
                     last_btm_req = ev
                 elif etype in ["Deauthentication", "Disassociation"] or subtype in [10, 12]:
-                    last_deauth = ev
+                    # Validar que el deauth esté dirigido al cliente y sea forzado
+                    
+                    is_forced, classification, desc = DeauthValidator.validate_and_classify(ev, client)
+                    
+                    # Solo contar como "agresivo" si es forzado Y viene del AP (no del cliente)
+                    # Si classification == "forced_to_client", significa que el AP destierra al cliente
+                    # Si classification == "graceful", es salida voluntaria del cliente
+                    if is_forced and classification == "forced_to_client":
+                        last_deauth = ev
                     
                 # 2. Detectar fin de transición (Reassociation)
                 if etype in ["Reassociation Response", "Association Response"] or subtype in [1, 3]:
@@ -279,13 +286,77 @@ class BTMAnalyzer:
                     assoc_status = str(ev.get("assoc_status_code", ""))
                     is_success = assoc_status in ["0", "0x00", "0x0", "0x0000"]
                     
+                    
                     if is_success:
-                        # Determinar tipo
-                        if last_deauth and (ev["timestamp"] - last_deauth["timestamp"] < REASSOC_TIMEOUT_SECONDS):
+                        # Verificar si hay eventos BTM en la ventana de tiempo que no se detectaron como Requests
+                        window_start = timestamp - REASSOC_TIMEOUT_SECONDS
+                        btm_events_in_window = [
+                            e for e in sorted_events[:i]
+                            if e.get("timestamp", 0) >= window_start
+                            and (e.get("type") == "btm" or e.get("subtype") == 13)
+                        ]
+                        
+                        # También mostrar TODOS los eventos en la ventana para diagnóstico
+                        all_events_in_window = [
+                            e for e in sorted_events[:i]
+                            if e.get("timestamp", 0) >= window_start
+                        ]
+                        
+                        if all_events_in_window:
+                            for idx, ev in enumerate(all_events_in_window):
+                                ev_time_diff = timestamp - ev.get("timestamp", 0)
+                        
+                        # Buscar BTM Requests en la ventana que no se detectaron
+                        recent_btm_requests = []
+                        for btm_ev in btm_events_in_window:
+                            btm_etype = btm_ev.get("type")
+                            btm_event_type = btm_ev.get("event_type")
+                            btm_subtype = btm_ev.get("subtype")
+                            btm_action_code = btm_ev.get("action_code")
+                            
+                            # Verificar si es un BTM Request
+                            is_btm_req = (
+                                (btm_etype == "btm" and btm_event_type == "request") or
+                                (btm_subtype == 13 and str(btm_action_code) == "7") or
+                                (btm_subtype == 13 and btm_action_code == 7)
+                            )
+                            
+                            if is_btm_req:
+                                recent_btm_requests.append(btm_ev)
+                        
+                        # Si hay BTM Requests recientes en la ventana, usar el más reciente
+                        if recent_btm_requests:
+                            # Ordenar por timestamp descendente para obtener el más reciente
+                            recent_btm_requests.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
+                            most_recent_btm = recent_btm_requests[0]
+                            btm_time_diff = timestamp - most_recent_btm.get("timestamp", 0)
+                            
+                            if btm_time_diff < REASSOC_TIMEOUT_SECONDS:
+                                # Actualizar last_btm_req con el más reciente
+                                if not last_btm_req or most_recent_btm.get("timestamp", 0) > last_btm_req.get("timestamp", 0):
+                                    last_btm_req = most_recent_btm
+                        
+                        if btm_events_in_window and not last_btm_req:
+                            for btm_ev in btm_events_in_window:
+                                pass
+                        
+                        # Determinar tipo basado en eventos previos
+                        time_since_deauth = None
+                        time_since_btm = None
+                        
+                        if last_deauth:
+                            time_since_deauth = ev["timestamp"] - last_deauth["timestamp"]
+                        
+                        if last_btm_req:
+                            time_since_btm = ev["timestamp"] - last_btm_req["timestamp"]
+                        
+                        
+                        # Prioridad: Deauth reciente > BTM reciente > Unknown
+                        if last_deauth and time_since_deauth is not None and time_since_deauth < REASSOC_TIMEOUT_SECONDS:
                             # Es Agresivo (hubo deauth reciente)
                             start_node = last_deauth
                             s_type = SteeringType.AGGRESSIVE
-                        elif last_btm_req and (ev["timestamp"] - last_btm_req["timestamp"] < REASSOC_TIMEOUT_SECONDS):
+                        elif last_btm_req and time_since_btm is not None and time_since_btm < REASSOC_TIMEOUT_SECONDS:
                             # Es Asistido (hubo BTM req reciente)
                             start_node = last_btm_req
                             s_type = SteeringType.ASSISTED
@@ -293,6 +364,20 @@ class BTMAnalyzer:
                             # Roaming espontáneo o Asistido sin captura de Request
                             start_node = ev # Usamos el mismo evento como inicio si no hay previo
                             s_type = SteeringType.UNKNOWN
+                            if last_btm_req:
+                                pass
+                            elif last_deauth:
+                                pass
+                            else:
+                                # Mostrar eventos previos con más detalle
+                                prev_events = sorted_events[max(0, i-10):i]
+                                for prev_idx, prev_ev in enumerate(prev_events):
+                                    prev_etype = prev_ev.get('type')
+                                    prev_event_type = prev_ev.get('event_type')
+                                    prev_subtype = prev_ev.get('subtype')
+                                    prev_action_code = prev_ev.get('action_code')
+                                    prev_timestamp = prev_ev.get('timestamp', 0)
+                                    time_diff = timestamp - prev_timestamp if prev_timestamp else None
                         
                         # Crear transición
                         start_time = start_node["timestamp"]
@@ -326,9 +411,20 @@ class BTMAnalyzer:
                             # TODO: Logica de detection de ping-pong (returned_to_original)
                         ))
                         
-                        # Reset estados
-                        last_btm_req = None
-                        last_deauth = None
+                        # Reset estados SOLO si fueron usados en esta transición Y están fuera de la ventana
+                        # Esto permite que múltiples transiciones puedan usar el mismo BTM Request
+                        # si están dentro de la ventana de tiempo (puede haber múltiples reassociations
+                        # después de un solo BTM Request)
+                        if s_type == SteeringType.AGGRESSIVE and last_deauth == start_node:
+                            # Se usó el deauth, resetearlo después de usarlo
+                            last_deauth = None
+                        elif s_type == SteeringType.ASSISTED and last_btm_req == start_node:
+                            # Se usó el BTM Request, pero NO resetearlo todavía
+                            # porque puede haber más transiciones que lo necesiten dentro de la ventana
+                            # El BTM Request se mantendrá activo hasta que expire la ventana de tiempo
+                            # o hasta que se detecte un nuevo BTM Request
+                            pass  # No resetear, permitir reutilización dentro de la ventana
+                        # Si es UNKNOWN, no resetear nada porque no se usó ningún estado previo
         
         # Post-procesamiento: marcar cambios de banda aunque los frames individuales
         # no lo hayan indicado explícitamente. Si vemos que, para un mismo cliente,
@@ -516,24 +612,41 @@ class BTMAnalyzer:
         
         # Filtros inteligentes para Deauth/Disassoc
         # Siempre usamos DeauthValidator sobre los eventos crudos para detectar
-        # desconexiones FORZADAS dirigidas al cliente, independientemente de que
-        # exista o no raw_summary.
+        # desconexiones FORZADAS y NO FORZADAS dirigidas al cliente
         forced_deauth_count = 0
         forced_disassoc_count = 0
+        client_directed_deauth_count = 0  # Total de deauths dirigidos al cliente (forzados o no)
+        client_directed_disassoc_count = 0  # Total de disassocs dirigidos al cliente (forzados o no)
+        
         
         for e in (steering_events or []):
             st = e.get("subtype")
             # Análisis de desconexiones (SOLO SI ES EL CLIENTE ANALIZADO)
             if st in [10, 12] and primary_client:
+                event_type = "Disassoc" if st == 10 else "Deauth"
+                timestamp = e.get("timestamp", 0)
+                da = e.get("da", "")
+                sa = e.get("sa", "")
+                reason_code = e.get("reason_code", "")
+                bssid = e.get("bssid", "")
+                
+                
                 is_forced, classification, desc = DeauthValidator.validate_and_classify(e, primary_client)
                 
-                if is_forced:
+                
+                # Verificar si está dirigido al cliente (incluso si no es forzado)
+                is_directed = DeauthValidator.is_directed_to_client(e, primary_client)
+                
+                if is_directed:
                     if st == 10:
-                        forced_disassoc_count += 1
+                        client_directed_disassoc_count += 1
+                        if is_forced:
+                            forced_disassoc_count += 1
                     else:
-                        forced_deauth_count += 1
-                else:
-                    logger.debug(f"Deauth/Disassoc ignorado en cumplimiento: {desc}")
+                        client_directed_deauth_count += 1
+                        if is_forced:
+                            forced_deauth_count += 1
+        
         
         assoc_failures = band_counters.get("association_failures", [])
         failure_count = len(assoc_failures)
@@ -541,12 +654,20 @@ class BTMAnalyzer:
         # Un handshake se considera completo si hay al menos un ciclo exitoso
         has_complete_handshake = (assoc_req > 0 and assoc_resp > 0) or (reassoc_req > 0 and reassoc_resp > 0)
         
-        # CRITERIO DE ÉXITO: Handshake completo Y sin desconexiones forzadas REALES
-        assoc_passed = has_complete_handshake and failure_count == 0 and (forced_deauth_count == 0 and forced_disassoc_count == 0)
+        # CRITERIO DE ÉXITO: Handshake completo Y sin desconexiones dirigidas al cliente
+        # Cualquier desconexión (forzada o no) dirigida al cliente indica inestabilidad
+        assoc_passed = (
+            has_complete_handshake 
+            and failure_count == 0 
+            and (client_directed_deauth_count == 0 and client_directed_disassoc_count == 0)
+        )
         
         # Recomendación técnica precisa
-        if (forced_deauth_count + forced_disassoc_count) > 0:
-            rec = f"Prueba FALLIDA: Se detectaron {forced_deauth_count} Deauth y {forced_disassoc_count} Disassoc DIRIGIDOS al cliente, indicando inestabilidad forzada."
+        if (client_directed_deauth_count + client_directed_disassoc_count) > 0:
+            forced_text = ""
+            if (forced_deauth_count + forced_disassoc_count) > 0:
+                forced_text = f" ({forced_deauth_count + forced_disassoc_count} forzados)"
+            rec = f"Prueba FALLIDA: Se detectaron {client_directed_deauth_count} Deauth y {client_directed_disassoc_count} Disassoc DIRIGIDOS al cliente{forced_text}, indicando inestabilidad en la conexión."
         elif failure_count > 0:
             rec = "Se detectaron fallos explícitos de asociación (Status Code != 0)."
         elif not has_complete_handshake:
@@ -562,8 +683,8 @@ class BTMAnalyzer:
             severity="medium",
             details=(
                 f"ASSOC: {assoc_req}/{assoc_resp_success}, REASSOC: {reassoc_req}/{reassoc_resp_success} "
-                f"DISASSOC: {disassoc_count} (forzados: {forced_disassoc_count}), "
-                f"DEAUTH: {deauth_count} (forzados: {forced_deauth_count})"
+                f"DISASSOC: {client_directed_disassoc_count} (forzados: {forced_disassoc_count}), "
+                f"DEAUTH: {client_directed_deauth_count} (forzados: {forced_deauth_count})"
             ),
             recommendation=rec
         ))
@@ -608,17 +729,10 @@ class BTMAnalyzer:
         if btm_successful_responses > 0 and steering_effective_count == 0:
             # BTM Accept sin cambio físico: no es steering efectivo
             steering_passed = False
-            logger.warning(f"⚠️ BTM Accept detectado ({btm_successful_responses}) pero sin cambios de banda/BSSID → NO es steering efectivo")
         else:
             steering_passed = steering_effective_count >= 1
         
         # Logging para diagnóstico
-        logger.info(f"🔍 Evaluación Steering Efectivo:")
-        logger.info(f"   - Cambios de banda exitosos: {band_change_transitions}")
-        logger.info(f"   - Transiciones exitosas totales: {successful_transitions_count}")
-        logger.info(f"   - Transiciones exitosas entre BSSIDs distintos: {bssid_change_transitions}")
-        logger.info(f"   - BTM responses exitosos (raw): {raw_btm_accept}")
-        logger.info(f"   - Total efectivo: {steering_effective_count}, resultado={'PASÓ' if steering_passed else 'FALLÓ'}")
         
         # Recomendación solo si no hubo steering efectivo
         if not steering_passed:
@@ -644,11 +758,11 @@ class BTMAnalyzer:
             recommendation=rec_steering
         ))
 
-        # 4. KVR Suficiente (Flexible: 2 de 3 es éxito)
-        kvr_passed = sum([kvr.k_support, kvr.v_support, kvr.r_support]) >= 2
+        # 4. KVR Suficiente (Flexible: 1 de 3 es éxito)
+        kvr_passed = sum([kvr.k_support, kvr.v_support, kvr.r_support]) >= 1
         checks.append(ComplianceCheck(
             check_name="Estándares KVR",
-            description="Soporte de estándares de movilidad (Mínimo 2 de 3: k, v, r)",
+            description="Soporte de estándares de movilidad (Mínimo 1 de 3: k, v, r)",
             category="kvr",
             passed=kvr_passed,
             severity="medium",
@@ -670,12 +784,10 @@ class BTMAnalyzer:
         # Regla 1: Si hay fallos de asociación críticos (Deauth/Disassoc/Status Error) -> FAILED
         # La estabilidad es lo más importante.
         if assoc_check and not assoc_check.passed:
-            logger.warning("❌ Fallo crítico en Asociación/Reasociación detectado -> FAILED")
             return "FAILED"
             
         # Regla 2: Si el soporte BTM falló explícitamente (Solicitado pero ignorado o rechazado) -> FAILED
         if btm_check and not btm_check.passed:
-            logger.warning("❌ Soporte BTM fallido -> FAILED")
             return "FAILED"
 
         # Regla 3: Si hay steering efectivo (transiciones exitosas O BTM responses exitosos)
@@ -687,8 +799,8 @@ class BTMAnalyzer:
             # Si el check de performance pasó, hay steering efectivo
             # Verificar KVR solo si es crítico (puede ser opcional dependiendo del contexto)
             if kvr_check and not kvr_check.passed:
-                logger.warning("⚠️ Steering efectivo pero sin soporte KVR adecuado -> SUCCESS (se explicará en el análisis)")
                 # Aún es SUCCESS porque el steering funcionó, solo falta KVR completo
+                pass
             return "SUCCESS"
             
         # Regla 4: Si hay transiciones exitosas directamente (fallback)
@@ -698,11 +810,10 @@ class BTMAnalyzer:
             if performance_check and performance_check.passed:
                 # Hay steering efectivo, es SUCCESS
                 if kvr_check and not kvr_check.passed:
-                    logger.warning("⚠️ Transición exitosa pero sin soporte KVR adecuado -> SUCCESS (se explicará en el análisis)")
+                    pass
                 return "SUCCESS"
             # Si hay transiciones exitosas pero NO hay steering efectivo, es PARTIAL
             if btm_check and btm_check.passed:
-                logger.warning("⚠️ Transiciones exitosas sin steering efectivo -> PARTIAL (cliente cooperó pero no ejecutó cambio)")
                 return "PARTIAL"
             # Si no hay BTM pero hay transiciones, puede ser roaming espontáneo
             # En este caso, si no es efectivo, es FAILED
@@ -713,7 +824,6 @@ class BTMAnalyzer:
         if btm_check and btm_check.passed and btm_rate > 0.5:
             if performance_check and not performance_check.passed:
                 # Cliente cooperó (BTM Accept) pero no ejecutó cambio físico
-                logger.warning("⚠️ BTM Accept sin steering efectivo -> PARTIAL (cliente cooperó pero no ejecutó cambio)")
                 return "PARTIAL"
             # Si hay steering efectivo, ya se retornó SUCCESS arriba en Regla 3
             # Si llegamos aquí y performance_check no existe, es un caso edge

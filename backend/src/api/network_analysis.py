@@ -56,7 +56,6 @@ async def analyze_network_capture(
         content = await file.read()
         temp_path.write_bytes(content)
 
-        logger.info(f"[NetworkAnalysis] Iniciando proceso Band Steering para: {file.filename}")
 
         # Parsear metadata opcional del usuario (SSID, MAC cliente, etc.)
         metadata_dict = None
@@ -64,7 +63,6 @@ async def analyze_network_capture(
             try:
                 metadata_dict = json.loads(user_metadata)
             except json.JSONDecodeError:
-                logger.warning(f"[NetworkAnalysis] user_metadata no es JSON válido: {user_metadata}")
                 metadata_dict = None
 
         # Ejecutar el servicio en un thread separado (tshark es bloqueante)
@@ -104,7 +102,6 @@ async def analyze_network_capture(
         )
     except RuntimeError as e:
         # Errores típicos de pyshark/tshark no instalado
-        logger.error(f"[NetworkAnalysis] Error de entorno al analizar captura: {e}")
         raise HTTPException(
             status_code=500,
             detail=(
@@ -113,7 +110,6 @@ async def analyze_network_capture(
             ),
         )
     except Exception as e:
-        logger.error(f"[NetworkAnalysis] Error al procesar captura: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Error al analizar la captura de red: {str(e)}",
@@ -124,6 +120,6 @@ async def analyze_network_capture(
             if temp_path.exists():
                 os.remove(temp_path)
         except Exception:
-            logger.warning(f"No se pudo eliminar el archivo temporal: {temp_path}")
+            pass
 
 

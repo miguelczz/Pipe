@@ -72,9 +72,11 @@ STEP 2: If relevant, decide which tool to use and create a plan.
 
 User request: \"\"\"{user_input}\"\"\"
 Context (last 5 messages):
+    pass
 {context_messages_str}
 
 RELEVANCE RULES (STEP 1):
+    pass
 - CORE DOMAIN UNDERSTANDING: You are a specialized agent for NetMind. Your absolute focus is Band Steering analysis using Wireshark.
 - MANDATORY RELEVANCE: "La prueba", "el análisis", "la guía", "el procedimiento", or asking "con qué me guío" ALWAYS refer to the Band Steering project documentation. Mark them as RELEVANT immediately.
 - CONTEXTUAL INFERENCE: Any request about network behavior, WiFi standards (BTM, KVR), or "how to interpret results" is RELEVANT.
@@ -82,6 +84,7 @@ RELEVANCE RULES (STEP 1):
 - FOLLOW-UP TOLERANCE: Ambiguous questions like "what are the states?", "and the difference?", "how does it work?" MUST be marked RELEVANT if the previous conversation context is technical (Wireshark, BTM, WiFi). Do NOT reject them as "too general".
 
 TOOL DECISION RULES (STEP 2 - only if relevant):
+    pass
 1. ANALYZE THE USER REQUEST CAREFULLY: Break down the request into separate parts if it contains multiple questions or tasks.
 2. IMPORTANT: If the user is asking for a follow-up, conclusion, or continuation of a previous conversation (e.g., "conclusión", "resumen", "entonces", "en resumen", "dame más detalles sobre lo anterior"), use RAG tool but be aware it should use conversation context.
 3. UNDERSTAND USER INTENTION FROM CONTEXT: When the user makes a request like "haz uno", "hazlo", "ejecuta uno", "realiza uno", "haz un", "ejecuta un", you must understand what they want to do by analyzing:
@@ -90,6 +93,7 @@ TOOL DECISION RULES (STEP 2 - only if relevant):
    - The relationship between context and request: Analyze the MAIN TOPIC of the conversation to determine the operation.
    
    CRITICAL RULE: Analyze the MAIN TOPIC/CONCEPT being discussed, not just isolated keywords:
+       pass
    - DOMAIN ASSUMPTION: If the user's focus is on technical guidance, procedural steps, or explaining network outcomes, even without keywords, assume it's about the Band Steering core project (Route to RAG tool).
    - If the context discusses "DNS", "registro DNS", "registros DNS", "consulta DNS", "DNS records", etc. → the user wants a DNS operation
    - If the context discusses "ping", "latencia", "tiempo de respuesta", etc. → the user wants a ping operation
@@ -98,6 +102,7 @@ TOOL DECISION RULES (STEP 2 - only if relevant):
    You must intelligently infer the user's intention from the MAIN TOPIC of the conversation, not from isolated keywords.
    
    Examples of intelligent context understanding:
+       pass
    - Context: "user: ¿Qué es DNS?" → User: "Realiza uno a google" → tool: "dns", plan_step: "query all DNS records for google.com"
    - Context: "user: ¿Qué es un registro DNS?" → User: "Realiza uno a gmail" → tool: "dns", plan_step: "query all DNS records for gmail.com"
    - Context: "assistant: Un registro DNS es..." → User: "Haz uno a facebook" → tool: "dns", plan_step: "query all DNS records for facebook.com"
@@ -114,6 +119,7 @@ TOOL DECISION RULES (STEP 2 - only if relevant):
    - DNS tool: for DNS queries, domain records (A, AAAA, MX, TXT, NS, CNAME), reverse DNS lookup, DNS comparison, SPF/DMARC verification, domain information
    
    IMPORTANT DNS DECISION LOGIC:
+       pass
    - If user asks for DNS records WITHOUT explicitly mentioning a specific type (A, MX, NS, TXT, etc.), the plan step should indicate "query all DNS records" or "get all DNS records"
    - Only use a specific DNS record type query when the user EXPLICITLY mentions that type (e.g., "MX de", "registros NS", "TXT records")
    - For DNS comparison: if user asks to "comparar DNS", "compare DNS", use plan step: "compare DNS records between [domain1] and [domain2]"
@@ -142,7 +148,9 @@ TOOL DECISION RULES (STEP 2 - only if relevant):
 10. The "tool" field should be the PRIMARY tool if multiple are needed, or the only tool if one is needed.
 
 OUTPUT FORMAT:
+    pass
 Respond with a valid JSON containing these keys:
+    pass
 - is_relevant: true if the question is relevant to networks/telecommunications, false otherwise
 - tool: one of ["rag", "ip", "dns", "none"] (use "none" if not relevant)
 - reason: short explanation why you chose this tool (or why it's not relevant)
@@ -173,13 +181,10 @@ Respond ONLY in JSON format. No extra text or markdown.
             if match:
                 text = match.group(0)
 
-            logger.info(f"Texto limpiado para parsear: {text}")
 
             try:
                 data = json.loads(text)
             except json.JSONDecodeError:
-                logger.warning(
-                    "No se pudo parsear el JSON. Se usará 'none'.")
                 data = {"is_relevant": False, "tool": "none", "reason": "parse_fail", "plan_steps": [], "rejection_message": "Error al procesar la solicitud."}
 
         except Exception as e:
@@ -192,7 +197,6 @@ Respond ONLY in JSON format. No extra text or markdown.
         # Si NO es relevante, retornar inmediatamente
         if not is_relevant:
             rejection_msg = data.get("rejection_message", "Lo siento, como asistente de NetMind mi especialidad es el análisis de Band Steering y protocolos de red. Tu pregunta parece estar fuera de este ámbito técnico.")
-            logger.info(f"[Router] Pregunta rechazada por estar fuera de tema: '{user_input}'")
             return {
                 "tool": "none",
                 "reason": "out_of_topic",
@@ -240,8 +244,6 @@ Respond ONLY in JSON format. No extra text or markdown.
         # Asegurar que plan_steps esté en el resultado final
         data["plan_steps"] = plan
 
-        logger.info(f"Decision final normalizada: {data}")
-        logger.info(f"Plan steps generados: {plan}")
         return data
 
     def handle(self, user_input: str, state: AgentState) -> dict:
@@ -255,7 +257,6 @@ Respond ONLY in JSON format. No extra text or markdown.
 
         # Validación: si se selecciona una herramienta pero plan_steps está vacío
         if tool in ["rag", "ip", "dns"] and not plan_steps:
-            logger.warning(f"Tool '{tool}' seleccionada pero plan_steps está vacío. Usando tool basado en user_input.")
             # Intentar inferir plan_steps desde el input si es posible
             if tool == "ip":
                 if any(self.iptool.validate_ip_or_domain(part) for part in user_input.split()):
@@ -283,13 +284,11 @@ Respond ONLY in JSON format. No extra text or markdown.
                         content = msg.content if hasattr(msg, 'content') else str(msg)
                         context_parts.append(f"{role}: {content}")
                     conversation_context = "\n".join(context_parts)
-                    logger.info(f"Usando contexto de conversación ({len(context_messages)} mensajes) para RAG")
             
             # Pasar el contexto al RAG tool (si hay contexto, NO usará cache)
             out = self.rag.query(user_input, conversation_context=conversation_context)
             # Actualizar el estado de sesión en lugar del global
             state.add_message("system", f"User: {user_input}\nRAG: {out.get('answer', 'No answer')}")
-            logger.info(f"RAGTool ejecutada. Resultado: {out}")
             return {"tool": "rag", "result": out, "decision": decision}
 
         elif tool == "ip":
@@ -326,7 +325,6 @@ Respond ONLY in JSON format. No extra text or markdown.
 
             # Actualizar el estado de sesión en lugar del global
             state.add_message("system", f"User: {user_input}\nIPTool: {out}")
-            logger.info(f"IPTool ejecutada. Resultado: {out}")
             return {"tool": "ip", "result": out, "decision": decision}
 
         elif tool == "dns":
@@ -448,11 +446,9 @@ Respond ONLY in JSON format. No extra text or markdown.
             
             # Actualizar el estado de sesión
             state.add_message("system", f"User: {user_input}\nDNSTool: {out}")
-            logger.info(f"DNSTool ejecutada. Resultado: {out}")
             return {"tool": "dns", "result": out, "decision": decision}
 
         else:
             # Actualizar el estado de sesión en lugar del global
             state.add_message("system", f"User: {user_input}\nSystem: no action taken.")
-            logger.info(f"Ninguna tool seleccionada para '{user_input}'")
             return {"tool": "none", "result": None, "decision": decision}

@@ -53,6 +53,7 @@ Analiza la siguiente pregunta y determina su complejidad:
 Pregunta: "{query_text}"
 
 Determina si es:
+    pass
 1. "simple" - Pregunta directa que requiere una respuesta breve (ej: "¿Qué es X?", "¿Cuál es Y?")
 2. "moderada" - Pregunta que requiere una explicación con algunos detalles (ej: "¿Cómo funciona X?", "Explica Y")
 3. "compleja" - Pregunta que requiere una explicación detallada, múltiples aspectos, O una lista completa de elementos (ej: "Compara X e Y", "Explica todos los aspectos de Z", "¿Cuáles son las capas del modelo OSI?", "Menciona todos los tipos de X", "Lista todas las capas", "¿Cuáles son todas las...?")
@@ -67,6 +68,7 @@ Eres un asistente experto en redes WiFi y Band Steering. Tu objetivo es ayudar a
 Importante: Cualquier dato ambiguo debe interpretarse bajo el espectro de redes (ej: asociación = asociación WiFi 802.11).
 
 INSTRUCCIONES DE RESPUESTA:
+    pass
 1. **FUENTE DE VERDAD ABSOLUTA**: Usa EXCLUSIVAMENTE la información contenida en el "CONTEXTO DE DOCUMENTOS". Tienes acceso a los manuales técnicos de Band Steering basados en Wireshark. Si el dato no está en el documento, NO lo inventes ni uses conocimiento general de redes.
 2. **CONTEXTO WIRESHARK**: Todo análisis de Band Steering aquí se basa en Wireshark. Si el usuario pregunta por "la prueba" o "guiarse", refiérete a los criterios técnicos del documento.
 3. **ESTILO EXPLICATIVO**: Explica de manera técnica pero accesible. Prioriza códigos de estado BTM y eventos de transición mencionados en el texto.
@@ -82,17 +84,20 @@ INSTRUCCIONES DE RESPUESTA:
 
 {context_section}
 CONTEXTO DE DOCUMENTOS (Documentación Band Steering):
+    pass
 {context}
 
 Pregunta: {query_text}
 
 Genera una respuesta natural, útil y precisa. Recuerda: usa `código en línea` para valores técnicos, NO bloques grandes, y listas bien formateadas.
 Respuesta:
+    pass
 """
     
     SYSTEM_MESSAGE = """Eres un experto en redes WiFi de NetMind, especializado EXCLUSIVAMENTE en el análisis de Band Steering con Wireshark. 
 
 TU MISIÓN:
+    pass
 1. Responder ÚNICAMENTE basándote en los documentos técnicos proporcionados.
 2. Todo concepto debe interpretarse desde la perspectiva de Wireshark y el proyecto NetMind.
 3. Si la información no está en los documentos, indica: "No encontré esta información específica en los manuales técnicos de Band Steering, pero basándome en el contexto de la prueba...".
@@ -132,7 +137,6 @@ TU MISIÓN:
         """
         # Si por alguna razón se pasa contexto, no usar cache
         if conversation_context:
-            logger.warning("_query_with_cache llamado con conversation_context - usando método sin cache")
             return await self._query_without_cache(query_text, top_k, conversation_context)
         
         # Usar el decorador de cache solo cuando no hay contexto
@@ -190,11 +194,9 @@ TU MISIÓN:
         
         # Si hay contexto de conversación, NO usar cache (evitar respuestas incorrectas)
         if conversation_context:
-            logger.info(f"Consulta RAG con contexto de conversación ({len(conversation_context)} chars) - NO usando cache")
             return _run_async(self._query_without_cache(query_text, top_k, conversation_context))
         else:
             # Sin contexto, usar cache normal
-            logger.debug(f"Consulta RAG sin contexto - usando cache")
             return _run_async(self._query_with_cache(query_text, top_k, None))
 
     def _extract_keywords(self, query_text: str) -> List[str]:
@@ -233,7 +235,7 @@ TU MISIÓN:
         
         # Logging para debugging de qué keywords se están usando
         if keywords:
-            logger.debug(f"[RAG] Keywords extraídos para búsqueda dispersa: {keywords}")
+            pass
             
         return keywords
     
@@ -248,19 +250,16 @@ TU MISIÓN:
                 query_vector = embedding_for_text(query_text)
                 # Aumentar top_k a mínimo 10 para tener mejor cobertura
                 search_top_k = max(top_k, 10)
-                logger.debug(f"[RAG] Búsqueda densa con top_k={search_top_k} para: '{query_text[:50]}...'")
                 results = self.qdrant_repo.search(
                     query_vector=query_vector,
                     top_k=search_top_k
                 )
-                logger.debug(f"[RAG] Búsqueda densa retornó {len(results)} resultados")
                 return results
             
             # Usar asyncio.to_thread para ejecutar operación síncrona sin bloquear
             hits = await asyncio.to_thread(_sync_dense_search)
             return hits
         except Exception as e:
-            logger.error(f"Error en búsqueda densa: {e}")
             return []
     
     async def _sparse_search(self, keywords: List[str]) -> List[Dict[str, Any]]:
@@ -316,7 +315,6 @@ TU MISIÓN:
             keyword_hits = await asyncio.to_thread(_sync_sparse_search)
             return keyword_hits
         except Exception as e:
-            logger.warning(f"Error en búsqueda dispersa: {e}")
             return []
     
     def _has_keyword_match(self, hits: List[Dict[str, Any]], keywords: List[str]) -> bool:
@@ -362,17 +360,20 @@ Transforma la siguiente "Pregunta Corta" en una "Consulta Técnica Completa" bus
 EL ENFOQUE DEBE SER EXCLUSIVAMENTE: Band Steering, Wireshark, BTM, WiFi 802.11 y el proyecto NetMind.
 
 CONTEXTO DE CONVERSACIÓN (Historial previo):
+    pass
 {conversation_context}
 
 PREGUNTA CORTA ACTUAL: "{query_text}"
 
 INSTRUCCIONES:
+    pass
 1. Si el usuario pregunta "cual es la diferencia", identifica qué términos se comparaban en el historial y genera una consulta técnica como "Diferencia técnica entre [Termino A] y [Termino B] en el contexto de Band Steering y Wireshark".
 2. Si el usuario pregunta por "eso" o "la prueba", relaciónalo con los conceptos técnicos de la conversación.
 3. El resultado debe ser una frase técnica óptima para buscar en manuales de ingeniería de redes.
 4. Responde SOLO con la consulta técnica refinada, sin introducciones.
 
 Consulta técnica refinada:
+    pass
 """
                     def _sync_refine():
                         res = client.chat.completions.create(
@@ -385,10 +386,9 @@ Consulta técnica refinada:
                     
                     refined = await asyncio.to_thread(_sync_refine)
                     if refined and len(refined) > 5:
-                        logger.info(f"[RAG] Consulta refinada: '{query_text}' -> '{refined}'")
                         search_query = refined
                 except Exception as e:
-                    logger.warning(f"[RAG] Error al refinar consulta: {e}")
+                    pass
 
             # OPTIMIZACIÓN: Extraer keywords antes de las búsquedas
             keywords = self._extract_keywords(search_query)
@@ -410,9 +410,9 @@ Consulta técnica refinada:
             
             # Manejar excepciones
             if isinstance(results[0], Exception):
-                logger.error(f"Error en búsqueda densa: {results[0]}")
+                pass
             if len(results) > 1 and isinstance(results[1], Exception):
-                logger.warning(f"Error en búsqueda dispersa: {results[1]}")
+                pass
             
             # Combinar resultados solo si hay keyword_hits y no hay match en hits densos
             if keyword_hits and not self._has_keyword_match(hits, keywords):
@@ -428,7 +428,6 @@ Consulta técnica refinada:
                     collection_info = self.qdrant_repo.get_collection_info()
                     points_count = collection_info.get('points_count', 0) if isinstance(collection_info, dict) else 0
                     if points_count == 0:
-                        logger.error(f"[RAG] ❌ No hay documentos indexados en Qdrant (0 puntos en la colección)")
                         return {
                             "answer": "No hay documentos disponibles en la base de datos. Por favor, sube documentos PDF relacionados con redes y telecomunicaciones para que pueda responder tus preguntas.",
                             "hits": 0,
@@ -436,26 +435,16 @@ Consulta técnica refinada:
                             "source": "no_documents"
                         }
                     else:
-                        logger.warning(f"[RAG] ⚠️ Hay {points_count} puntos en Qdrant pero la búsqueda no encontró resultados para: '{query_text[:50]}...'")
-                        logger.warning(f"[RAG] ⚠️ Esto puede indicar que:")
-                        logger.warning(f"[RAG]     - La consulta no coincide con el contenido de los documentos")
-                        logger.warning(f"[RAG]     - Puede haber un problema con las dimensiones del vector (3072 vs 1536)")
-                        logger.warning(f"[RAG]     - Los embeddings pueden no estar generados correctamente")
-                        
                         # Intentar una búsqueda más amplia con top_k mayor
-                        logger.info(f"[RAG] Intentando búsqueda alternativa con top_k=20...")
                         try:
                             query_vector = embedding_for_text(query_text)
                             alternative_hits = self.qdrant_repo.search(query_vector=query_vector, top_k=20)
                             if alternative_hits:
-                                logger.info(f"[RAG] ✅ Búsqueda alternativa encontró {len(alternative_hits)} resultados")
                                 hits = alternative_hits
-                            else:
-                                logger.warning(f"[RAG] ⚠️ Búsqueda alternativa tampoco encontró resultados")
                         except Exception as e:
-                            logger.error(f"[RAG] Error en búsqueda alternativa: {e}")
+                            pass
                 except Exception as e:
-                    logger.error(f"[RAG] Error al verificar colección: {e}")
+                    pass
                 
                 # Si después de la búsqueda alternativa aún no hay hits, retornar mensaje
                 if not hits:
@@ -496,11 +485,13 @@ Consulta técnica refinada:
 Analiza si la siguiente pregunta es relevante para NetMind (Análisis de Band Steering con Wireshark).
 
 CONTEXTO DE CONVERSACIÓN PREVIA:
+    pass
 {conversation_context}
 
 Pregunta del usuario: "{query_text}"
 
 INSTRUCCIONES CRÍTICAS:
+    pass
 - CORE DOMAIN: Si la pregunta trata sobre "la prueba", "guiarse", "resultados", o cualquier aspecto técnico de red mencionado en los manuales, es RELEVANTE.
 - CONTINUIDAD: Si la pregunta es un seguimiento de un tema de redes o del proyecto NetMind, marca como RELEVANTE.
 - No seas restrictivo con las palabras; si el usuario busca ayuda técnica o procedimental del sistema, es RELEVANTE.
@@ -526,10 +517,8 @@ Responde SOLO con una palabra: "relevante" o "no_relevante".
                 
                 response_text = await asyncio.to_thread(_sync_relevance_check)
                 is_relevant = "relevante" in response_text and "no_relevante" not in response_text
-                logger.info(f"[RAG] Validación de relevancia: respuesta LLM='{response_text}', is_relevant={is_relevant}, tiene_contexto={bool(conversation_context)}")
                 return is_relevant
             except Exception as e:
-                logger.warning(f"[RAG] Error al verificar relevancia: {e}. Continuando con respuesta normal.")
                 return True  # En caso de error, permitir respuesta
         
         async def check_complexity():
@@ -553,7 +542,6 @@ Responde SOLO con una palabra: "relevante" o "no_relevante".
                 complexity = await asyncio.to_thread(_sync_complexity_check)
                 return complexity
             except Exception as e:
-                logger.warning(f"[RAG] Error al analizar complejidad: {e}. Usando longitud moderada por defecto.")
                 return "moderada"
         
         # OPTIMIZACIÓN: Ejecutar validación de relevancia y complejidad en paralelo usando asyncio.gather()
@@ -565,15 +553,12 @@ Responde SOLO con una palabra: "relevante" o "no_relevante".
         
         # Manejar excepciones
         if isinstance(is_relevant, Exception):
-            logger.warning(f"[RAG] Error en check_relevance: {is_relevant}. Asumiendo relevante.")
             is_relevant = True
         if isinstance(complexity, Exception):
-            logger.warning(f"[RAG] Error en check_complexity: {complexity}. Usando moderada.")
             complexity = "moderada"
         
         # Si no es relevante, retornar mensaje indicando que no puede responder
         if not is_relevant:
-            logger.info(f"[RAG] Pregunta no asociada al dominio de NetMind: '{query_text}'")
             return {
                 "answer": "Lo siento, mi conocimiento está limitado a la documentación técnica de NetMind y análisis de Band Steering con Wireshark. Tu pregunta parece estar fuera de este ámbito especializado.",
                 "hits": 0,
@@ -587,7 +572,6 @@ Responde SOLO con una palabra: "relevante" o "no_relevante".
         
         # Si no hay hits con score > 0.25, usar los top 5 resultados (incluso con scores bajos)
         if not relevant_hits:
-            logger.warning(f"[RAG] No hay hits con score > 0.25. Usando top {min(5, len(hits))} resultados disponibles")
             relevant_hits = hits[:5] if hits else []
         else:
             # Limitar a máximo 6 chunks más relevantes para tener mejor cobertura (antes 3)
@@ -601,18 +585,13 @@ Responde SOLO con una palabra: "relevante" o "no_relevante".
         if len(context) > MAX_CONTEXT_LENGTH:
             # Truncar contexto manteniendo los primeros chunks más relevantes
             context = context[:MAX_CONTEXT_LENGTH]
-            logger.debug(f"[RAG] Contexto truncado a {MAX_CONTEXT_LENGTH} caracteres para optimizar memoria")
         
         # Logging detallado para debugging
         if relevant_hits:
             scores = [h.get('score', 0) for h in relevant_hits]
-            logger.info(f"[RAG] Usando {len(relevant_hits)} chunks más relevantes (de {len(hits)} totales) con scores: {scores}")
-        else:
-            logger.warning(f"[RAG] ⚠️ No hay chunks relevantes disponibles después del filtrado")
         
         # Si el contexto está vacío después del filtrado, retornar error
         if not context or not context.strip():
-            logger.error(f"[RAG] ❌ Contexto vacío después del filtrado. Hits totales: {len(hits)}")
             return {
                 "answer": "No encontré información específica sobre tu pregunta en los documentos disponibles. Por favor, asegúrate de que tu pregunta esté relacionada con redes, telecomunicaciones o protocolos de red.",
                 "hits": len(hits),
@@ -626,9 +605,11 @@ Responde SOLO con una palabra: "relevante" o "no_relevante".
         if conversation_context:
             context_section = f"""
 CONTEXTO DE CONVERSACIÓN PREVIA:
+    pass
 {conversation_context}
 
 INSTRUCCIONES SOBRE EL CONTEXTO DE CONVERSACIÓN:
+    pass
 1. Si la pregunta hace referencia directa a acciones, resultados o eventos mencionados en el contexto de conversación (ej: "el ping que hiciste", "antes del ping", "el resultado anterior", "a qué dominio fue"), USA esa información del contexto de conversación para responder.
 2. Si la pregunta es un SEGUIMIENTO de algo mencionado en el contexto (ej: "cuales son los tipos?", "explica más", "menciona otros", "qué más hay"), y el contexto menciona un tema de redes/telecomunicaciones, entonces:
    - USA el CONTEXTO DE CONVERSACIÓN para entender a qué se refiere la pregunta
@@ -639,6 +620,7 @@ INSTRUCCIONES SOBRE EL CONTEXTO DE CONVERSACIÓN:
 5. Para información técnica general (qué es, cómo funciona, definiciones), los DOCUMENTOS son la ÚNICA fuente de información. NO agregues conocimiento general.
 
 EJEMPLOS DE SEGUIMIENTO:
+    pass
 - Contexto: "Los firewalls son dispositivos de seguridad..."
 - Pregunta: "Cuales son los tipos?"
 - Respuesta: Buscar en documentos información sobre "tipos de firewalls" y responder basándose en los documentos.
@@ -649,20 +631,11 @@ EJEMPLOS DE SEGUIMIENTO:
 """
 
         # Logging detallado para debugging: mostrar qué chunks se recuperaron
-        logger.info(f"[RAG] Chunks recuperados para consulta '{query_text[:50]}...': {len(hits)} hits totales")
         if hits:
-            logger.info(f"[RAG] Top 5 hits con sus scores:")
             for i, hit in enumerate(hits[:5], 1):  # Mostrar los primeros 5
                 chunk_text = hit["payload"].get("text", "")[:150]  # Primeros 150 chars
                 score = hit.get('score', 0)
                 document_id = hit["payload"].get("document_id", "unknown")
-                logger.info(f"[RAG]   {i}. Score: {score:.4f} | Doc: {document_id[:8]}... | Texto: {chunk_text}...")
-        else:
-            logger.warning(f"[RAG] ⚠️ No se encontraron chunks para la consulta: '{query_text}'")
-            logger.warning(f"[RAG] ⚠️ Esto puede indicar que:")
-            logger.warning(f"[RAG]     - Los documentos no están indexados en Qdrant")
-            logger.warning(f"[RAG]     - La búsqueda vectorial no encontró coincidencias semánticas")
-            logger.warning(f"[RAG]     - El embedding de la consulta no es similar a los embeddings de los documentos")
         
         # Determinar longitud objetivo según complejidad (ya obtenida en paralelo)
         # AUMENTADO: Límites más altos para asegurar respuestas completas, especialmente para listas
@@ -737,16 +710,12 @@ EJEMPLOS DE SEGUIMIENTO:
                     potential_hallucinations.append(f"'{keyword}' mencionado pero no está en el contexto")
         
         if potential_hallucinations:
-            logger.warning(f"⚠️ POSIBLE ALUCINACIÓN DETECTADA: {len(potential_hallucinations)} posibles problemas")
-            logger.warning(f"Detalles: {', '.join(potential_hallucinations[:5])}")  # Mostrar solo los primeros 5
-            logger.debug(f"Contexto recuperado ({len(hits)} chunks): {context[:500]}...")
-            logger.debug(f"Respuesta generada: {answer[:500]}...")
+            pass
         
         # Retornar respuesta con contextos para evaluación (si se necesita)
         # Los contextos se pueden usar para evaluación con Ragas
         contexts_list = [h["payload"].get("text", "") for h in hits[:10] if h.get("payload", {}).get("text")]  # Primeros 10 chunks
         
-        logger.info(f"[RAG] Retornando {len(contexts_list)} contextos de {len(hits)} hits totales")
         
         result = {
             "answer": answer,

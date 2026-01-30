@@ -143,7 +143,6 @@ export function Message({ message }) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (error) {
-      console.error('Error al copiar:', error)
     }
   }
 

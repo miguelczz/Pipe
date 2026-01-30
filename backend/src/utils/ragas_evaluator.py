@@ -49,7 +49,6 @@ except ImportError as e:
     ChatOpenAI = None
     RAGAS_LLM_WRAPPER_AVAILABLE = False
     LangchainLLMWrapper = None
-    logger.warning(f"Ragas o dependencias no están instaladas: {e}. El evaluador funcionará en modo degradado (solo captura de datos).")
 
 
 @dataclass
@@ -79,12 +78,6 @@ class RAGASEvaluator:
         self.enabled = enabled and RAGAS_AVAILABLE
         self.evaluation_data: List[EvaluationData] = []
         self.metrics_history: List[Dict[str, Any]] = []
-        
-        if not RAGAS_AVAILABLE and enabled:
-            logger.warning(
-                "Ragas no está disponible. El evaluador solo capturará datos "
-                "pero no calculará métricas. Instala con: pip install ragas datasets"
-            )
     
     def capture_evaluation(
         self,
@@ -116,14 +109,12 @@ class RAGASEvaluator:
         )
         
         self.evaluation_data.append(eval_data)
-        logger.info(f"[RAGAS] 💾 Evaluación capturada: {question[:50]}... (contextos: {len(contexts or [])})")
         
         # OPTIMIZACIÓN: Limitar el tamaño de evaluation_data para evitar problemas de memoria
         MAX_EVALUATION_DATA = 50  # Mantener solo las últimas 50 evaluaciones
         if len(self.evaluation_data) > MAX_EVALUATION_DATA:
             # Eliminar las evaluaciones más antiguas
             self.evaluation_data = self.evaluation_data[-MAX_EVALUATION_DATA:]
-            logger.debug(f"[RAGAS] Limpiadas evaluaciones antiguas, manteniendo {MAX_EVALUATION_DATA} más recientes")
     
     def evaluate_batch(
         self,
@@ -145,7 +136,6 @@ class RAGASEvaluator:
             Diccionario con las métricas calculadas
         """
         if not self.enabled or not RAGAS_AVAILABLE:
-            logger.warning("Ragas no está disponible. No se pueden calcular métricas.")
             return {}
         
         if len(questions) != len(answers) or len(questions) != len(contexts):
@@ -163,9 +153,6 @@ class RAGASEvaluator:
             # Configurar la API key desde settings
             if settings.openai_api_key:
                 os.environ["OPENAI_API_KEY"] = settings.openai_api_key
-                logger.debug("[RAGAS] API key de OpenAI configurada desde settings")
-            else:
-                logger.warning("[RAGAS] ⚠️ No se encontró openai_api_key en settings")
             
             # Preparar dataset para Ragas
             data_dict = {
@@ -197,16 +184,11 @@ class RAGASEvaluator:
                     # Envolver el LLM con LangchainLLMWrapper si está disponible
                     if RAGAS_LLM_WRAPPER_AVAILABLE and LangchainLLMWrapper is not None:
                         ragas_llm = LangchainLLMWrapper(langchain_llm)
-                        logger.debug("[RAGAS] LLM de LangChain envuelto con LangchainLLMWrapper para RAGAS")
                     else:
                         # Si no hay wrapper, usar el LLM directamente (puede funcionar en algunas versiones)
                         ragas_llm = langchain_llm
-                        logger.debug("[RAGAS] LLM de LangChain configurado para RAGAS (sin wrapper)")
                 except Exception as llm_error:
-                    logger.warning(f"[RAGAS] ⚠️ Error al configurar LLM para RAGAS: {llm_error}. Usando configuración por defecto.")
                     ragas_llm = None
-            else:
-                logger.debug("[RAGAS] ChatOpenAI no disponible, usando configuración por defecto de RAGAS")
             
             # Definir métricas a calcular
             # Las métricas de RAGAS son objetos/clases, no funciones
@@ -224,7 +206,6 @@ class RAGASEvaluator:
                 metrics.append(context_recall)     # Requiere 'reference'
             
             # Calcular métricas de forma asíncrona para evitar BlockingError
-            logger.info(f"Evaluando {len(questions)} casos con RAGAS...")
             result = None
             eval_error_occurred = False
             try:
@@ -244,15 +225,13 @@ class RAGASEvaluator:
                     try:
                         # Método 1: Intentar pasar como 'llm'
                         evaluate_kwargs["llm"] = ragas_llm
-                        logger.debug("[RAGAS] Intentando pasar LLM como parámetro 'llm'")
                     except (TypeError, KeyError):
                         try:
                             # Método 2: Intentar pasar como 'generator_llm'
                             evaluate_kwargs["generator_llm"] = ragas_llm
-                            logger.debug("[RAGAS] Intentando pasar LLM como parámetro 'generator_llm'")
                         except (TypeError, KeyError):
                             # Método 3: Configurar globalmente (si RAGAS lo soporta)
-                            logger.debug("[RAGAS] No se pudo pasar LLM como parámetro, RAGAS usará configuración por defecto")
+                            pass
                 
                 # Ejecutar RAGAS directamente
                 # Nota: Si hay BlockingError, se puede ejecutar con --allow-blocking o BG_JOB_ISOLATED_LOOPS=true
@@ -262,21 +241,16 @@ class RAGASEvaluator:
                 error_msg = str(eval_error)
                 eval_error_occurred = True
                 if "agenerate_prompt" in error_msg or "InstructorLLM" in error_msg:
-                    logger.warning(
-                        f"[RAGAS] ⚠️ Error de compatibilidad en RAGAS (posible problema de versión): {error_msg}. "
-                        "Los errores internos pueden impedir el cálculo de métricas."
-                    )
+                    # Error de compatibilidad en RAGAS (posible problema de versión)
                     # Aunque hay error, RAGAS a veces retorna un resultado parcial
                     # Intentar continuar para ver si hay algo útil
-                    logger.info("[RAGAS] Intentando continuar a pesar de los errores internos...")
+                    pass
                 else:
                     # Re-lanzar otros errores
-                    logger.error(f"[RAGAS] Error inesperado durante evaluación: {error_msg}")
                     raise
             
             # Si no hay resultado y hubo error, retornar vacío
             if result is None and eval_error_occurred:
-                logger.warning("[RAGAS] ⚠️ No se obtuvo resultado de RAGAS debido a errores internos")
                 return {}
             
             # Convertir resultado a diccionario
@@ -285,13 +259,11 @@ class RAGASEvaluator:
             
             try:
                 # Log del tipo de resultado para debugging
-                logger.debug(f"[RAGAS] Tipo de resultado: {type(result)}")
                 
                 # Intentar acceder como diccionario/objeto Dataset
                 if hasattr(result, 'to_pandas') and pd is not None:
                     # Si es un Dataset, convertir a pandas y luego a dict
                     df = result.to_pandas()
-                    logger.debug(f"[RAGAS] DataFrame shape: {df.shape}, columnas: {list(df.columns)}")
                     
                     # Columnas que NO son métricas (datos de entrada)
                     non_metric_columns = ['question', 'answer', 'contexts', 'ground_truth', 'reference']
@@ -305,10 +277,8 @@ class RAGASEvaluator:
                                     mean_value = numeric_col.mean()
                                     if pd.notna(mean_value):
                                         metrics_dict[col] = float(mean_value)
-                                        logger.debug(f"[RAGAS] ✅ Métrica '{col}': {mean_value:.4f}")
                             except (ValueError, TypeError) as e:
                                 # Si no se puede convertir a numérico, ignorar esta columna
-                                logger.debug(f"[RAGAS] Columna '{col}' no es numérica, omitiendo: {e}")
                                 continue
                     
                     # Si no encontramos métricas, intentar buscar columnas que contengan nombres de métricas conocidas
@@ -324,7 +294,6 @@ class RAGASEvaluator:
                                         mean_value = numeric_col.mean()
                                         if pd.notna(mean_value):
                                             metrics_dict[metric_name] = float(mean_value)
-                                            logger.debug(f"[RAGAS] ✅ Métrica encontrada '{metric_name}' en columna '{col}': {mean_value:.4f}")
                                 except:
                                     continue
                 elif hasattr(result, '__iter__') and not isinstance(result, (str, bytes)):
@@ -358,16 +327,18 @@ class RAGASEvaluator:
                                     elif hasattr(value, 'mean'):
                                         metrics_dict[metric_name] = float(value.mean())
                     except Exception as e:
-                        logger.warning(f"[RAGAS] Error al acceder a resultados: {e}. Tipo de resultado: {type(result)}")
                         # Si todo falla, intentar convertir a dict directamente
                         if hasattr(result, '__dict__'):
                             metrics_dict = {k: float(v) if isinstance(v, (int, float)) else 0.0 
                                           for k, v in result.__dict__.items() 
                                           if isinstance(v, (int, float))}
                 else:
-                    logger.warning(f"[RAGAS] Formato de resultado no reconocido: {type(result)}")
+                    # Si no es iterable ni tiene to_pandas, intentar convertir a dict directamente
+                    if hasattr(result, '__dict__'):
+                        metrics_dict = {k: float(v) if isinstance(v, (int, float)) else 0.0 
+                                      for k, v in result.__dict__.items() 
+                                      if isinstance(v, (int, float))}
             except Exception as e:
-                logger.error(f"[RAGAS] Error al procesar resultados: {e}", exc_info=True)
                 # Si hay errores pero el resultado tiene algún valor, intentar extraerlo
                 if hasattr(result, '__dict__'):
                     metrics_dict = {k: float(v) if isinstance(v, (int, float)) else 0.0 
@@ -381,31 +352,13 @@ class RAGASEvaluator:
                     "num_cases": len(questions),
                     "metrics": metrics_dict
                 })
-                logger.info(f"[RAGAS] ✅ Métricas calculadas: {metrics_dict}")
             else:
-                logger.warning("[RAGAS] ⚠️ No se pudieron extraer métricas del resultado")
-                # Logging detallado para diagnóstico
-                if result is not None:
-                    logger.debug(f"[RAGAS] Tipo de resultado: {type(result)}")
-                    if hasattr(result, '__dict__'):
-                        logger.debug(f"[RAGAS] Atributos del resultado: {list(result.__dict__.keys())}")
-                    if hasattr(result, 'to_pandas') and pd is not None:
-                        try:
-                            df = result.to_pandas()
-                            logger.info(f"[RAGAS] 🔍 DataFrame shape: {df.shape}")
-                            logger.info(f"[RAGAS] 🔍 Columnas disponibles: {list(df.columns)}")
-                            logger.debug(f"[RAGAS] Primeras filas del DataFrame:\n{df.head()}")
-                            # Intentar mostrar tipos de datos
-                            logger.debug(f"[RAGAS] Tipos de datos:\n{df.dtypes}")
-                        except Exception as e:
-                            logger.debug(f"[RAGAS] Error al convertir a pandas para debugging: {e}")
-                else:
-                    logger.warning("[RAGAS] ⚠️ El resultado de RAGAS es None - posible fallo completo de la evaluación")
+                # No hay métricas disponibles
+                pass
             
             return metrics_dict
             
         except Exception as e:
-            logger.error(f"Error al evaluar con RAGAS: {str(e)}", exc_info=True)
             return {}
         finally:
             # Restaurar el valor original de OPENAI_API_KEY si existía
@@ -423,7 +376,6 @@ class RAGASEvaluator:
             Diccionario con las métricas calculadas
         """
         if not self.evaluation_data:
-            logger.warning("No hay datos capturados para evaluar")
             return {}
         
         questions = [d.question for d in self.evaluation_data]
@@ -435,14 +387,13 @@ class RAGASEvaluator:
         ground_truths = ground_truths_list if all(gt is not None and gt.strip() for gt in ground_truths_list) else None
         
         if ground_truths is None and any(gt is not None for gt in ground_truths_list):
-            logger.warning("[RAGAS] Algunos datos tienen ground_truth y otros no. Se omitirá ground_truth para esta evaluación.")
+            pass
         
         return self.evaluate_batch(questions, answers, contexts, ground_truths)
     
     def clear_data(self):
         """Limpia todos los datos capturados"""
         self.evaluation_data.clear()
-        logger.info("Datos de evaluación limpiados")
     
     def get_summary(self) -> Dict[str, Any]:
         """

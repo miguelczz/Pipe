@@ -14,7 +14,6 @@ try:
     DNS_AVAILABLE = True
 except ImportError:
     DNS_AVAILABLE = False
-    logger.warning("dnspython no está instalado. La herramienta DNS no estará disponible. Instala con: pip install dnspython")
 
 
 class DNSTool:
@@ -123,7 +122,6 @@ class DNSTool:
                 "success": False
             }
         except dns.exception.DNSException as e:
-            logger.error(f"Error DNS al consultar {domain} ({record_type}): {str(e)}")
             return {
                 "error": f"Error DNS: {str(e)}",
                 "domain": domain,
@@ -131,7 +129,6 @@ class DNSTool:
                 "success": False
             }
         except Exception as e:
-            logger.error(f"Error inesperado al consultar DNS {domain} ({record_type}): {str(e)}")
             return {
                 "error": f"Error inesperado: {str(e)}",
                 "domain": domain,
@@ -181,7 +178,7 @@ class DNSTool:
             elif "error" in query_result:
                 # Solo registrar errores no críticos (NoAnswer es común)
                 if "NoAnswer" not in query_result.get("error", ""):
-                    logger.debug(f"No se pudo obtener {record_type} para {domain}: {query_result['error']}")
+                    pass
         
         # Construir mensaje de resumen detallado con todos los registros
         summary_parts = [f"Registros DNS para {domain}:"]
@@ -563,7 +560,6 @@ class DNSTool:
                 "success": False
             }
         except Exception as e:
-            logger.error(f"Error en reverse lookup para {ip}: {str(e)}")
             return {
                 "error": f"Error en búsqueda inversa: {str(e)}",
                 "ip": ip,

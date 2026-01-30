@@ -50,9 +50,9 @@ class BandSteeringService:
     ) -> Dict[str, Any]:
         """
         Realiza el ciclo completo de análisis de Band Steering:
+            pass
         Extracción -> Clasificación -> Análisis BTM -> Fragmentación -> Reporte IA -> Persistencia -> Indexación.
         """ 
-        logger.info(f"Iniciando análisis integral de: {file_path}")
         file_name = original_filename or os.path.basename(file_path)
         
         # 1. Extracción de datos crudos (WiresharkTool)
@@ -100,7 +100,6 @@ class BandSteeringService:
                     f"¿Estás seguro de que es la MAC del cliente y no del Access Point? "
                     f"El análisis usará esta MAC pero puede no ser correcta."
                 )
-                logger.warning(f"⚠️ {client_mac_warning}")
             else:
                 primary_mac = client_mac_hint
         else:
@@ -117,7 +116,6 @@ class BandSteeringService:
         # Validar que primary_mac sea una MAC válida antes de clasificar
         # Si no es válida, usar una MAC genérica válida para evitar errores en classify_device
         if not is_valid_client_mac(primary_mac) or primary_mac == "unknown":
-            logger.warning(f"⚠️ MAC del cliente no válida o desconocida: '{primary_mac}'. Usando MAC genérica para clasificación.")
             # Usar una MAC válida genérica (unicast, globalmente administrada)
             # Esta MAC pasará la validación pero no identificará un dispositivo real
             primary_mac = "00:11:22:33:44:55"
@@ -127,7 +125,6 @@ class BandSteeringService:
             user_metadata,
             filename=file_name
         )
-        logger.info(f"Dispositivo identificado: {device_info.vendor} ({device_info.mac_address})")
 
         # 3. Análisis Especializado BTM y cumplimiento (BTMAnalyzer)
         # Sincronizar: Pasar los resultados de WiresharkTool como base para BTMAnalyzer.
@@ -160,7 +157,6 @@ class BandSteeringService:
         if "steering_analysis" in raw_data:
             synchronized_metrics = self._synchronize_steering_metrics(analysis, steering_events, primary_mac)
             raw_data["steering_analysis"].update(synchronized_metrics)
-            logger.info(f"📊 Métricas sincronizadas: {synchronized_metrics.get('successful_transitions', 0)}/{synchronized_metrics.get('steering_attempts', 0)} exitosos")
         
         # COMPARAR: Raw Wireshark vs Datos Procesados
         wireshark_compare = self._compare_wireshark_raw_vs_processed(
@@ -238,7 +234,6 @@ class BandSteeringService:
 
         # 7. Organización y Persistencia por Marca
         save_path = self._save_analysis_result(analysis, device_info)
-        logger.info(f"Análisis guardado exitosamente en: {save_path}")
 
         # 8. Indexar en RAG (Qdrant) para que el chat tenga acceso
         self._index_analysis_for_rag(analysis)
@@ -521,10 +516,9 @@ class BandSteeringService:
             }
             
             repo.upsert_points([point])
-            logger.info(f"Análisis {analysis.analysis_id} indexado en Qdrant para RAG.")
             
         except Exception as e:
-            logger.error(f"Error al indexar análisis para RAG: {e}")
+            pass
 
     def _save_analysis_result(self, analysis: BandSteeringAnalysis, device: DeviceInfo) -> str:
         """

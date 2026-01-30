@@ -81,6 +81,7 @@ def get_db() -> SQLSession:
     Dependency para FastAPI que proporciona una sesión de base de datos.
     Uso: @app.get("/endpoint")
          def endpoint(db: Session = Depends(get_db)):
+             pass
     """
     db = SessionLocal()
     try:

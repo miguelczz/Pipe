@@ -29,7 +29,6 @@ except ImportError:
         def from_url(*args, **kwargs):
             raise ImportError("Redis no está instalado")
     redis = RedisStub()  # type: ignore
-    logger.info("Redis no está instalado. El cache estará deshabilitado.")
 
 if TYPE_CHECKING:
     from redis import Redis
@@ -51,7 +50,6 @@ def get_redis_client() -> Optional[Any]:
         return None
     
     if not settings.cache_enabled:
-        logger.info("Cache deshabilitado por configuración (CACHE_ENABLED=False)")
         return None
     
     # Construir URL de Redis (soporta formato Upstash)
@@ -59,13 +57,11 @@ def get_redis_client() -> Optional[Any]:
     
     # Si no hay URL de Redis, deshabilitar cache
     if not redis_connection_url:
-        logger.info("No se proporcionó REDIS_URL. El cache estará deshabilitado.")
         _cache_enabled = False
         return None
     
     if _redis_client is None:
         try:
-            logger.info(f"Intentando conectar a Redis para cache: {_mask_redis_url(redis_connection_url)}")
             
             # Configurar SSL si es rediss:// (Redis con SSL)
             # Para Heroku Redis y otros servicios con certificados autofirmados
@@ -87,10 +83,8 @@ def get_redis_client() -> Optional[Any]:
             )
             # Probar conexión
             _redis_client.ping()
-            logger.info(f"✅ Conexión a Redis establecida correctamente para cache: {_mask_redis_url(redis_connection_url)}")
             _cache_enabled = True
         except (redis.ConnectionError, redis.TimeoutError, Exception) as e:
-            logger.warning(f"⚠️ No se pudo conectar a Redis: {str(e)}. El cache estará deshabilitado.")
             _cache_enabled = False
             _redis_client = None
 
@@ -117,11 +111,9 @@ def _build_redis_url(redis_url: Optional[str], redis_token: Optional[str]) -> Op
         # Upstash usa el puerto 6379 por defecto para Redis protocol
         # Construir URL: rediss://default:TOKEN@HOST:6379
         redis_protocol_url = f"rediss://default:{redis_token}@{host}:6379"
-        logger.info(f"Construyendo URL de Redis desde Upstash REST URL")
         return redis_protocol_url
     
     # Si no se puede determinar el formato, retornar None
-    logger.warning(f"Formato de REDIS_URL no reconocido: {redis_url[:50]}...")
     return None
 
 
@@ -207,9 +199,9 @@ class CacheManager:
             return None
         except Exception as e:
             if REDIS_AVAILABLE and isinstance(e, redis.RedisError):
-                logger.warning(f"Error al obtener del cache (key: {key}): {str(e)}")
+                pass
             elif not isinstance(e, json.JSONDecodeError):
-                logger.warning(f"Error al obtener del cache (key: {key}): {str(e)}")
+                pass
             return None
     
     def set(self, key: str, value: Any, ttl: int = 3600):
@@ -229,9 +221,9 @@ class CacheManager:
             self.redis_client.setex(key, ttl, serialized)
         except Exception as e:
             if REDIS_AVAILABLE and isinstance(e, redis.RedisError):
-                logger.warning(f"Error al almacenar en cache (key: {key}): {str(e)}")
+                pass
             elif not isinstance(e, TypeError):
-                logger.warning(f"Error al almacenar en cache (key: {key}): {str(e)}")
+                pass
     
     def delete(self, key: str):
         """
@@ -247,7 +239,7 @@ class CacheManager:
             self.redis_client.delete(key)
         except Exception as e:
             if REDIS_AVAILABLE and isinstance(e, redis.RedisError):
-                logger.warning(f"Error al eliminar del cache (key: {key}): {str(e)}")
+                pass
     
     def clear_prefix(self, prefix: str):
         """
@@ -264,10 +256,9 @@ class CacheManager:
             keys = self.redis_client.keys(pattern)
             if keys:
                 self.redis_client.delete(*keys)
-                logger.info(f"Eliminadas {len(keys)} claves con prefijo '{prefix}'")
         except Exception as e:
             if REDIS_AVAILABLE and isinstance(e, redis.RedisError):
-                logger.warning(f"Error al limpiar cache con prefijo '{prefix}': {str(e)}")
+                pass
 
 
 # Instancia global del gestor de cache
@@ -320,17 +311,14 @@ def cache_result(prefix: str, ttl: int = 3600):
             # Intentar obtener del cache
             cached = cache_manager.get(cache_key)
             if cached is not None:
-                logger.info(f"Cache HIT: {prefix} - {cache_key[:50]}...")
                 return cached
             
             # Cache miss: ejecutar función y almacenar resultado
-            logger.info(f"Cache MISS: {prefix} - {cache_key[:50]}...")
             result = func(*args, **kwargs)
             
             # Almacenar en cache (solo si no hay error)
             if result and not (isinstance(result, dict) and result.get("error")):
                 cache_manager.set(cache_key, result, ttl)
-                logger.debug(f"Resultado almacenado en cache: {prefix} - {cache_key[:50]}...")
             
             return result
         

@@ -65,7 +65,6 @@ async def stream_graph_execution(
             })
             
         except Exception as e:
-            logger.error(f"Error ejecutando grafo en background: {e}", exc_info=True)
             event_queue.put_nowait({
                 "type": "error",
                 "error": str(e),
@@ -141,7 +140,6 @@ async def stream_graph_execution(
             event_queue.task_done()
             
     except Exception as e:
-        logger.error(f"Error en loop de streaming para sesión {session_id}: {str(e)}", exc_info=True)
         # Intentar cancelar la tarea de fondo
         graph_task.cancel()
         yield f"data: {json.dumps({'type': 'error', 'data': {'message': str(e)}})}\n\n"
@@ -233,7 +231,6 @@ async def agent_query_stream(
                 session_state.add_message("assistant", assistant_response)
                 # IMPORTANTE: Persistir el cambio en Redis/Base de datos
                 session_manager.update_session(query.session_id, session_state)
-                logger.info(f"[Streaming] Respuesta guardada y persistida para sesión {query.session_id}")
 
         # Crear respuesta de streaming
         return StreamingResponse(
@@ -249,7 +246,6 @@ async def agent_query_stream(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error en agent_query_stream: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Error interno del servidor: {str(e)}"

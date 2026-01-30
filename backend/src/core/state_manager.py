@@ -86,6 +86,7 @@ def get_session_manager():
     Intenta usar RedisSessionManager si Redis está disponible, sino usa SessionManager en memoria.
     
     Ventajas:
+        pass
     - Persistencia entre reinicios si Redis está disponible
     - Fallback automático a memoria si Redis no está disponible
     - Thread-safe y testeable
@@ -105,6 +106,5 @@ def get_session_manager():
                     _session_manager_instance = RedisSessionManager()
                     # Si Redis no está disponible, RedisSessionManager usa fallback automático
                 except Exception as e:
-                    logger.warning(f"No se pudo inicializar RedisSessionManager: {e}. Usando SessionManager en memoria.")
                     _session_manager_instance = SessionManager()
     return _session_manager_instance

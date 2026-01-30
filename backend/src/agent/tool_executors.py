@@ -119,7 +119,6 @@ def execute_ip_tool(step: str, prompt: str, messages: List[AnyMessage], stream_c
             
             # Si encontramos hosts en el contexto, usarlos
             if hosts_from_context:
-                logger.info(f"[IP Tool] Hosts encontrados en contexto de conversación: {hosts_from_context}")
                 hosts = hosts_from_context
     
     if operation_type == "ping":
@@ -133,10 +132,8 @@ def execute_ip_tool(step: str, prompt: str, messages: List[AnyMessage], stream_c
         # Pero solo si realmente no se pudo determinar el tipo de operación
         domain = extract_domain_from_text(search_text)
         if domain:
-            logger.info(f"[IP Tool] Operación 'default' detectada, intentando ping a {domain}")
             return ip_tool.ping(domain)
         elif hosts:
-            logger.info(f"[IP Tool] Operación 'default' detectada, intentando ping a {hosts[0]}")
             return ip_tool.ping(hosts[0])
         else:
             return {"error": "no_valid_ip_or_host_found"}
@@ -157,7 +154,6 @@ def _execute_ping(hosts: List[str], search_text: str, messages: List[AnyMessage]
             
             # Si hay palabras de comparación, redirigir a la función de comparación
             if any(keyword in search_lower for keyword in comparison_keywords):
-                logger.info(f"[Ping] Detectadas {len(hosts)} hosts con palabras de comparación - redirigiendo a _execute_compare")
                 return _execute_compare(hosts, search_text, messages)
         
         # Si no es comparación, ejecutar pings individuales
@@ -184,7 +180,6 @@ def _execute_ping(hosts: List[str], search_text: str, messages: List[AnyMessage]
             
             # Si hay palabras de comparación, redirigir a la función de comparación
             if any(keyword in search_lower for keyword in comparison_keywords):
-                logger.info(f"[Ping] Detectados {len(domains)} dominios con palabras de comparación - redirigiendo a _execute_compare")
                 return _execute_compare(domains, search_text, messages)
         
         # Si no es comparación, ejecutar pings individuales
@@ -212,13 +207,11 @@ def _execute_ping(hosts: List[str], search_text: str, messages: List[AnyMessage]
             # Intentar extraer dominio del contexto combinado
             domain_from_context = extract_domain_from_text(combined_text)
             if domain_from_context:
-                logger.info(f"[Ping] Dominio encontrado en contexto: {domain_from_context}")
                 return ip_tool.ping(domain_from_context)
             
             # Usar LLM para entender aclaraciones (ej: "x es twitter")
             domain_from_llm = extract_domain_using_llm(combined_text)
             if domain_from_llm:
-                logger.info(f"[Ping] Dominio extraído con LLM del contexto: {domain_from_llm}")
                 return ip_tool.ping(domain_from_llm)
     
     # Usar LLM como último recurso
@@ -276,9 +269,11 @@ Analiza la siguiente solicitud del usuario y el contexto de conversación previa
 Solicitud actual del usuario: "{search_text}"
 
 Contexto de conversación previa:
+    pass
 {conversation_context}
 
 INSTRUCCIONES:
+    pass
 1. Determina si el usuario se refiere a un resultado anterior de ping o traceroute en la conversación
 2. Si se refiere a un resultado anterior, identifica el dominio o host de ESE resultado específico
 3. El usuario puede referirse al último resultado, al penúltimo, o a cualquier resultado anterior mencionado
@@ -288,12 +283,14 @@ INSTRUCCIONES:
 7. Si no encuentras un dominio claro, responde "ninguno"
 
 Ejemplos:
+    pass
 - Si el usuario dice "comparalo con facebook" y antes se hizo ping a instagram.com → responde "instagram.com"
 - Si el usuario dice "comparalo con el ping anterior" y el último ping fue a google.com → responde "google.com"
 - Si el usuario dice "comparalo con el ping que hiciste antes del último" y hubo ping a instagram.com y luego a google.com → responde "instagram.com"
 - Si el usuario dice "compara facebook con google" sin referirse a resultados anteriores → responde "ninguno"
 
 Dominio del resultado anterior (o "ninguno"):
+    pass
 """
         llm_response = llm.generate(llm_prompt, max_tokens=100).strip().lower()
         
@@ -301,11 +298,10 @@ Dominio del resultado anterior (o "ninguno"):
         llm_response = re.sub(r'[^\w\.-]', '', llm_response)
         if llm_response and llm_response != "ninguno" and '.' in llm_response:
             if ip_tool.validate_ip_or_domain(llm_response):
-                logger.info(f"[Compare] Dominio del resultado anterior identificado por LLM: {llm_response}")
                 return llm_response
         
     except Exception as e:
-        logger.warning(f"Error al extraer dominio del resultado anterior con LLM: {e}")
+        pass
     
     return None
 
@@ -324,7 +320,6 @@ def _execute_compare(hosts: List[str], search_text: str, messages: List[AnyMessa
     if messages:
         previous_host = _extract_previous_result_host(messages, search_text)
         if previous_host:
-            logger.info(f"[Compare] LLM identificó referencia a resultado anterior: {previous_host}")
             
             # CORRECCIÓN CRÍTICA: Extraer el NUEVO dominio mencionado usando un prompt específico
             # que excluya explícitamente el dominio anterior para evitar duplicados
@@ -335,6 +330,7 @@ Analiza el siguiente texto e identifica el NUEVO dominio o servicio que el usuar
 Texto: "{search_text}"
 
 INSTRUCCIONES CRÍTICAS:
+    pass
 1. Identifica el NUEVO servicio o dominio mencionado en el texto (ej: "tesla", "facebook", "google")
 2. El dominio anterior ya identificado es: {previous_host} - NO lo incluyas en tu respuesta
 3. Busca SOLO el nuevo servicio/dominio mencionado en el texto actual
@@ -344,12 +340,14 @@ INSTRUCCIONES CRÍTICAS:
 7. Si no encuentras un nuevo dominio/servicio, responde "ninguno"
 
 Ejemplos:
+    pass
 - "comparalo con tesla" → tesla.com
 - "comparalo con facebook" → facebook.com
 - "compara con google.com" → google.com
 - "comparalo con el anterior" → ninguno (no hay nuevo dominio)
 
 Nuevo dominio (o "ninguno"):
+    pass
 """
                 llm_response = llm.generate(new_domain_prompt, max_tokens=100).strip().lower()
                 
@@ -358,42 +356,31 @@ Nuevo dominio (o "ninguno"):
                 
                 if llm_response and llm_response != "ninguno" and '.' in llm_response:
                     if ip_tool.validate_ip_or_domain(llm_response) and llm_response != previous_host:
-                        logger.info(f"[Compare] Nuevo dominio extraído con LLM: {llm_response}")
                         hosts = [previous_host, llm_response]
-                        logger.info(f"[Compare] Comparando {previous_host} con {llm_response}")
                     else:
-                        logger.warning(f"[Compare] LLM retornó dominio inválido o duplicado: {llm_response}")
                         # Fallback: intentar con extract_domains_from_text pero filtrar el anterior
                         new_hosts = extract_domains_from_text(search_text)
                         new_hosts = [h for h in new_hosts if h != previous_host]  # Filtrar el anterior
                         if new_hosts:
                             hosts = [previous_host, new_hosts[0]]
-                            logger.info(f"[Compare] Comparando {previous_host} con {new_hosts[0]} (fallback)")
                         else:
                             hosts = [previous_host]
-                            logger.warning(f"[Compare] No se pudo extraer nuevo dominio, solo se tiene: {previous_host}")
                 else:
-                    logger.warning(f"[Compare] LLM no encontró nuevo dominio: {llm_response}")
                     # Fallback: intentar con extract_domains_from_text pero filtrar el anterior
                     new_hosts = extract_domains_from_text(search_text)
                     new_hosts = [h for h in new_hosts if h != previous_host]  # Filtrar el anterior
                     if new_hosts:
                         hosts = [previous_host, new_hosts[0]]
-                        logger.info(f"[Compare] Comparando {previous_host} con {new_hosts[0]} (fallback)")
                     else:
                         hosts = [previous_host]
-                        logger.warning(f"[Compare] No se pudo extraer nuevo dominio, solo se tiene: {previous_host}")
             except Exception as e:
-                logger.error(f"[Compare] Error al extraer nuevo dominio: {e}")
                 # Fallback: intentar con extract_domains_from_text pero filtrar el anterior
                 new_hosts = extract_domains_from_text(search_text)
                 new_hosts = [h for h in new_hosts if h != previous_host]  # Filtrar el anterior
                 if new_hosts:
                     hosts = [previous_host, new_hosts[0]]
-                    logger.info(f"[Compare] Comparando {previous_host} con {new_hosts[0]} (fallback de error)")
                 else:
                     hosts = [previous_host]
-                    logger.warning(f"[Compare] Error y no se pudo extraer nuevo dominio, solo se tiene: {previous_host}")
     
     # Si NO hay referencia a resultado anterior, usar la lógica normal
     if not previous_host:
@@ -417,11 +404,13 @@ Analiza la siguiente solicitud del usuario y el contexto de conversación.
 Solicitud actual: "{search_text}"
 
 Contexto de conversación:
+    pass
 {conversation_context}
 
 Dominios ya identificados: {', '.join(hosts) if hosts else 'ninguno'}
 
 INSTRUCCIONES:
+    pass
 1. Identifica qué dominios o hosts el usuario quiere comparar en esta solicitud específica
 2. NO incluyas dominios de comparaciones anteriores que no están relacionados con esta solicitud
 3. Si el usuario menciona explícitamente dominios en su solicitud, úsalos
@@ -430,6 +419,7 @@ INSTRUCCIONES:
 6. Si no hay dominios relevantes adicionales en el contexto, responde "ninguno"
 
 Dominios relevantes para esta comparación (uno por línea):
+    pass
 """
                 llm_response = llm.generate(llm_prompt, max_tokens=150).strip()
                 
@@ -443,7 +433,6 @@ Dominios relevantes para esta comparación (uno por línea):
                             if ip_tool.validate_ip_or_domain(line):
                                 if line not in hosts:
                                     hosts.append(line)
-                                    logger.info(f"[Compare] Dominio relevante identificado por LLM: {line}")
                                     if len(hosts) >= requested_count:
                                         break
         
@@ -487,6 +476,7 @@ Sugiere {requested_count} dominios o servicios populares y relevantes para compa
 Responde SOLO con los nombres de los servicios, uno por línea, sin explicaciones ni puntos.
 
 Responde con {requested_count} nombres:
+    pass
 """
         else:
             prompt = f"""
@@ -498,6 +488,7 @@ Si no encuentras nombres de dominio, sugiere dominios populares para completar l
 Texto: "{text}"
 
 Responde con los nombres (uno por línea):
+    pass
 """
         
         llm_response = llm.generate(prompt).strip().lower()
@@ -528,7 +519,6 @@ Responde con los nombres (uno por línea):
                 hosts.append(default_domain)
     
     except Exception as e:
-        logger.warning(f"Error al extraer dominios: {e}")
         # Fallback: usar dominios comunes
         if len(hosts) < 2:
             default_domains = ["google.com", "facebook.com", "amazon.com", "microsoft.com", "netflix.com"]
@@ -565,11 +555,13 @@ Eres un analizador ESTRICTO que decide si una pregunta requiere buscar informaci
 REGLA CRÍTICA: Por defecto, usa "nueva" (RAG). Solo marca como "seguimiento" si la pregunta hace referencia EXPLÍCITA y DIRECTA a acciones, resultados o eventos específicos de la conversación previa.
 
 Conversación previa (últimos mensajes):
+    pass
 {context_text}
 
 Pregunta del usuario: "{prompt}"
 
 INSTRUCCIONES CRÍTICAS (SÉ MUY ESTRICTO):
+    pass
 1. Marca como "seguimiento" SOLO si la pregunta hace referencia EXPLÍCITA a:
    - Acciones realizadas en la conversación ("el ping que hiciste", "antes del ping", "el ping anterior", "el ping hacia X")
    - Resultados de operaciones previas ("compara con el ping anterior", "diferencias con el resultado previo")
@@ -587,12 +579,14 @@ INSTRUCCIONES CRÍTICAS (SÉ MUY ESTRICTO):
 3. REGLA DE ORO: Si la pregunta es sobre un CONCEPTO o TEMA (aunque haya sido mencionado antes), es "nueva" (RAG). Solo es "seguimiento" si pregunta sobre ACCIONES o RESULTADOS específicos.
 
 Ejemplos de "seguimiento" (usar contexto):
+    pass
 - "Antes del ping hacia openai, habías realizado otro ping, ¿a qué dominio fue?" → seguimiento (pregunta sobre acción específica)
 - "Con el ping que hiciste hace poco, ¿podrías compararlo con un ping hacia openai?" → seguimiento (pregunta sobre resultado específico)
 - "¿Qué diferencias encuentras entre este resultado y el anterior?" → seguimiento (comparación de resultados)
 - "A qué dominio fue el ping anterior?" → seguimiento (pregunta sobre acción específica)
 
 Ejemplos de "nueva" (usar RAG):
+    pass
 - "Qué es TCP?" → nueva (RAG) - pregunta sobre concepto
 - "Cuales son los protocolos relevantes?" → nueva (RAG) - pregunta sobre conceptos
 - "Explica qué es un ping" → nueva (RAG) - pregunta sobre concepto
@@ -621,24 +615,20 @@ Responde SOLO con una palabra: "seguimiento" o "nueva".
                     ref_words = ["que hiciste", "que realizaste", "anterior", "previo", "antes", "resultado", "el ping", "la consulta", "lo que", "que ejecutaste"]
                     if not any(ref_word in prompt.lower() for ref_word in ref_words):
                         is_followup = False
-                        logger.info(f"[RAG] Pregunta contiene palabras de búsqueda de información sin referencia a acciones - forzando RAG")
                 
-                logger.info(f"[RAG] Detección de seguimiento - LLM respuesta: '{llm_response}', es seguimiento: {is_followup}")
                 
                 # Si NO es seguimiento, forzar búsqueda en documentos (no usar contexto de conversación)
                 if not is_followup:
-                    logger.info(f"[RAG] Usando RAG (búsqueda en documentos) - prioridad sobre contexto de conversación")
+                    pass
         except Exception as e:
-            logger.warning(f"Error al detectar seguimiento con LLM: {e}. Usando RAG por defecto.")
+            pass
             is_followup = False  # En caso de error, usar RAG
     
     # PRIORIDAD DOCUMENTACIÓN: Siempre usamos RAG con contexto de conversación para asegurar fidelidad técnica
     # El refinamiento de consulta en RAGTool se encargará de manejar los seguimientos
-    logger.info(f"[RAG] Ejecutando RAG para: {prompt[:50]}...")
     
     # Ejecutar RAG normal (búsqueda en documentos)
     # El contexto de conversación se usa como complemento para mejorar la respuesta
-    logger.info(f"[RAG] Ejecutando RAG - buscando en documentos para: {prompt[:50]}...")
     
     # Obtener contexto de conversación para complementar (si existe)
     # Esto es CRÍTICO para que el RAG pueda referenciar acciones, resultados y eventos previos
@@ -649,17 +639,14 @@ Responde SOLO con una palabra: "seguimiento" o "nueva".
             # EXCLUIMOS el último mensaje porque es la pregunta actual que vamos a refinar
             conversation_context_for_rag = get_conversation_context(messages, max_messages=10, exclude_last=True)
             if conversation_context_for_rag:
-                logger.info(f"[RAG] Contexto de conversación disponible ({len(conversation_context_for_rag)} chars, {len(messages)} mensajes) - se usará como complemento a los documentos")
+                pass
         except Exception as e:
-            logger.debug(f"[RAG] No se pudo obtener contexto de conversación: {e}")
+            pass
     
     # SIEMPRE buscar en documentos - el contexto de conversación es solo complementario
     try:
-        logger.info(f"[RAG] Llamando a rag_tool.query() con prompt: {prompt[:100]}...")
         result = rag_tool.query(prompt, conversation_context=conversation_context_for_rag)
-        logger.info(f"[RAG] rag_tool.query() retornó: {type(result)}, claves: {list(result.keys()) if isinstance(result, dict) else 'N/A'}")
     except Exception as e:
-        logger.error(f"[RAG] ❌ ERROR CRÍTICO al ejecutar rag_tool.query(): {e}", exc_info=True)
         # Retornar un resultado con error pero con estructura válida para RAGAS
         result = {
             "answer": f"Error al buscar información en los documentos: {str(e)}",
@@ -674,7 +661,6 @@ Responde SOLO con una palabra: "seguimiento" o "nueva".
         contexts_count = len(result.get("contexts", []))
         hits_count = result.get("hits", 0)
         source = result.get("source", "rag_tool")
-        logger.info(f"[RAG] Resultado de RAG tool - hits: {hits_count}, contextos: {contexts_count}, source: {source}")
         
         # Verificar que los contextos estén presentes y sean válidos
         if "contexts" in result:
@@ -682,28 +668,24 @@ Responde SOLO con una palabra: "seguimiento" o "nueva".
             if isinstance(contexts_list, list):
                 valid_contexts = [c for c in contexts_list if c and isinstance(c, str) and c.strip()]
                 if len(valid_contexts) != len(contexts_list):
-                    logger.warning(f"[RAG] ⚠️ Algunos contextos están vacíos o inválidos: {len(valid_contexts)} válidos de {len(contexts_list)} totales")
                     # Limpiar contextos inválidos
                     result["contexts"] = valid_contexts
                     contexts_count = len(valid_contexts)
             else:
-                logger.error(f"[RAG] ❌ Campo 'contexts' no es una lista: {type(contexts_list)}")
                 result["contexts"] = []
                 contexts_count = 0
         
         # Si hay hits pero no contextos, hay un problema
         if hits_count > 0 and contexts_count == 0:
-            logger.error(f"[RAG] ❌ PROBLEMA CRÍTICO: Hay {hits_count} hits pero 0 contextos - esto impedirá evaluación RAGAS")
-            logger.error(f"[RAG] ❌ El RAG tool debería retornar contextos cuando hay hits. Revisar rag_tool.py")
+            pass
         elif hits_count == 0 and contexts_count == 0:
-            logger.info(f"[RAG] ℹ️ No se encontraron hits ni contextos - puede ser normal si no hay documentos relevantes")
+            pass
         elif contexts_count > 0:
-            logger.info(f"[RAG] ✅ Contextos disponibles para RAGAS: {contexts_count} chunks")
+            pass
     
     # Si hay error (cualquier tipo), intentar usar contexto como fallback si es posible
     if result.get("error") and messages:
         error_type = result.get("error", "")
-        logger.warning(f"[RAG] ⚠️ Error detectado en resultado RAG: {error_type}")
         
         # Si es error de conexión a Qdrant, usar contexto como fallback
         if error_type == "qdrant_connection_error":
@@ -715,11 +697,13 @@ Responde SOLO con una palabra: "seguimiento" o "nueva".
 Basándote en la siguiente conversación previa, responde la pregunta del usuario de forma DIRECTA, COMPACTA y enfocada en lo que realmente le interesa.
 
 Conversación previa:
+    pass
 {context_text}
 
 Pregunta del usuario: {prompt}
 
 Respuesta (directa y compacta):
+    pass
 """
                     answer = llm.generate(followup_prompt).strip()
                     # Para RAGAS: usar el contexto de conversación como contexto si no hay documentos
@@ -731,11 +715,10 @@ Respuesta (directa y compacta):
                         "contexts": conversation_contexts  # Usar contexto de conversación para RAGAS
                     }
             except Exception as e:
-                logger.warning(f"Error al usar contexto como fallback: {e}")
+                pass
     
     # Asegurar que el resultado siempre tenga la estructura correcta
     if not isinstance(result, dict):
-        logger.error(f"[RAG] ❌ Resultado no es un diccionario: {type(result)}")
         result = {
             "answer": "Error inesperado al procesar la consulta.",
             "hits": 0,
@@ -744,7 +727,6 @@ Respuesta (directa y compacta):
         }
     elif "error" in result and "answer" not in result:
         # Si solo hay error sin answer, agregar un mensaje de error como answer
-        logger.warning(f"[RAG] ⚠️ Resultado tiene error pero no tiene 'answer' - agregando mensaje de error")
         result["answer"] = result.get("answer", f"Error al procesar la consulta: {result.get('error', 'error desconocido')}")
         if "contexts" not in result:
             result["contexts"] = []
@@ -984,6 +966,7 @@ def determine_tool_from_step(step: str, prompt: str) -> str:
     Pregunta original del usuario: "{prompt}"
     
     Herramientas disponibles:
+        pass
     - RAG: Para consultas sobre conceptos, definiciones, explicaciones, información educativa, preguntas tipo "qué es", "explain", "define"
     - IP: Para operaciones de red como comparar IPs, traceroute, análisis de direcciones IP, comparaciones de direcciones de red
     - DNS: Para consultas DNS, registros de dominio (A, AAAA, MX, TXT, NS, CNAME), búsquedas inversas (PTR)

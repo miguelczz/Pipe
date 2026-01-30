@@ -92,7 +92,6 @@ class DeviceClassifier:
                 first_octet = int(mac_clean[0:2], 16)
                 is_local_admin = (first_octet & 0x02) != 0
             except (ValueError, IndexError) as e:
-                logger.warning(f"Error al parsear primer octeto de MAC address '{mac_address}': {e}")
                 is_local_admin = False
         
         is_virtual = category == DeviceCategory.VIRTUAL_MACHINE or is_local_admin

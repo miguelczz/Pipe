@@ -36,7 +36,6 @@ export function ChatPage() {
       } catch (err) {
         if (err.name === 'AbortError') {
           // No marcar como desconectado si es timeout, puede ser normal
-          console.warn('Verificación de conexión timeout - esto es normal si el servidor está procesando')
           return
         }
         setIsConnected(false)

@@ -3,6 +3,7 @@ Validador centralizado para frames Deauthentication y Disassociation.
 Asegura que solo se cuenten como steering forzado los deauth dirigidos específicamente al cliente.
 
 Este módulo es crítico para:
+    pass
 1. Evitar contar deauth broadcast como steering
 2. Distinguir entre destierro forzado vs salidas normales (inactividad, client-initiated)
 3. Unificar la lógica entre wireshark_tool.py y btm_analyzer.py
@@ -74,12 +75,13 @@ class DeauthValidator:
         ap_bssid: str = None
     ) -> bool:
         """
-        Valida si un deauth/disassoc frame está dirigido AL cliente específico.
+        Valida si un deauth/disassoc frame involucra al cliente específico.
         
         Criterios:
-        1. DA (Destination) == client_mac (el cliente recibe el deauth)
-        2. No es broadcast o multicast
-        3. Opcionalmente: SA (Source) debe ser coherente con un AP
+            pass
+        1. DA (Destination) == client_mac (el cliente recibe el deauth del AP) O
+        2. SA (Source) == client_mac (el cliente envía el deauth al AP)
+        3. No es broadcast o multicast
         
         Args:
             deauth_event: Dict con campos "da", "sa", "bssid", etc.
@@ -87,26 +89,28 @@ class DeauthValidator:
             ap_bssid: MAC del AP (opcional, para validación adicional)
         
         Returns:
-            bool: True si está dirigido al cliente específico
+            bool: True si el frame involucra al cliente (como receptor o emisor)
         """
         da = DeauthValidator.normalize_mac(deauth_event.get("da", ""))
         sa = DeauthValidator.normalize_mac(deauth_event.get("sa", ""))
         client_check = DeauthValidator.normalize_mac(client_mac)
         
-        if not da or not client_check:
+        if not client_check:
             return False
         
         # Rechazar broadcast y multicast
-        if DeauthValidator.is_broadcast(da):
-            logger.debug(f"Deauth broadcast detectado (DA={da}), ignorado")
+        if da and DeauthValidator.is_broadcast(da):
             return False
         
-        # Debe estar dirigido específicamente al cliente
-        if da != client_check:
-            logger.debug(f"Deauth dirigido a {da}, no al cliente {client_check}")
-            return False
+        # Caso 1: AP envía deauth al cliente (DA == client_mac)
+        if da == client_check:
+            return True
         
-        return True
+        # Caso 2: Cliente envía deauth al AP (SA == client_mac)
+        if sa == client_check:
+            return True
+        
+        return False
 
     @staticmethod
     def is_forced_deauth(reason_code: int) -> bool:
@@ -120,6 +124,7 @@ class DeauthValidator:
             bool: True si es destierro forzado, False si es graceful
         
         Lógica:
+            pass
         - Si está en GRACEFUL_DEAUTH_REASONS → False (salida normal)
         - Si está en FORCED_DEAUTH_REASONS → True (destierro AP)
         - Si está fuera de ambas listas → True (ser conservador y asumir forzado)
@@ -128,7 +133,6 @@ class DeauthValidator:
             code_int = int(reason_code)
         except (ValueError, TypeError):
             # Código inválido, asumir forzado por seguridad
-            logger.warning(f"Reason code inválido: {reason_code}, asumiendo forzado")
             return True
         
         if code_int in GRACEFUL_DEAUTH_REASONS:
@@ -153,29 +157,36 @@ class DeauthValidator:
         
         Returns:
             str: Una de:
+                pass
             - "broadcast": Deauth dirigido a broadcast/multicast
-            - "directed_to_other": Dirigido a otro cliente (no al nuestro)
-            - "graceful": Dirigido al cliente pero con reason code graceful
-            - "forced_to_client": Dirigido al cliente con destierro forzado
+            - "directed_to_other": No involucra al cliente (ni como receptor ni emisor)
+            - "graceful": Involucra al cliente pero con reason code graceful (salida voluntaria)
+            - "forced_to_client": AP destierra al cliente (reason code forzado)
             - "unknown": No se puede clasificar (campos faltantes)
         """
         da = event.get("da", "").strip().lower()
+        sa = event.get("sa", "").strip().lower()
         
         # Verificar broadcast primero
-        if not da:
-            return "unknown"
-        
-        if DeauthValidator.is_broadcast(da):
+        if da and DeauthValidator.is_broadcast(da):
             return "broadcast"
         
-        # Verificar si está dirigido al cliente
-        client_norm = DeauthValidator.normalize_mac(client_mac)
-        da_norm = DeauthValidator.normalize_mac(da)
+        if not da and not sa:
+            return "unknown"
         
-        if da_norm != client_norm:
+        # Verificar si involucra al cliente (como receptor o emisor)
+        client_norm = DeauthValidator.normalize_mac(client_mac)
+        da_norm = DeauthValidator.normalize_mac(da) if da else ""
+        sa_norm = DeauthValidator.normalize_mac(sa) if sa else ""
+        
+        # Verificar si el cliente está involucrado
+        client_is_receiver = da_norm == client_norm  # AP → Cliente
+        client_is_sender = sa_norm == client_norm     # Cliente → AP
+        
+        if not client_is_receiver and not client_is_sender:
             return "directed_to_other"
         
-        # Está dirigido al cliente, verificar reason code
+        # El cliente está involucrado, verificar reason code
         reason_raw = event.get("reason_code", 0)
         try:
             if isinstance(reason_raw, str) and reason_raw.startswith("0x"):
@@ -185,10 +196,21 @@ class DeauthValidator:
         except (ValueError, TypeError):
             reason = 0
         
-        if DeauthValidator.is_forced_deauth(reason):
-            return "forced_to_client"
+        # Si el cliente es el emisor (SA == client_mac), generalmente es graceful
+        # Si el AP es el emisor (DA == client_mac), verificar reason code
+        if client_is_sender:
+            # Cliente envía deauth: generalmente es graceful (salida voluntaria)
+            if DeauthValidator.is_forced_deauth(reason):
+                # Aunque tenga reason code "forzado", si el cliente lo envía, es voluntario
+                return "graceful"
+            else:
+                return "graceful"
         else:
-            return "graceful"
+            # AP envía deauth al cliente: verificar si es forzado o graceful
+            if DeauthValidator.is_forced_deauth(reason):
+                return "forced_to_client"
+            else:
+                return "graceful"
 
     @staticmethod
     def get_reason_description(reason_code: int) -> str:

@@ -45,7 +45,6 @@ export function FilesPage() {
       alert('Archivo subido correctamente')
       e.target.value = '' // Reset input
     } catch (error) {
-      console.error('Error al subir archivo:', error)
       alert(`Error al subir archivo: ${error.message || 'Error desconocido'}`)
       e.target.value = '' // Reset input
     } finally {

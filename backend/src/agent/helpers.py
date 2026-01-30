@@ -75,6 +75,7 @@ Pregunta original: "{prompt}"
 {context_section}
 
 Tipos de operación disponibles:
+    pass
 - "ping": Medir latencia/tiempo de respuesta a un host o dominio
 - "traceroute": Trazar la ruta de red hasta un host o dominio
 - "compare": Comparar dos o más hosts/dominios/IPs (análisis comparativo)
@@ -94,7 +95,6 @@ Responde SOLO con una palabra: "ping", "traceroute", "compare", o "default"
         else:
             return "default"
     except Exception as e:
-        logger.warning(f"Error al detectar tipo de operación con LLM: {e}. Usando default.")
         return "default"
 
 
@@ -172,7 +172,6 @@ def extract_domain_using_llm(text: str) -> Optional[str]:
                     return f"{domain_name}.com"
         return None
     except Exception as e:
-        logger.warning(f"Error al extraer dominio con LLM: {e}")
         return None
 
 
@@ -225,7 +224,6 @@ def extract_domains_using_llm(text: str) -> List[str]:
                     found_domains.append(domain)
     
     if found_domains:
-        logger.info(f"[Extract Domains] Servicios conocidos encontrados: {found_domains}")
         return found_domains
     
     # Si no se encontraron servicios conocidos, usar LLM
@@ -234,6 +232,7 @@ def extract_domains_using_llm(text: str) -> List[str]:
 Analiza el siguiente texto e identifica TODOS los servicios, empresas o dominios mencionados.
 
 INSTRUCCIONES:
+    pass
 1. Identifica servicios mencionados por nombre (ej: "Google", "Facebook", "Amazon") o por dominio completo (ej: "google.com")
 2. Para cada servicio identificado, convierte el nombre al dominio completo correspondiente (ej: "Google" → "google.com", "Gmail" → "gmail.com")
 3. Si ya es un dominio completo, úsalo tal cual
@@ -242,6 +241,7 @@ INSTRUCCIONES:
 6. Si no encuentras ningún servicio o dominio, responde "ninguno"
 
 Ejemplos de conversión:
+    pass
 - "Google" → google.com
 - "Facebook" → facebook.com
 - "Amazon AWS" → amazonaws.com
@@ -256,6 +256,7 @@ Ejemplos de conversión:
 Texto a analizar: "{text}"
 
 Responde con los dominios completos (uno por línea):
+    pass
 """
         response = llm.generate(prompt, max_tokens=200).strip()
         
@@ -282,7 +283,6 @@ Responde con los dominios completos (uno por línea):
         
         return domains
     except Exception as e:
-        logger.warning(f"Error al extraer dominios con LLM: {e}")
         return []
 
 
@@ -330,6 +330,7 @@ Paso del plan: "{step}"
 Pregunta original: "{prompt}"
 
 Tipos de operación DNS disponibles:
+    pass
 - "reverse": Búsqueda inversa DNS (PTR) - obtener dominio desde una IP
 - "compare": Comparar registros DNS entre dos o más dominios
 - "spf": Verificar configuración SPF de un dominio
@@ -339,6 +340,7 @@ Tipos de operación DNS disponibles:
 - Tipos específicos: "A", "AAAA", "MX", "TXT", "NS", "CNAME" - cuando se solicita un tipo específico
 
 INSTRUCCIONES:
+    pass
 1. Analiza la INTENCIÓN real, no solo palabras clave
 2. Si menciona "todos", "all", "completo", "todos los registros" sin especificar tipo → ("A", True)
 3. Si menciona un tipo específico (MX, TXT, NS, etc.) → (tipo, False)
@@ -349,6 +351,7 @@ INSTRUCCIONES:
 8. Si menciona búsqueda inversa, PTR, o obtener dominio de IP → ("reverse", False)
 
 Ejemplos:
+    pass
 - "Consulta los registros DNS de google.com" → ("A", True) - todos los registros
 - "MX de gmail.com" → ("MX", False) - solo MX
 - "Compara DNS de google y facebook" → ("compare", False)
@@ -392,7 +395,6 @@ Ejemplo de respuesta: "A,true" o "MX,false" o "compare,false"
             # Por defecto: todos los registros
             return ("A", True)
     except Exception as e:
-        logger.warning(f"Error al detectar tipo de operación DNS con LLM: {e}. Usando fallback.")
         # Fallback simple solo en caso de error
         step_lower = (step or "").lower()
         prompt_lower = prompt.lower()

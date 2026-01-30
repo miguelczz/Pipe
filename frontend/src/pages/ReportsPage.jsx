@@ -50,7 +50,6 @@ export function ReportsPage() {
         setExpandedVendors({ [firstVendor]: true })
       }
     } catch (err) {
-      console.error('Error al cargar reportes:', err)
       setError('No se pudieron cargar los reportes históricos.')
     } finally {
       setLoading(false)
@@ -67,7 +66,6 @@ export function ReportsPage() {
       // Actualizar lista local
       setReports(prev => prev.filter(r => r.id !== reportId))
     } catch (err) {
-      console.error('Error al eliminar:', err)
       alert('Error al intentar eliminar el reporte.')
     } finally {
       setIsDeleting(null)

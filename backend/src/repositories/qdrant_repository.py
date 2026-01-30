@@ -25,8 +25,6 @@ class QdrantRepository:
         original_url = settings.qdrant_url
         qdrant_url = self._normalize_qdrant_url(original_url)
         
-        logger.info(f"[QdrantRepository] URL original: {self._mask_url(original_url)}")
-        logger.info(f"[QdrantRepository] URL normalizada: {self._mask_url(qdrant_url)}")
         
         # Configurar cliente con API key si está disponible
         client_kwargs = {
@@ -36,15 +34,10 @@ class QdrantRepository:
         
         if settings.qdrant_api_key:
             client_kwargs["api_key"] = settings.qdrant_api_key
-            logger.info(f"[QdrantRepository] Configurando Qdrant con API key")
-        else:
-            logger.warning(f"[QdrantRepository] Configurando Qdrant sin API key - puede fallar si Qdrant Cloud requiere autenticación")
         
         try:
             self.client = QdrantClient(**client_kwargs)
-            logger.info(f"[QdrantRepository] Cliente Qdrant creado exitosamente")
         except Exception as e:
-            logger.error(f"[QdrantRepository] Error al crear cliente Qdrant: {e}")
             raise
         
         self.collection_name = collection_name
@@ -65,7 +58,6 @@ class QdrantRepository:
         # Si es HTTPS y tiene :6333, quitar el puerto (Qdrant Cloud usa 443)
         if url.startswith('https://') and ':6333' in url:
             url = url.replace(':6333', '')
-            logger.info(f"[QdrantRepository] URL normalizada (puerto 6333 removido para HTTPS): {self._mask_url(url)}")
         
         return url
     
@@ -113,17 +105,13 @@ class QdrantRepository:
         if hasattr(self.client, 'search_points'):
             self._search_method = 'search_points'
             self._search_method_name = 'search_points()'
-            logger.info("[QdrantRepository] Método de búsqueda detectado: search_points()")
         elif hasattr(self.client, 'query_points'):
             self._search_method = 'query_points'
             self._search_method_name = 'query_points()'
-            logger.info("[QdrantRepository] Método de búsqueda detectado: query_points()")
         elif hasattr(self.client, 'search'):
             self._search_method = 'search'
             self._search_method_name = 'search()'
-            logger.info("[QdrantRepository] Método de búsqueda detectado: search() (legacy)")
         else:
-            logger.error("[QdrantRepository] ⚠️ No se encontró ningún método de búsqueda disponible")
             self._search_method = None
     
     def upsert_points(
@@ -246,7 +234,6 @@ class QdrantRepository:
         try:
             # Verificar que el cliente esté disponible
             if not self.client:
-                logger.error("[QdrantRepository] Cliente Qdrant no está disponible")
                 return []
             
             filter_obj = None
@@ -262,11 +249,9 @@ class QdrantRepository:
                     )
                 filter_obj = qmodels.Filter(must=must_conditions)
             
-            logger.debug(f"[QdrantRepository] Buscando en colección '{self.collection_name}' con top_k={top_k}, vector_size={len(query_vector)}")
             
             # Usar el método detectado al inicializar (evita intentos múltiples)
             if not self._search_method:
-                logger.error("[QdrantRepository] No hay método de búsqueda disponible")
                 return []
             
             hits = []
@@ -312,13 +297,10 @@ class QdrantRepository:
                         query_filter=filter_obj
                     )
                 
-                logger.debug(f"[QdrantRepository] Búsqueda con {self._search_method_name} retornó {len(hits)} resultados")
                 
             except Exception as e:
-                logger.error(f"[QdrantRepository] Error en búsqueda con {self._search_method_name}: {e}", exc_info=True)
                 return []
             
-            logger.debug(f"[QdrantRepository] Búsqueda retornó {len(hits)} resultados")
             
             # Procesar resultados según el tipo de respuesta
             results = []
@@ -333,7 +315,6 @@ class QdrantRepository:
             
             return results
         except Exception as e:
-            logger.error(f"[QdrantRepository] Error en búsqueda: {e}", exc_info=True)
             return []
     
     def delete_by_document_id(self, document_id: str) -> bool:
@@ -350,14 +331,12 @@ class QdrantRepository:
         try:
             # Verificar que el cliente esté disponible
             if not self.client:
-                logger.error("Cliente Qdrant no está disponible")
                 return False
             
             # Verificar que la colección existe
             try:
                 self.client.get_collection(self.collection_name)
             except Exception as e:
-                logger.warning(f"Colección {self.collection_name} no existe: {e}")
                 # Si la colección no existe, no hay nada que eliminar, consideramos éxito
                 return True
             
@@ -379,33 +358,26 @@ class QdrantRepository:
             # Verificar el resultado
             if hasattr(result, 'status'):
                 if result.status == qmodels.UpdateStatus.COMPLETED:
-                    logger.info(f"Vectores eliminados exitosamente para document_id={document_id}")
                     return True
                 else:
-                    logger.warning(f"Eliminación no completada. Status: {result.status}")
                     # Aún así retornamos True si no hay error de conexión
                     return True
             
-            logger.info(f"Vectores eliminados para document_id={document_id}")
             return True
             
         except Exception as e:
-            logger.error(f"Error eliminando vectores para document_id={document_id}: {e}", exc_info=True)
             # Si es un error de conexión, retornar False
             # Si es que no hay vectores, considerar éxito
             error_str = str(e).lower()
             if "connection" in error_str or "timeout" in error_str or "network" in error_str:
-                logger.error(f"Error de conexión con Qdrant: {e}")
                 return False
             # Para otros errores (como que no existan vectores), considerar éxito
-            logger.warning(f"Error al eliminar (puede que no existan vectores): {e}")
             return True  # Considerar éxito si no es error de conexión
     
     def get_collection_info(self) -> Dict:
         """Obtiene información sobre la colección"""
         try:
             if not self.client:
-                logger.error("[QdrantRepository] Cliente Qdrant no está disponible")
                 return {"error": "Cliente no disponible"}
             
             info = self.client.get_collection(self.collection_name)
@@ -441,10 +413,8 @@ class QdrantRepository:
                     "distance": distance or "COSINE"
                 }
             }
-            logger.info(f"[QdrantRepository] Información de colección: {result['points_count']} puntos, {result['vectors_count']} vectores, tamaño={result['config']['size']}")
             return result
         except Exception as e:
-            logger.error(f"[QdrantRepository] Error al obtener información de colección: {e}", exc_info=True)
             return {"error": str(e)}
 
 

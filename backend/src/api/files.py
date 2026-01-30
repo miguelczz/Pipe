@@ -35,11 +35,9 @@ async def upload_pdf(
 
     # Leer contenido del archivo
     content = await file.read()
-    logger.info(f"Iniciando procesamiento de archivo: {file.filename}")
     
     # Guardar archivo usando el repositorio
     document_id, file_path = document_repo.save_file(content, file.filename)
-    logger.info(f"Archivo guardado. Document ID: {document_id}, Path: {file_path}")
     
     # Procesar PDF (chunk + embeddings + store en Qdrant)
     chunk_count = 0
@@ -49,22 +47,18 @@ async def upload_pdf(
         points_before = collection_info_before.get('points_count', 0) if isinstance(collection_info_before, dict) else 0
         
         processed_doc_id = await process_and_store_pdf(file_path, document_id=document_id)
-        logger.info(f"PDF procesado exitosamente. Document ID: {processed_doc_id}")
         
         # Verificar que los datos se insertaron en Qdrant
         collection_info_after = qdrant_repo.get_collection_info()
         if "error" in collection_info_after:
-            logger.warning(f"Error al verificar colección Qdrant: {collection_info_after['error']}")
-        else:
-            points_after = collection_info_after.get('points_count', 0)
-            chunk_count = points_after - points_before
-            logger.info(f"✅ Colección Qdrant verificada. Puntos antes: {points_before}, después: {points_after}, nuevos chunks: {chunk_count}")
-            
-            if chunk_count == 0:
-                logger.error(f"❌ ERROR CRÍTICO: No se insertaron chunks en Qdrant. Puntos antes: {points_before}, después: {points_after}")
-                raise ValueError("No se insertaron chunks en Qdrant. Verifica los logs para más detalles.")
+            raise ValueError(f"Error al obtener información de Qdrant: {collection_info_after.get('error')}")
+        
+        points_after = collection_info_after.get('points_count', 0)
+        chunk_count = points_after - points_before
+        
+        if chunk_count == 0:
+            raise ValueError("No se insertaron chunks en Qdrant. Verifica los logs para más detalles.")
     except Exception as e:
-        logger.error(f"Error al procesar PDF: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500, 
             detail=f"Error al procesar el PDF: {str(e)}"
@@ -122,14 +116,10 @@ async def delete_file(
     
     # Eliminar vectores de Qdrant (no crítico si falla)
     try:
-        deleted = delete_by_id(document_id)
-        if not deleted:
-            logger.warning(f"No se pudieron eliminar vectores de Qdrant para document_id={document_id}, pero continuando...")
-        else:
-            logger.info(f"Vectores eliminados exitosamente de Qdrant para document_id={document_id}")
+        delete_by_id(document_id)
     except Exception as e:
-        logger.error(f"Error al eliminar vectores de Qdrant para document_id={document_id}: {e}", exc_info=True)
         # Continuar con la eliminación aunque falle Qdrant
+        pass
 
     # Eliminar metadatos de BD
     document_repo.delete_document(db, document_id)
