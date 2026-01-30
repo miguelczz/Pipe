@@ -1,27 +1,25 @@
 import React, { useState, useMemo } from 'react'
 import { 
   Search,
-  Filter,
   ChevronRight,
   ChevronDown,
   Wifi,
   CheckCircle2,
-  XCircle,
   AlertCircle
 } from 'lucide-react'
 
-export function WiresharkTruthPanel({ wiresharkRaw, wiresharkCompare }) {
+// eslint-disable-next-line no-unused-vars
+export function WiresharkTruthPanel({ wiresharkRaw, wiresharkCompare, ssid }) {
   const [selectedPacket, setSelectedPacket] = useState(null)
   const [filterText, setFilterText] = useState('')
   const [filterType, setFilterType] = useState('all') // 'all', 'btm', 'assoc', 'deauth', 'beacon'
   const [expandedDetails, setExpandedDetails] = useState({})
 
-  if (!wiresharkRaw) {
-    return null
-  }
-
   // Procesar muestras para crear paquetes estilo Wireshark
   const packets = useMemo(() => {
+    if (!wiresharkRaw) {
+      return []
+    }
     const sample = wiresharkRaw.sample || []
 
     // Si no tenemos muestra de paquetes, igual queremos renderizar el panel
@@ -51,7 +49,7 @@ export function WiresharkTruthPanel({ wiresharkRaw, wiresharkCompare }) {
             info = `Association Request: ${row.wlan_sa || 'N/A'}`
             color = 'text-blue-400'
             break
-          case 1:
+          case 1: {
             frameType = 'Association Response'
             protocol = '802.11'
             const assocStatus = row.assoc_status_code || '0'
@@ -59,13 +57,14 @@ export function WiresharkTruthPanel({ wiresharkRaw, wiresharkCompare }) {
             info = `Association Response: Status=${assocStatusInt} ${assocStatusInt === 0 ? '✓' : '✗'}`
             color = assocStatusInt === 0 ? 'text-green-400' : 'text-red-400'
             break
+          }
           case 2:
             frameType = 'Reassociation Request'
             protocol = '802.11'
             info = `Reassociation Request: ${row.wlan_sa || 'N/A'}`
             color = 'text-blue-400'
             break
-          case 3:
+          case 3: {
             frameType = 'Reassociation Response'
             protocol = '802.11'
             const reassocStatus = row.assoc_status_code || '0'
@@ -73,6 +72,7 @@ export function WiresharkTruthPanel({ wiresharkRaw, wiresharkCompare }) {
             info = `Reassociation Response: Status=${reassocStatusInt} ${reassocStatusInt === 0 ? '✓' : '✗'}`
             color = reassocStatusInt === 0 ? 'text-green-400' : 'text-red-400'
             break
+          }
           case 8:
             frameType = 'Beacon'
             protocol = '802.11'
@@ -91,7 +91,7 @@ export function WiresharkTruthPanel({ wiresharkRaw, wiresharkCompare }) {
             info = `Deauthentication: Reason=${row.reason_code || 'N/A'}`
             color = 'text-red-400'
             break
-          case 13:
+          case 13: {
             // Action Frame (category y action ya vienen normalizados del backend)
             const catInt = parseInt(category) || -1
             const actInt = parseInt(action) || -1
@@ -122,6 +122,7 @@ export function WiresharkTruthPanel({ wiresharkRaw, wiresharkCompare }) {
               color = 'text-gray-400'
             }
             break
+          }
           default:
             frameType = `802.11 (Subtype ${subtypeInt})`
             protocol = '802.11'
@@ -171,7 +172,7 @@ export function WiresharkTruthPanel({ wiresharkRaw, wiresharkCompare }) {
         raw: row
       }
     })
-  }, [wiresharkRaw.sample])
+  }, [wiresharkRaw])
 
   // Filtrar paquetes
   const filteredPackets = useMemo(() => {
@@ -210,6 +211,10 @@ export function WiresharkTruthPanel({ wiresharkRaw, wiresharkCompare }) {
     return filtered
   }, [packets, filterText, filterType])
 
+  if (!wiresharkRaw) {
+    return null
+  }
+
   // Formatear tiempo relativo
   const formatTime = (timestamp) => {
     if (!timestamp || timestamp === 0) return '0.000000'
@@ -235,7 +240,12 @@ export function WiresharkTruthPanel({ wiresharkRaw, wiresharkCompare }) {
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Wifi className="w-5 h-5 text-blue-400" />
-            <h3 className="text-sm font-semibold text-gray-200">Wireshark Packet List</h3>
+            <div className="flex flex-col">
+              <h3 className="text-sm font-semibold text-gray-200">Wireshark Packet List</h3>
+              {ssid && (
+                <span className="text-[10px] text-gray-400 mt-0.5">Red: {ssid}</span>
+              )}
+            </div>
             <span className="text-xs text-gray-400 bg-gray-700 px-2 py-1 rounded">
               {filteredPackets.length} / {packets.length} packets
               {isTruncated && originalCount > packets.length && (
@@ -457,8 +467,6 @@ export function WiresharkTruthPanel({ wiresharkRaw, wiresharkCompare }) {
       <div className="bg-[#2d2d2d] border-t border-gray-700 px-4 py-2 flex items-center justify-between text-xs text-gray-400">
         <div className="flex items-center gap-4">
           <span>Displayed: {filteredPackets.length}</span>
-          <span>Marked: 0</span>
-          <span>Ignored: 0</span>
         </div>
         <div className="flex items-center gap-2">
           {wiresharkRaw.summary?.btm?.requests > 0 && (

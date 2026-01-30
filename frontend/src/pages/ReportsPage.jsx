@@ -120,10 +120,43 @@ export function ReportsPage() {
           }
       }
 
+      // Extraer SSID: primero intentar desde user_metadata (si existe), luego desde bssid_info
+      let extractedSsid = ''
+      
+      // 1. Intentar obtener desde user_metadata (si se guardó cuando se hizo el análisis)
+      if (fullDetail.raw_stats?.diagnostics?.user_metadata?.ssid) {
+        extractedSsid = fullDetail.raw_stats.diagnostics.user_metadata.ssid
+      }
+      // 2. Si no está en user_metadata, extraer del bssid_info (tomar el primer SSID válido encontrado)
+      else if (bssidInfo && Object.keys(bssidInfo).length > 0) {
+        // Buscar el primer BSSID que tenga un SSID válido (no 'Unknown' ni vacío)
+        for (const bssid in bssidInfo) {
+          const ssid = bssidInfo[bssid]?.ssid
+          if (ssid && ssid !== 'Unknown' && ssid.trim() !== '') {
+            extractedSsid = ssid
+            break
+          }
+        }
+        // Si no encontramos uno válido, usar el primero disponible
+        if (!extractedSsid) {
+          const firstBssid = Object.keys(bssidInfo)[0]
+          extractedSsid = bssidInfo[firstBssid]?.ssid || ''
+        }
+      }
+      
+      // Guardar el SSID también en el formattedResult para que esté disponible
+      if (extractedSsid && formattedResult.stats?.diagnostics) {
+        if (!formattedResult.stats.diagnostics.user_metadata) {
+          formattedResult.stats.diagnostics.user_metadata = {}
+        }
+        formattedResult.stats.diagnostics.user_metadata.ssid = extractedSsid
+      }
+
       localStorage.setItem('networkAnalysisResult', JSON.stringify(formattedResult))
       localStorage.setItem('networkAnalysisFileMeta', JSON.stringify({
         name: fullDetail.filename,
-        size: fullDetail.total_packets * 100
+        size: fullDetail.total_packets * 100,
+        ssid: extractedSsid
       }))
       navigate('/network-analysis')
     })

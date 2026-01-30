@@ -13,7 +13,8 @@ import {
     Smartphone,
     ShieldCheck,
     CheckCircle2,
-    XCircle
+    XCircle,
+    X
 } from 'lucide-react'
 import { MarkdownRenderer } from '../components/chat/MarkdownRenderer'
 import { BandSteeringChart } from '../components/charts/BandSteeringChart_v2'
@@ -222,6 +223,52 @@ export function NetworkAnalysisPage() {
         }
     })
 
+    // Sincronizar result y fileMetadata cuando se carga la página (para cuando se carga desde reportes)
+    // Esto asegura que se lean los valores más recientes de localStorage después de la navegación
+    React.useEffect(() => {
+        try {
+            const savedResult = localStorage.getItem('networkAnalysisResult')
+            if (savedResult) {
+                const parsed = JSON.parse(savedResult)
+                if (parsed?.stats) {
+                    setResult(parsed)
+                }
+            }
+            const savedMetadata = localStorage.getItem('networkAnalysisFileMeta')
+            if (savedMetadata) {
+                const meta = JSON.parse(savedMetadata)
+                setFileMetadata(meta)
+            }
+        } catch (e) {
+            // Ignorar errores
+        }
+    }, []) // Solo ejecutar una vez al montar
+
+    // Inicializar SSID desde localStorage si existe (buscar en metadatos y en resultado)
+    const [savedSsid, setSavedSsid] = useState(() => {
+        try {
+            // Primero intentar desde networkAnalysisFileMeta
+            const savedMetadata = localStorage.getItem('networkAnalysisFileMeta')
+            if (savedMetadata) {
+                const meta = JSON.parse(savedMetadata)
+                if (meta?.ssid) {
+                    return meta.ssid
+                }
+            }
+            // Si no está en metadatos, buscar en el resultado guardado
+            const savedResult = localStorage.getItem('networkAnalysisResult')
+            if (savedResult) {
+                const parsed = JSON.parse(savedResult)
+                if (parsed?.stats?.diagnostics?.user_metadata?.ssid) {
+                    return parsed.stats.diagnostics.user_metadata.ssid
+                }
+            }
+            return ''
+        } catch (e) {
+            return ''
+        }
+    })
+
     // Función para limpiar datos antes de guardar en localStorage (evitar QuotaExceededError)
     const sanitizeResultForStorage = (data) => {
         if (!data) return null
@@ -261,6 +308,34 @@ export function NetworkAnalysisPage() {
             }
         }
     }, [result])
+
+    // Sincronizar savedSsid cuando cambian los metadatos o el resultado (para cuando se carga desde reportes)
+    // También verificar localStorage directamente para capturar cambios recientes
+    React.useEffect(() => {
+        // Siempre leer directamente de localStorage para obtener el valor más reciente
+        try {
+            // 1. Intentar desde networkAnalysisFileMeta (prioridad más alta)
+            const savedMetadata = localStorage.getItem('networkAnalysisFileMeta')
+            if (savedMetadata) {
+                const meta = JSON.parse(savedMetadata)
+                if (meta?.ssid && meta.ssid.trim() !== '') {
+                    setSavedSsid(meta.ssid)
+                    return
+                }
+            }
+            // 2. Si no está en metadatos, buscar en el resultado guardado
+            const savedResult = localStorage.getItem('networkAnalysisResult')
+            if (savedResult) {
+                const parsed = JSON.parse(savedResult)
+                if (parsed?.stats?.diagnostics?.user_metadata?.ssid) {
+                    setSavedSsid(parsed.stats.diagnostics.user_metadata.ssid)
+                    return
+                }
+            }
+        } catch (e) {
+            // Ignorar errores de parsing
+        }
+    }, [fileMetadata, result])
 
     const [error, setError] = useState('')
     const fileInputRef = useRef(null)
@@ -304,9 +379,11 @@ export function NetworkAnalysisPage() {
         setSelectedFile(file)
         const meta = {
             name: file.name,
-            size: file.size
+            size: file.size,
+            ssid: userSsid.trim() || ''
         }
         setFileMetadata(meta)
+        setSavedSsid(userSsid.trim() || '')
         setResult(null)
 
         // Disparar análisis automáticamente
@@ -328,10 +405,24 @@ export function NetworkAnalysisPage() {
 
             // Guardar en persistencia (con sanitización para evitar QuotaExceededError)
             setResult(res)
+            // Incluir SSID en los metadatos y en el resultado
+            const ssidValue = userSsid.trim() || ''
+            const metaWithSsid = {
+                ...meta,
+                ssid: ssidValue
+            }
+            setSavedSsid(ssidValue)
             try {
                 const sanitized = sanitizeResultForStorage(res)
+                // Guardar SSID también en el resultado para que esté disponible cuando se carga desde reportes
+                if (ssidValue && sanitized.stats?.diagnostics) {
+                    if (!sanitized.stats.diagnostics.user_metadata) {
+                        sanitized.stats.diagnostics.user_metadata = {}
+                    }
+                    sanitized.stats.diagnostics.user_metadata.ssid = ssidValue
+                }
                 localStorage.setItem('networkAnalysisResult', JSON.stringify(sanitized))
-                localStorage.setItem('networkAnalysisFileMeta', JSON.stringify(meta))
+                localStorage.setItem('networkAnalysisFileMeta', JSON.stringify(metaWithSsid))
             } catch (err) {
                 // Guardar versión mínima sin sample completo
                 try {
@@ -340,8 +431,15 @@ export function NetworkAnalysisPage() {
                         delete minimal.stats.diagnostics.wireshark_raw.sample
                         minimal.stats.diagnostics.wireshark_raw.storage_limited = true
                     }
+                    // Guardar SSID también en el resultado mínimo
+                    if (ssidValue && minimal.stats?.diagnostics) {
+                        if (!minimal.stats.diagnostics.user_metadata) {
+                            minimal.stats.diagnostics.user_metadata = {}
+                        }
+                        minimal.stats.diagnostics.user_metadata.ssid = ssidValue
+                    }
                     localStorage.setItem('networkAnalysisResult', JSON.stringify(minimal))
-                    localStorage.setItem('networkAnalysisFileMeta', JSON.stringify(meta))
+                    localStorage.setItem('networkAnalysisFileMeta', JSON.stringify(metaWithSsid))
                 } catch (err2) {
                 }
             }
@@ -419,6 +517,20 @@ export function NetworkAnalysisPage() {
 
         window.print()
         document.title = originalTitle
+    }
+
+    // Función para cerrar/limpiar el reporte
+    const handleCloseReport = () => {
+        setResult(null)
+        setSelectedFile(null)
+        setFileMetadata(null)
+        setSavedSsid('')
+        setError('')
+        localStorage.removeItem('networkAnalysisResult')
+        localStorage.removeItem('networkAnalysisFileMeta')
+        if (fileInputRef.current) {
+            fileInputRef.current.value = ''
+        }
     }
 
     return (
@@ -532,13 +644,22 @@ export function NetworkAnalysisPage() {
                                 {cleanFileName(selectedFile?.name || fileMetadata?.name || result?.file_name)}
                             </p>
                         </div>
-                        <div className="text-right flex-shrink-0">
-                            <p className="text-sm font-semibold text-dark-text-primary">
-                                {formatFileSize(selectedFile?.size || fileMetadata?.size || 0)}
-                            </p>
-                            <p className="text-xs text-dark-text-muted">
-                                {(selectedFile?.size || fileMetadata?.size || 0).toLocaleString()} bytes
-                            </p>
+                        <div className="text-right flex-shrink-0 flex items-center gap-3">
+                            <div>
+                                <p className="text-sm font-semibold text-dark-text-primary">
+                                    {formatFileSize(selectedFile?.size || fileMetadata?.size || 0)}
+                                </p>
+                                <p className="text-xs text-dark-text-muted">
+                                    {(selectedFile?.size || fileMetadata?.size || 0).toLocaleString()} bytes
+                                </p>
+                            </div>
+                            <button
+                                onClick={handleCloseReport}
+                                className="p-2 rounded-lg hover:bg-red-500/20 hover:text-red-400 text-dark-text-muted hover:border-red-500/30 border border-transparent transition-all duration-200 flex-shrink-0 group"
+                                title="Cerrar reporte"
+                            >
+                                <X className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                            </button>
                         </div>
                     </div>
                 </Card>
@@ -590,6 +711,14 @@ export function NetworkAnalysisPage() {
                                         </h3>
                                     </div>
                                     <div className="space-y-2">
+                                        {(savedSsid || fileMetadata?.ssid || userSsid) && (
+                                            <div className="flex justify-between items-center">
+                                                <p className="text-xs text-dark-text-muted">Red (SSID)</p>
+                                                <p className="text-sm font-medium text-dark-text-primary truncate max-w-[60%] text-right" title={savedSsid || fileMetadata?.ssid || userSsid}>
+                                                    {savedSsid || fileMetadata?.ssid || userSsid || 'N/A'}
+                                                </p>
+                                            </div>
+                                        )}
                                         <div className="flex justify-between items-center">
                                             <p className="text-xs text-dark-text-muted">Marca</p>
                                             <p className="text-sm font-medium text-dark-text-primary">{result.band_steering.device.vendor || 'Desconocido'}</p>
@@ -1007,6 +1136,7 @@ export function NetworkAnalysisPage() {
                             <WiresharkTruthPanel
                                 wiresharkRaw={result.stats.diagnostics.wireshark_raw}
                                 wiresharkCompare={result.stats.diagnostics.wireshark_compare}
+                                ssid={savedSsid || fileMetadata?.ssid || userSsid}
                             />
                         </Card>
                     )}

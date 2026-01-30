@@ -544,6 +544,50 @@ RouterAgent/
 - **Detección de complejidad**: Ajuste automático de longitud según tipo de pregunta
 - **Gestión de errores**: Manejo robusto de errores en todos los niveles
 
+## 🔄 Modelo AIDLC (AI Development Life Cycle)
+
+NetMind sigue el modelo de ciclo de vida AIDLC para desarrollo de sistemas de IA. El proyecto está actualmente en **Fase 3: Reportes y Visualización (75% completada)**.
+
+### Estado del Proyecto según AIDLC
+
+- ✅ **Fase 1: Fundamentos** - COMPLETADA
+  - Modelos de datos BTM implementados
+  - BTM Analyzer funcional
+  - OUI Lookup service operativo
+
+- ✅ **Fase 2: Análisis Especializado** - COMPLETADA
+  - Integración BTM Analyzer con WiresharkTool
+  - Device Classifier implementado
+  - Band Steering Service orquestador funcional
+  - Fragment Extractor operativo
+
+- 🔄 **Fase 3: Reportes y Visualización** - EN PROGRESO (75%)
+  - Sistema de carpetas por marca implementado
+  - Tabla de cumplimiento automática funcional
+  - Visualización de gráficos implementada
+  - ⚠️ Pendiente: Generación de reportes HTML/PDF ejecutivos
+
+- 🔄 **Fase 4: Mejoras RAG y Frontend** - EN PROGRESO
+  - RAG mejorado con documentos especializados
+  - Consultas BTM contextuales implementadas
+  - Componentes frontend especializados
+
+- ⚠️ **Fase 5: Testing y Optimización** - PENDIENTE
+  - Tests básicos implementados
+  - Pendiente: Suite completa de testing (>85% cobertura)
+
+### Documentación AIDLC
+
+La documentación completa del modelo AIDLC se encuentra en `docs/aidlc/`:
+
+- **[Estado del Proyecto](docs/aidlc/00_project_status.md)**: Análisis completo de alineación con AIDLC
+- **[Fase 1: Inception y Requerimientos](docs/aidlc/01_inception_requirements.md)**: Requerimientos funcionales y no funcionales
+- **[Fase 2: Diseño Arquitectónico](docs/aidlc/02_architecture_design.md)**: Arquitectura de alto nivel y componentes
+- **[Fase 3: Diseño de Componentes](docs/aidlc/03_component_design.md)**: Especificaciones detalladas de componentes
+- **[Fase 4: Contratos de API](docs/aidlc/04_api_contracts.md)**: Especificaciones de endpoints
+- **[Fase 5: Estrategia de Testing](docs/aidlc/05_testing_strategy.md)**: Estrategia y casos de prueba
+- **[Roadmap de Implementación](docs/aidlc/implementation_roadmap.md)**: Plan detallado de implementación
+
 ## 📚 Documentación Adicional
 
 - **[Guía de Despliegue Completa](docs/Guia_Despliegue.md)**: Documentación detallada de despliegue
