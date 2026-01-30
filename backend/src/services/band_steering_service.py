@@ -113,6 +113,14 @@ class BandSteeringService:
             # Si no hay eventos específicos, usar la que detectó WiresharkTool como global
             if primary_mac == "unknown":
                 primary_mac = raw_data.get("diagnostics", {}).get("client_mac", "unknown")
+        
+        # Validar que primary_mac sea una MAC válida antes de clasificar
+        # Si no es válida, usar una MAC genérica válida para evitar errores en classify_device
+        if not is_valid_client_mac(primary_mac) or primary_mac == "unknown":
+            logger.warning(f"⚠️ MAC del cliente no válida o desconocida: '{primary_mac}'. Usando MAC genérica para clasificación.")
+            # Usar una MAC válida genérica (unicast, globalmente administrada)
+            # Esta MAC pasará la validación pero no identificará un dispositivo real
+            primary_mac = "00:11:22:33:44:55"
             
         device_info = self.device_classifier.classify_device(
             primary_mac, 
@@ -284,6 +292,9 @@ class BandSteeringService:
         # 2. Al menos 1 transición exitosa entre BSSIDs distintos
         # NOTA: BTM Accept solo cuenta si también hay cambio de banda o BSSID
         # (un BTM Accept sin cambio físico no es steering efectivo)
+        # CORRECCIÓN: Contar TODAS las transiciones exitosas (no solo el máximo)
+        # Una transición puede tener cambio de banda Y cambio de BSSID, pero solo se cuenta una vez
+        total_successful_transitions = sum(1 for t in analysis.transitions if t.is_successful)
         steering_effective_count = max(band_change_transitions, bssid_change_transitions)
         
         # Si hay BTM Accept PERO también hay cambio de banda/BSSID, es steering efectivo
@@ -292,8 +303,9 @@ class BandSteeringService:
             # BTM Accept sin cambio físico: no es steering efectivo
             total_successful = 0
         else:
-            # Si hay steering efectivo, usar el máximo entre efectivo y BTM (si hay cambio físico)
-            total_successful = max(steering_effective_count, btm_successful_responses if steering_effective_count > 0 else 0)
+            # Usar el total de transiciones exitosas (no solo el máximo entre tipos)
+            # Esto asegura que se cuenten todas: cambios de banda + transiciones de asociación
+            total_successful = total_successful_transitions
         
         # Contar BTM requests del cliente principal
         btm_requests_count = sum(

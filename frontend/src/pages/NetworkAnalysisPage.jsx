@@ -656,18 +656,9 @@ export function NetworkAnalysisPage() {
                                                 }
 
                                                 return onlyBssids.map((bssid, idx) => {
-                                                    const role = roles?.[bssid]?.role
-                                                    const band = roles?.[bssid]?.band
-                                                    const tag = role ? `${role}${band ? ` · ${band}` : ''}` : ''
-
                                                     return (
-                                                        <p key={idx} className="text-xs font-mono text-dark-text-secondary flex items-center gap-2">
-                                                            <span>{bssid}</span>
-                                                            {tag && (
-                                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-dark-bg-secondary text-dark-text-muted uppercase tracking-tight">
-                                                                    {tag}
-                                                                </span>
-                                                            )}
+                                                        <p key={idx} className="text-xs font-mono text-dark-text-secondary">
+                                                            {bssid}
                                                         </p>
                                                     )
                                                 })
@@ -709,7 +700,7 @@ export function NetworkAnalysisPage() {
                                             })()}
                                         </p>
                                     </div>
-                                    <div className="p-2 rounded-lg bg-dark-bg-secondary/50">
+                                    <div className="p-2 rounded-lg bg-dark-bg-secondary/50 min-h-[60px] flex flex-col justify-between">
                                         <p className="text-xs text-dark-text-muted mb-1">Intentos de steering</p>
                                         <div className="space-y-2">
                                             {(() => {
@@ -717,13 +708,7 @@ export function NetworkAnalysisPage() {
                                                 const attempts = sa.steering_attempts ?? 0
                                                 const successful = sa.successful_transitions ?? 0
 
-                                                // Verificar si hay steering efectivo (cambio de banda o BSSID)
-                                                const steeringCheck = result.band_steering?.compliance_checks?.find(
-                                                    c => c.check_name === "Steering Efectivo"
-                                                )
-                                                const hasEffectiveSteering = steeringCheck?.passed || false
-                                                
-                                                // Calcular transiciones efectivas desde los datos
+                                                // Función para normalizar bandas
                                                 const normalizeBand = (band) => {
                                                     if (!band) return null
                                                     const bandStr = band.toString().toLowerCase()
@@ -732,14 +717,49 @@ export function NetworkAnalysisPage() {
                                                     return band
                                                 }
                                                 
-                                                const effectiveTransitions = (result.band_steering?.transitions || []).filter(t => {
-                                                    if (!t.is_successful) return false
+                                                const transitions = result.band_steering?.transitions || []
+                                                
+                                                // Ordenar transiciones por tiempo para comparar consecutivas
+                                                const sortedTransitions = [...transitions].sort((a, b) => a.start_time - b.start_time)
+                                                
+                                                // Analizar cada transición exitosa
+                                                let bandChangeCount = 0
+                                                let associationOnlyCount = 0
+                                                
+                                                sortedTransitions.forEach((t, idx) => {
+                                                    if (!t.is_successful) return
+                                                    
                                                     const fromBand = normalizeBand(t.from_band)
                                                     const toBand = normalizeBand(t.to_band)
-                                                    const isBandChange = fromBand && toBand && fromBand !== toBand
-                                                    const hasBssidChange = t.from_bssid && t.to_bssid && t.from_bssid !== t.to_bssid
-                                                    return isBandChange || hasBssidChange
-                                                }).length
+                                                    
+                                                    // Verificar si hay cambio de banda
+                                                    let isBandChange = t.is_band_change === true
+                                                    
+                                                    // Si el backend dice que hay cambio pero las bandas son iguales,
+                                                    // comparar con la transición anterior
+                                                    if (isBandChange && fromBand === toBand && idx > 0) {
+                                                        const prevTransition = sortedTransitions[idx - 1]
+                                                        if (prevTransition && prevTransition.to_band) {
+                                                            const prevBand = normalizeBand(prevTransition.to_band)
+                                                            if (prevBand && prevBand !== toBand) {
+                                                                isBandChange = true
+                                                            } else {
+                                                                isBandChange = false
+                                                            }
+                                                        } else {
+                                                            isBandChange = false
+                                                        }
+                                                    } else if (!isBandChange && fromBand && toBand && fromBand !== toBand) {
+                                                        // Si las bandas son diferentes pero el backend no lo marcó
+                                                        isBandChange = true
+                                                    }
+                                                    
+                                                    if (isBandChange) {
+                                                        bandChangeCount++
+                                                    } else {
+                                                        associationOnlyCount++
+                                                    }
+                                                })
 
                                                 return (
                                                     <>
@@ -748,21 +768,25 @@ export function NetworkAnalysisPage() {
                                                                 {successful}/{attempts}
                                                             </p>
                                                             <p className="text-[10px] text-dark-text-muted uppercase">
-                                                                Transiciones Totales
+                                                                Exitosas
                                                             </p>
                                                         </div>
-                                                        <div className="flex items-center gap-2 pt-1 border-t border-dark-border-primary/20">
-                                                            <span className={`text-xs px-2 py-0.5 rounded font-semibold ${
-                                                                effectiveTransitions > 0 
-                                                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
-                                                                    : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
-                                                            }`}>
-                                                                {effectiveTransitions > 0 ? '✓' : '⚠'} Steering Efectivo: {effectiveTransitions}
-                                                            </span>
-                                                            {successful > 0 && effectiveTransitions === 0 && (
-                                                                <span className="text-[10px] text-orange-400" title="Hay transiciones exitosas pero sin cambio de banda/BSSID">
-                                                                    (solo cooperación)
-                                                                </span>
+                                                        <div className="flex flex-col gap-1.5">
+                                                            {bandChangeCount > 0 && (
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                                                                    <span className="text-xs text-dark-text-secondary">
+                                                                        <span className="font-semibold text-emerald-400">{bandChangeCount}</span> cambio de banda
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                            {associationOnlyCount > 0 && (
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                                                                    <span className="text-xs text-dark-text-secondary">
+                                                                        <span className="font-semibold text-orange-400">{associationOnlyCount}</span> transición de asociación
+                                                                    </span>
+                                                                </div>
                                                             )}
                                                         </div>
                                                     </>
@@ -770,23 +794,11 @@ export function NetworkAnalysisPage() {
                                             })()}
                                         </div>
                                     </div>
-                                    <div className="p-2 rounded-lg bg-dark-bg-secondary/50">
+                                    <div className="p-2 rounded-lg bg-dark-bg-secondary/50 min-h-[60px] flex flex-col justify-between">
                                         <p className="text-xs text-dark-text-muted mb-1">Tiempo promedio</p>
                                         <p className="text-sm font-semibold text-dark-text-primary">
                                             {(() => {
-                                                const sa = result.stats?.steering_analysis || {}
-                                                const backendAvg = typeof sa.avg_transition_time === 'number' && sa.avg_transition_time > 0 
-                                                    ? sa.avg_transition_time 
-                                                    : null
-                                                const attempts = sa.steering_attempts ?? 0
-                                                const successes = sa.successful_transitions ?? 0
-
-                                                // Si el backend proporciona tiempo promedio válido, usarlo
-                                                if (backendAvg) {
-                                                    return `${backendAvg.toFixed(3)}s`
-                                                }
-
-                                                // Calcular desde transiciones efectivas si no hay backend
+                                                // Función para normalizar bandas (misma lógica que en "Intentos de steering")
                                                 const normalizeBand = (band) => {
                                                     if (!band) return null
                                                     const bandStr = band.toString().toLowerCase()
@@ -795,23 +807,71 @@ export function NetworkAnalysisPage() {
                                                     return band
                                                 }
 
-                                                const effectiveTransitions = (result.band_steering?.transitions || []).filter(t => {
-                                                    if (!t.is_successful || !t.duration || t.duration <= 0) return false
+                                                const transitions = result.band_steering?.transitions || []
+                                                
+                                                // Ordenar transiciones por tiempo para comparar consecutivas (misma lógica)
+                                                const sortedTransitions = [...transitions].sort((a, b) => a.start_time - b.start_time)
+                                                
+                                                // PRIMERO: Filtrar solo por cambio de banda (sin verificar duración todavía)
+                                                const bandChangeTransitions = sortedTransitions.filter((t, idx) => {
+                                                    if (!t.is_successful) return false
+                                                    
                                                     const fromBand = normalizeBand(t.from_band)
                                                     const toBand = normalizeBand(t.to_band)
-                                                    const isBandChange = fromBand && toBand && fromBand !== toBand
-                                                    const hasBssidChange = t.from_bssid && t.to_bssid && t.from_bssid !== t.to_bssid
-                                                    return isBandChange || hasBssidChange
+                                                    
+                                                    // Verificar si hay cambio de banda (misma lógica que en "Intentos de steering")
+                                                    let isBandChange = t.is_band_change === true
+                                                    
+                                                    // Si el backend dice que hay cambio pero las bandas son iguales,
+                                                    // comparar con la transición anterior
+                                                    if (isBandChange && fromBand === toBand && idx > 0) {
+                                                        const prevTransition = sortedTransitions[idx - 1]
+                                                        if (prevTransition && prevTransition.to_band) {
+                                                            const prevBand = normalizeBand(prevTransition.to_band)
+                                                            if (prevBand && prevBand !== toBand) {
+                                                                isBandChange = true
+                                                            } else {
+                                                                isBandChange = false
+                                                            }
+                                                        } else {
+                                                            isBandChange = false
+                                                        }
+                                                    } else if (!isBandChange && fromBand && toBand && fromBand !== toBand) {
+                                                        // Si las bandas son diferentes pero el backend no lo marcó
+                                                        isBandChange = true
+                                                    }
+                                                    
+                                                    return isBandChange
                                                 })
                                                 
-                                                if (effectiveTransitions.length > 0) {
-                                                    const avg = effectiveTransitions.reduce((sum, t) => sum + t.duration, 0) / effectiveTransitions.length
-                                                    return `${avg.toFixed(3)}s (${effectiveTransitions.length} transición efectiva)`
-                                                }
-
-                                                // Sin datos de tiempo válidos
-                                                if (attempts === 0 || successes === 0) {
-                                                    return 'N/A (sin transiciones completas de steering)'
+                                                if (bandChangeTransitions.length > 0) {
+                                                    // SEGUNDO: Calcular duración para cada transición con cambio de banda
+                                                    const durations = bandChangeTransitions.map((t, idx) => {
+                                                        let d = 0
+                                                        
+                                                        // Intentar usar duration del objeto
+                                                        if (t.duration && t.duration > 0) {
+                                                            d = t.duration
+                                                        } 
+                                                        // Si no hay duration, calcular desde timestamps
+                                                        else if (t.start_time && t.end_time && t.end_time > t.start_time) {
+                                                            d = t.end_time - t.start_time
+                                                        } 
+                                                        // Si no hay end_time, intentar usar solo start_time de la siguiente transición
+                                                        else if (t.start_time && idx < bandChangeTransitions.length - 1) {
+                                                            const nextTransition = bandChangeTransitions[idx + 1]
+                                                            if (nextTransition && nextTransition.start_time && nextTransition.start_time > t.start_time) {
+                                                                d = nextTransition.start_time - t.start_time
+                                                            }
+                                                        }
+                                                        
+                                                        return d
+                                                    }).filter(d => d > 0)
+                                                    
+                                                    if (durations.length > 0) {
+                                                        const avg = durations.reduce((sum, d) => sum + d, 0) / durations.length
+                                                        return `${avg.toFixed(3)}s`
+                                                    }
                                                 }
 
                                                 return 'N/A'

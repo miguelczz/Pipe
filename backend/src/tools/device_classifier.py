@@ -20,6 +20,17 @@ class DeviceClassifier:
     NETWORK_VENDORS = ["cisco", "aruba", "ubiquiti", "tp-link", "netgear", "d-link", "asus", "meraki", "ruckus"]
     VM_VENDORS = ["vmware", "virtual", "qemu", "hyper-v", "parallels"]
 
+    @staticmethod
+    def _is_valid_mac(mac_address: str) -> bool:
+        """Valida si una cadena es una MAC address válida."""
+        if not mac_address or not isinstance(mac_address, str):
+            return False
+        # Remover separadores comunes (: - .)
+        # IMPORTANTE: El guion debe ir al final o escapado para evitar que se interprete como rango
+        mac_clean = re.sub(r'[:.\s-]', '', mac_address.lower())
+        # Debe tener exactamente 12 caracteres hexadecimales
+        return len(mac_clean) == 12 and all(c in '0123456789abcdef' for c in mac_clean)
+
     def classify_device(
         self, 
         mac_address: str, 
@@ -71,8 +82,19 @@ class DeviceClassifier:
         category = self._categorize_device(vendor, mac_address)
         
         # 5. Detectar si es virtual/random
-        first_octet = int(mac_address[0:2], 16)
-        is_local_admin = (first_octet & 0x02) != 0
+        # Validar MAC address antes de parsear
+        is_local_admin = False
+        if self._is_valid_mac(mac_address):
+            try:
+                # Remover separadores para obtener solo los caracteres hexadecimales
+                # IMPORTANTE: El guion debe ir al final o escapado para evitar que se interprete como rango
+                mac_clean = re.sub(r'[:.\s-]', '', mac_address.lower())
+                first_octet = int(mac_clean[0:2], 16)
+                is_local_admin = (first_octet & 0x02) != 0
+            except (ValueError, IndexError) as e:
+                logger.warning(f"Error al parsear primer octeto de MAC address '{mac_address}': {e}")
+                is_local_admin = False
+        
         is_virtual = category == DeviceCategory.VIRTUAL_MACHINE or is_local_admin
 
         # Calcular confianza
