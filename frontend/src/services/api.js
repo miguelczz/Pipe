@@ -346,6 +346,68 @@ export const reportsService = {
     })
     return response.data
   },
+
+  /**
+   * Elimina todos los reportes del sistema
+   * @returns {Promise} - Respuesta con cantidad de reportes eliminados
+   */
+  async deleteAllReports() {
+    const response = await apiClient.delete('/reports/all')
+    return response.data
+  },
+
+  /**
+   * Elimina todos los reportes de una marca específica
+   * @param {string} vendor - Nombre de la marca
+   * @returns {Promise} - Respuesta con cantidad de reportes eliminados
+   */
+  async deleteReportsByVendor(vendor) {
+    const response = await apiClient.delete(`/reports/vendor/${encodeURIComponent(vendor)}`)
+    return response.data
+  },
+
+  /**
+   * Elimina múltiples reportes por sus IDs
+   * @param {string[]} ids - Array de IDs de reportes a eliminar
+   * @returns {Promise} - Respuesta con cantidad de reportes eliminados
+   */
+  async deleteMultipleReports(ids) {
+    // axios.delete no acepta body directamente, usar request con method DELETE
+    const response = await apiClient.request({
+      method: 'DELETE',
+      url: '/reports/batch',
+      data: { ids },
+    })
+    return response.data
+  },
+
+  /**
+   * Obtiene estadísticas agregadas de los reportes
+   * @returns {Promise} - Estadísticas de los reportes
+   */
+  async getReportsStats() {
+    const response = await apiClient.get('/reports/stats')
+    return response.data
+  },
+
+  /**
+   * Exporta reportes en formato JSON o CSV
+   * @param {string[]} ids - Array de IDs de reportes a exportar (opcional, si no se proporciona exporta todos)
+   * @param {string} format - Formato de exportación: 'json' o 'csv'
+   * @returns {Promise} - Blob del archivo exportado
+   */
+  async exportReports(ids = null, format = 'json') {
+    const params = new URLSearchParams()
+    if (ids && ids.length > 0) {
+      params.append('ids', ids.join(','))
+    }
+    params.append('format', format)
+    
+    const response = await apiClient.get(`/reports/export?${params.toString()}`, {
+      responseType: 'blob',
+    })
+    return response.data
+  },
 }
 
 export default apiClient

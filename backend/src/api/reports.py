@@ -1,10 +1,13 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 from pathlib import Path
 import json
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from io import BytesIO
+import csv
+from datetime import datetime
+from collections import Counter
 from ..services.band_steering_service import BandSteeringService
 
 logger = logging.getLogger(__name__)
@@ -321,3 +324,319 @@ async def get_report(analysis_id: str):
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/all")
+async def delete_all_reports():
+    """
+    Elimina todos los reportes del sistema.
+    """
+    base_dir = service.base_dir
+    deleted_count = 0
+    
+    try:
+        if not base_dir.exists():
+            return {"status": "success", "message": "No hay reportes para eliminar", "deleted": 0}
+        
+        # Buscar todos los archivos JSON de análisis
+        for analysis_file in base_dir.glob("**/*.json"):
+            try:
+                analysis_file.unlink()
+                deleted_count += 1
+            except Exception as e:
+                logger.error(f"Error al eliminar {analysis_file}: {str(e)}")
+        
+        # Limpiar directorios vacíos
+        for vendor_dir in base_dir.iterdir():
+            if vendor_dir.is_dir():
+                for device_dir in vendor_dir.iterdir():
+                    if device_dir.is_dir() and not any(device_dir.iterdir()):
+                        device_dir.rmdir()
+                if not any(vendor_dir.iterdir()):
+                    vendor_dir.rmdir()
+        
+        logger.info(f"✅ [DELETE ALL] Eliminados {deleted_count} reportes")
+        return {"status": "success", "message": f"Se eliminaron {deleted_count} reportes", "deleted": deleted_count}
+    except Exception as e:
+        logger.error(f"❌ [DELETE ALL] Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error al eliminar todos los reportes: {str(e)}")
+
+@router.delete("/vendor/{vendor}")
+async def delete_reports_by_vendor(vendor: str):
+    """
+    Elimina todos los reportes de una marca específica.
+    """
+    base_dir = service.base_dir
+    deleted_count = 0
+    
+    try:
+        if not base_dir.exists():
+            raise HTTPException(status_code=404, detail="No se encontraron reportes")
+        
+        vendor_dir = base_dir / vendor
+        if not vendor_dir.exists() or not vendor_dir.is_dir():
+            return {"status": "success", "message": f"No se encontraron reportes para la marca {vendor}", "deleted": 0}
+        
+        # Buscar todos los archivos JSON en el directorio de la marca
+        for analysis_file in vendor_dir.glob("**/*.json"):
+            try:
+                analysis_file.unlink()
+                deleted_count += 1
+            except Exception as e:
+                logger.error(f"Error al eliminar {analysis_file}: {str(e)}")
+        
+        # Limpiar directorios vacíos
+        for device_dir in vendor_dir.iterdir():
+            if device_dir.is_dir() and not any(device_dir.iterdir()):
+                device_dir.rmdir()
+        
+        if not any(vendor_dir.iterdir()):
+            vendor_dir.rmdir()
+        
+        logger.info(f"✅ [DELETE VENDOR] Eliminados {deleted_count} reportes de {vendor}")
+        return {"status": "success", "message": f"Se eliminaron {deleted_count} reportes de {vendor}", "deleted": deleted_count}
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"❌ [DELETE VENDOR] Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error al eliminar reportes de {vendor}: {str(e)}")
+
+@router.delete("/batch")
+async def delete_batch_reports(request: Dict[str, List[str]]):
+    """
+    Elimina múltiples reportes por sus IDs.
+    Body: {"ids": ["id1", "id2", "id3"]}
+    """
+    base_dir = service.base_dir
+    ids = request.get("ids", [])
+    
+    if not ids:
+        raise HTTPException(status_code=400, detail="Se requiere al menos un ID en el array 'ids'")
+    
+    deleted_count = 0
+    not_found = []
+    
+    try:
+        if not base_dir.exists():
+            raise HTTPException(status_code=404, detail="No se encontraron reportes")
+        
+        for analysis_id in ids:
+            found = False
+            for analysis_file in base_dir.glob(f"**/{analysis_id}.json"):
+                try:
+                    analysis_file.unlink()
+                    deleted_count += 1
+                    found = True
+                    break
+                except Exception as e:
+                    logger.error(f"Error al eliminar {analysis_file}: {str(e)}")
+            
+            if not found:
+                not_found.append(analysis_id)
+        
+        # Limpiar directorios vacíos
+        for vendor_dir in base_dir.iterdir():
+            if vendor_dir.is_dir():
+                for device_dir in vendor_dir.iterdir():
+                    if device_dir.is_dir() and not any(device_dir.iterdir()):
+                        device_dir.rmdir()
+                if not any(vendor_dir.iterdir()):
+                    vendor_dir.rmdir()
+        
+        message = f"Se eliminaron {deleted_count} reportes"
+        if not_found:
+            message += f". No se encontraron {len(not_found)} reportes: {', '.join(not_found)}"
+        
+        logger.info(f"✅ [DELETE BATCH] Eliminados {deleted_count} de {len(ids)} reportes")
+        return {
+            "status": "success",
+            "message": message,
+            "deleted": deleted_count,
+            "not_found": not_found
+        }
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"❌ [DELETE BATCH] Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error al eliminar reportes: {str(e)}")
+
+@router.get("/stats")
+async def get_reports_stats():
+    """
+    Obtiene estadísticas agregadas de todos los reportes.
+    """
+    base_dir = service.base_dir
+    reports = []
+    
+    try:
+        if not base_dir.exists():
+            return {
+                "total_reports": 0,
+                "verdict_distribution": {},
+                "top_vendors": [],
+                "last_capture": None,
+                "success_rate": 0.0
+            }
+        
+        # Recopilar todos los reportes (similar a list_reports)
+        for vendor_dir in base_dir.iterdir():
+            if not vendor_dir.is_dir():
+                continue
+            
+            for device_dir in vendor_dir.iterdir():
+                if not device_dir.is_dir():
+                    continue
+                
+                for analysis_file in device_dir.glob("*.json"):
+                    try:
+                        with open(analysis_file, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                            devices = data.get("devices", [])
+                            if not devices or len(devices) == 0:
+                                continue
+                            
+                            device = devices[0]
+                            reports.append({
+                                "id": data.get("analysis_id"),
+                                "filename": data.get("filename"),
+                                "timestamp": data.get("analysis_timestamp"),
+                                "vendor": device.get("vendor", "Unknown"),
+                                "model": device.get("device_model", "Unknown"),
+                                "verdict": data.get("verdict")
+                            })
+                    except Exception as e:
+                        logger.error(f"Error al leer archivo {analysis_file}: {str(e)}")
+        
+        if not reports:
+            return {
+                "total_reports": 0,
+                "verdict_distribution": {},
+                "top_vendors": [],
+                "last_capture": None,
+                "success_rate": 0.0
+            }
+        
+        # Calcular estadísticas
+        total = len(reports)
+        verdict_counter = Counter([r.get("verdict", "UNKNOWN") for r in reports])
+        vendor_counter = Counter([r.get("vendor", "Unknown") for r in reports])
+        
+        # Distribución de veredictos
+        verdict_distribution = dict(verdict_counter)
+        
+        # Top 3 marcas
+        top_vendors = [{"vendor": vendor, "count": count} for vendor, count in vendor_counter.most_common(3)]
+        
+        # Última captura
+        sorted_reports = sorted(reports, key=lambda x: x.get("timestamp", ""), reverse=True)
+        last_capture = sorted_reports[0].get("timestamp") if sorted_reports else None
+        
+        # Tasa de éxito (SUCCESS, EXCELLENT, GOOD)
+        success_verdicts = ["SUCCESS", "EXCELLENT", "GOOD"]
+        success_count = sum(1 for r in reports if r.get("verdict", "").upper() in success_verdicts)
+        success_rate = (success_count / total * 100) if total > 0 else 0.0
+        
+        return {
+            "total_reports": total,
+            "verdict_distribution": verdict_distribution,
+            "top_vendors": top_vendors,
+            "last_capture": last_capture,
+            "success_rate": round(success_rate, 2)
+        }
+    except Exception as e:
+        logger.error(f"❌ [STATS] Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error al calcular estadísticas: {str(e)}")
+
+@router.get("/export")
+async def export_reports(
+    ids: Optional[str] = Query(None, description="IDs de reportes separados por comas"),
+    format: str = Query("json", description="Formato de exportación: json o csv")
+):
+    """
+    Exporta reportes en formato JSON o CSV.
+    """
+    base_dir = service.base_dir
+    reports_to_export = []
+    
+    try:
+        if not base_dir.exists():
+            raise HTTPException(status_code=404, detail="No se encontraron reportes")
+        
+        # Si se proporcionan IDs, exportar solo esos
+        target_ids = set(ids.split(",")) if ids else None
+        
+        # Recopilar reportes
+        for vendor_dir in base_dir.iterdir():
+            if not vendor_dir.is_dir():
+                continue
+            
+            for device_dir in vendor_dir.iterdir():
+                if not device_dir.is_dir():
+                    continue
+                
+                for analysis_file in device_dir.glob("*.json"):
+                    try:
+                        with open(analysis_file, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                            analysis_id = data.get("analysis_id")
+                            
+                            # Filtrar por IDs si se especificaron
+                            if target_ids and analysis_id not in target_ids:
+                                continue
+                            
+                            devices = data.get("devices", [])
+                            if not devices or len(devices) == 0:
+                                continue
+                            
+                            device = devices[0]
+                            reports_to_export.append({
+                                "id": analysis_id,
+                                "filename": data.get("filename"),
+                                "timestamp": data.get("analysis_timestamp"),
+                                "vendor": device.get("vendor", "Unknown"),
+                                "model": device.get("device_model", "Unknown"),
+                                "verdict": data.get("verdict"),
+                                "analysis_text": data.get("analysis_text", ""),
+                                "total_packets": data.get("total_packets", 0)
+                            })
+                    except Exception as e:
+                        logger.error(f"Error al leer archivo {analysis_file}: {str(e)}")
+        
+        if not reports_to_export:
+            raise HTTPException(status_code=404, detail="No se encontraron reportes para exportar")
+        
+        # Generar archivo según formato
+        if format.lower() == "csv":
+            # Generar CSV
+            output = BytesIO()
+            writer = csv.DictWriter(
+                output,
+                fieldnames=["id", "filename", "timestamp", "vendor", "model", "verdict", "total_packets", "analysis_text"]
+            )
+            writer.writeheader()
+            for report in reports_to_export:
+                writer.writerow(report)
+            
+            output.seek(0)
+            filename = f"reports_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            return Response(
+                content=output.getvalue(),
+                media_type="text/csv",
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+            )
+        else:
+            # Generar JSON
+            output = BytesIO()
+            json_data = json.dumps(reports_to_export, indent=2, ensure_ascii=False)
+            output.write(json_data.encode('utf-8'))
+            output.seek(0)
+            filename = f"reports_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            return Response(
+                content=output.getvalue(),
+                media_type="application/json",
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [EXPORT] Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error al exportar reportes: {str(e)}")
