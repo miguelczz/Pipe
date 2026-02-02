@@ -1,4 +1,4 @@
-# NetMind - Sistema de Agente Inteligente para Redes y Telecomunicaciones
+# Pipe - Sistema de Agente Inteligente para Redes y Telecomunicaciones
 
 Sistema de agente inteligente que combina RAG (Retrieval-Augmented Generation), herramientas de red (IP y DNS) y un agente conversacional para responder preguntas técnicas sobre redes y telecomunicaciones. Implementa una arquitectura completa con LangGraph, gestión de estado distribuida y múltiples herramientas especializadas.
 
@@ -16,7 +16,7 @@ Sistema de agente inteligente que combina RAG (Retrieval-Augmented Generation), 
 
 ## 📖 Descripción
 
-NetMind es un sistema de agente inteligente que actúa como un enrutador de consultas, decidiendo automáticamente qué herramienta utilizar según la intención del usuario:
+Pipe es un sistema de agente inteligente que actúa como un enrutador de consultas, decidiendo automáticamente qué herramienta utilizar según la intención del usuario:
 
 - **RAG Tool**: Responde preguntas sobre conceptos, definiciones y explicaciones técnicas basándose en documentos PDF indexados
 - **IP Tool**: Realiza operaciones de red como ping, traceroute y comparación de direcciones IP
@@ -284,7 +284,7 @@ REDIS_URL=redis://localhost:6379/0
 CACHE_ENABLED=true
 
 # App
-APP_NAME=NetMind
+APP_NAME=Pipe
 APP_VERSION=1.0.0
 APP_PORT=8000
 APP_ENV=development
@@ -546,7 +546,7 @@ RouterAgent/
 
 ## 🔄 Modelo AIDLC (AI Development Life Cycle)
 
-NetMind sigue el modelo de ciclo de vida AIDLC para desarrollo de sistemas de IA. El proyecto está actualmente en **Fase 3: Reportes y Visualización (75% completada)**.
+Pipe sigue el modelo de ciclo de vida AIDLC para desarrollo de sistemas de IA. El proyecto está actualmente en **Fase 3: Reportes y Visualización (75% completada)**.
 
 ### Estado del Proyecto según AIDLC
 

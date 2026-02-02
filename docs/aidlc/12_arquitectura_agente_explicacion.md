@@ -2,7 +2,7 @@
 
 ## 📋 Resumen Ejecutivo
 
-NetMind implementa un **sistema agéntico inteligente** que utiliza **LangGraph** para orquestar múltiples herramientas especializadas (RAG, IP, DNS) y generar respuestas contextualizadas sobre análisis de Band Steering y redes WiFi.
+Pipe implementa un **sistema agéntico inteligente** que utiliza **LangGraph** para orquestar múltiples herramientas especializadas (RAG, IP, DNS) y generar respuestas contextualizadas sobre análisis de Band Steering y redes WiFi.
 
 ---
 
@@ -77,7 +77,7 @@ Usuario envía pregunta
 ┌───────────────────────┐
 │  1. PLANNER           │  ← Analiza la pregunta y genera un plan
 │  - Lee el mensaje     │
-│  - Usa NetMindAgent   │
+│  - Usa PipeAgent   │
 │  - Genera plan_steps  │
 └───────────┬───────────┘
             ↓
@@ -138,7 +138,7 @@ Plan generado:
 ```
 
 **Componentes involucrados**:
-- `NetMindAgent.decide()`: Usa un LLM para analizar la intención
+- `PipeAgent.decide()`: Usa un LLM para analizar la intención
 - Valida que la pregunta esté relacionada con redes/telecomunicaciones
 - Genera pasos específicos y ejecutables
 
@@ -325,14 +325,14 @@ Usuario recibe respuesta
 
 ## 🔧 Componentes Técnicos Clave
 
-### 1. NetMindAgent (Router)
+### 1. PipeAgent (Router)
 
 **Ubicación**: `backend/src/agent/router.py`
 
 **Función**: Decide qué herramienta usar según la intención del usuario.
 
 ```python
-class NetMindAgent:
+class PipeAgent:
     def decide(self, user_input: str, state: AgentState) -> dict:
         """
         Analiza la pregunta y decide:
@@ -489,7 +489,7 @@ Separación entre acceso a datos (repositorios) y lógica de negocio (servicios)
    messages = [HumanMessage("¿Qué es BTM? y haz ping a google.com")]
 
 3. PLANNER ejecuta:
-   - Analiza con NetMindAgent
+   - Analiza con PipeAgent
    - Genera plan:
      plan_steps = [
        "retrieve information about BTM",
@@ -596,7 +596,7 @@ El sistema mantiene contexto de conversación para:
 
 ## ✅ Resumen
 
-El componente agéntico de NetMind es un **sistema inteligente y modular** que:
+El componente agéntico de Pipe es un **sistema inteligente y modular** que:
 
 1. **Analiza** la intención del usuario (Planner)
 2. **Orquesta** la ejecución (Orchestrator)

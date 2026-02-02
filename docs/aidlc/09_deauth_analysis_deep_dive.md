@@ -2,7 +2,7 @@
 
 ## Resumen Ejecutivo
 
-El proyecto NetMind tiene **problemas de precisión críticos** en la detección y validación de paquetes **Deauthentication (Deauth)** y **Disassociation**, que causan que capturas previamente aprobadas sean clasificadas incorrectamente como **FALLIDAS**.
+El proyecto Pipe tiene **problemas de precisión críticos** en la detección y validación de paquetes **Deauthentication (Deauth)** y **Disassociation**, que causan que capturas previamente aprobadas sean clasificadas incorrectamente como **FALLIDAS**.
 
 Los problemas radicen en:
 1. **Falta de validación de direccionamiento** (DA/SA) en deauth frames

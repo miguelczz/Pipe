@@ -5,6 +5,7 @@ Coordina la extracción de datos, análisis BTM, clasificación de dispositivos 
 import logging
 import json
 import os
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, List
@@ -33,7 +34,15 @@ class BandSteeringService:
         device_classifier: Optional[DeviceClassifier] = None,
         fragment_extractor: Optional[FragmentExtractor] = None
     ):
-        self.base_dir = Path(base_data_dir)
+        # Asegurar que el directorio base sea absoluto
+        # En Docker, usar /app/data/analyses; en local, usar ruta relativa resuelta
+        base_path = Path(base_data_dir)
+        if not base_path.is_absolute():
+            # Si es relativo, resolverlo desde el directorio de trabajo actual
+            # En Docker, WORKDIR es /app, así que "data/analyses" se resuelve a /app/data/analyses
+            # En local, se resuelve desde donde se ejecuta el script
+            base_path = Path(base_data_dir).resolve()
+        self.base_dir = base_path
         self.wireshark_tool = wireshark_tool or WiresharkTool()
         self.btm_analyzer = btm_analyzer or BTMAnalyzer()
         self.device_classifier = device_classifier or DeviceClassifier()
@@ -41,6 +50,7 @@ class BandSteeringService:
         
         # Crear directorio base si no existe
         self.base_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"🔍 [INIT] BandSteeringService inicializado con base_dir: {self.base_dir} (absoluto: {self.base_dir.is_absolute()})")
 
     async def process_capture(
         self, 
@@ -229,13 +239,43 @@ class BandSteeringService:
         
         analysis.analysis_text = self.wireshark_tool._ask_llm_for_analysis(technical_summary)
 
-        # 6. Guardar raw_stats en el objeto de análisis para persistencia
+        # 6. Guardar user_metadata en raw_data para persistencia
+        # Asegurar que los metadatos del usuario (SSID, client_mac) se guarden correctamente
+        logger.info(f"🔍 [METADATA] user_metadata recibido: {user_metadata}")
+        if user_metadata:
+            if "diagnostics" not in raw_data:
+                raw_data["diagnostics"] = {}
+            if "user_metadata" not in raw_data["diagnostics"]:
+                raw_data["diagnostics"]["user_metadata"] = {}
+            # Guardar SSID y client_mac del usuario (si fueron proporcionados)
+            if "ssid" in user_metadata and user_metadata["ssid"]:
+                raw_data["diagnostics"]["user_metadata"]["ssid"] = user_metadata["ssid"]
+                logger.info(f"✅ [METADATA] SSID guardado en raw_data: {user_metadata['ssid']}")
+            else:
+                logger.warning(f"⚠️ [METADATA] SSID no proporcionado o vacío en user_metadata")
+            if "client_mac" in user_metadata and user_metadata["client_mac"]:
+                raw_data["diagnostics"]["user_metadata"]["client_mac"] = user_metadata["client_mac"]
+                logger.info(f"✅ [METADATA] client_mac guardado en raw_data: {user_metadata['client_mac']}")
+            else:
+                logger.warning(f"⚠️ [METADATA] client_mac no proporcionado o vacío en user_metadata")
+        else:
+            logger.warning(f"⚠️ [METADATA] user_metadata es None o vacío")
+        
+        logger.info(f"🔍 [METADATA] raw_data['diagnostics']['user_metadata'] final: {raw_data.get('diagnostics', {}).get('user_metadata', {})}")
+
+        # 7. Guardar raw_stats en el objeto de análisis para persistencia
         analysis.raw_stats = raw_data
 
-        # 7. Organización y Persistencia por Marca
-        save_path = self._save_analysis_result(analysis, device_info)
+        # 8. Organización y Persistencia por Marca
+        # Asegurar que file_path sea absoluto para evitar problemas en Docker
+        original_file_path_abs = Path(file_path).resolve() if file_path else None
+        logger.info(f"🔍 [PROCESS] Antes de guardar, file_path original: {file_path}")
+        logger.info(f"🔍 [PROCESS] file_path absoluto: {original_file_path_abs}")
+        logger.info(f"🔍 [PROCESS] file_path existe: {original_file_path_abs.exists() if original_file_path_abs else False}")
+        save_path = self._save_analysis_result(analysis, device_info, str(original_file_path_abs) if original_file_path_abs else None)
+        logger.info(f"🔍 [PROCESS] Después de guardar, save_path: {save_path}")
 
-        # 8. Indexar en RAG (Qdrant) para que el chat tenga acceso
+        # 9. Indexar en RAG (Qdrant) para que el chat tenga acceso
         self._index_analysis_for_rag(analysis)
 
         # Retornar objeto de análisis y datos crudos (para compatibilidad frontend)
@@ -520,11 +560,15 @@ class BandSteeringService:
         except Exception as e:
             pass
 
-    def _save_analysis_result(self, analysis: BandSteeringAnalysis, device: DeviceInfo) -> str:
+    def _save_analysis_result(self, analysis: BandSteeringAnalysis, device: DeviceInfo, original_file_path: Optional[str] = None) -> str:
         """
         Organiza los archivos en carpetas por Marca/Modelo.
         Estructura: data/analyses/{Vendor}/{Model_or_MAC}/{analysis_id}.json
+        También guarda el archivo pcap original para descarga posterior.
         """
+        logger.info(f"🔍 [SAVE] _save_analysis_result llamado")
+        logger.info(f"🔍 [SAVE] original_file_path recibido: {original_file_path}")
+        logger.info(f"🔍 [SAVE] analysis_id: {analysis.analysis_id}")
         vendor_name = device.vendor.replace(" ", "_")
         device_id = device.device_model.replace(" ", "_") if device.device_model else device.mac_address.replace(":", "")
         
@@ -532,14 +576,90 @@ class BandSteeringService:
         target_dir.mkdir(parents=True, exist_ok=True)
         
         # Guardar JSON de análisis
-        file_path = target_dir / f"{analysis.analysis_id}.json"
+        json_path = target_dir / f"{analysis.analysis_id}.json"
         
-        with open(file_path, "w", encoding="utf-8") as f:
-            # Usamos el método .model_dump_json() de Pydantic v2 (o .json() en v1)
-            # Como estamos bajo Software Engineering Constitution (Pydantic 2), usamos model_dump
-            f.write(analysis.model_dump_json(indent=4))
+        # Guardar el archivo pcap original si existe
+        saved_pcap_path = None
+        logger.info(f"🔍 [SAVE] Intentando guardar archivo pcap. original_file_path: {original_file_path}")
+        logger.info(f"🔍 [SAVE] base_dir: {self.base_dir} (absoluto: {self.base_dir.is_absolute()})")
+        if original_file_path:
+            # Asegurar que el path sea absoluto
+            original_path = Path(original_file_path)
+            if not original_path.is_absolute():
+                original_path = original_path.resolve()
+            logger.info(f"🔍 [SAVE] Path original (relativo): {original_file_path}")
+            logger.info(f"🔍 [SAVE] Path absoluto resuelto: {original_path}")
+            logger.info(f"🔍 [SAVE] Path existe: {original_path.exists()}")
+            if original_path.exists():
+                try:
+                    # Copiar el archivo pcap a la carpeta del análisis
+                    pcap_filename = original_path.name
+                    logger.info(f"🔍 [SAVE] Nombre original del archivo: {pcap_filename}")
+                    # Limpiar UUID del nombre si existe (formato UUID_Nombre.pcap)
+                    if '_' in pcap_filename and len(pcap_filename.split('_')[0]) == 36:
+                        pcap_filename = '_'.join(pcap_filename.split('_')[1:])
+                        logger.info(f"🔍 [SAVE] Nombre limpiado (sin UUID): {pcap_filename}")
+                    
+                    saved_pcap_path = target_dir / f"{analysis.analysis_id}_{pcap_filename}"
+                    logger.info(f"🔍 [SAVE] Copiando de {original_path} a {saved_pcap_path}")
+                    shutil.copy2(original_path, saved_pcap_path)
+                    saved_pcap_path = str(saved_pcap_path)
+                    logger.info(f"✅ [SAVE] Archivo pcap copiado exitosamente a: {saved_pcap_path}")
+                except Exception as e:
+                    logger.error(f"❌ [SAVE] Error al copiar archivo pcap: {e}", exc_info=True)
+            else:
+                logger.warning(f"⚠️ [SAVE] El archivo original no existe: {original_path}")
+        else:
+            logger.warning(f"⚠️ [SAVE] original_file_path es None o vacío")
+        
+        # Guardar la ruta del archivo en el análisis
+        # NOTA: No asignar directamente al objeto Pydantic (no es un campo del modelo)
+        # Se guardará en el dict al serializar para persistencia en JSON
+        
+        with open(json_path, "w", encoding="utf-8") as f:
+            # Convertir a dict para poder agregar campos adicionales
+            # Usar model_dump con mode='json' para serializar datetime correctamente
+            analysis_dict = analysis.model_dump(mode='json', exclude_none=False)
             
-        return str(file_path)
+            # CRÍTICO: Asegurar que raw_stats (que contiene user_metadata) se guarde SIEMPRE
+            # Aunque raw_stats es un campo del modelo, lo forzamos explícitamente
+            # porque model_dump puede no incluirlo si es None o si hay problemas de serialización
+            if hasattr(analysis, 'raw_stats'):
+                analysis_dict["raw_stats"] = analysis.raw_stats
+                if analysis.raw_stats:
+                    user_meta = analysis.raw_stats.get('diagnostics', {}).get('user_metadata', {})
+                    logger.info(f"✅ [SAVE] raw_stats guardado en JSON")
+                    logger.info(f"✅ [SAVE] user_metadata en raw_stats: {user_meta}")
+                else:
+                    logger.warning(f"⚠️ [SAVE] raw_stats es None en analysis")
+            else:
+                logger.error(f"❌ [SAVE] analysis no tiene atributo raw_stats")
+            
+            if saved_pcap_path:
+                analysis_dict["original_file_path"] = saved_pcap_path
+                logger.info(f"✅ [SAVE] original_file_path guardado: {saved_pcap_path}")
+            
+            # Verificar que user_metadata esté en el dict final antes de guardar
+            final_user_meta = analysis_dict.get('raw_stats', {}).get('diagnostics', {}).get('user_metadata', {})
+            logger.info(f"🔍 [SAVE] user_metadata en analysis_dict final: {final_user_meta}")
+            
+            # Guardar el JSON
+            json.dump(analysis_dict, f, indent=4, ensure_ascii=False)
+            logger.info(f"✅ [SAVE] Análisis guardado en: {json_path}")
+            
+            # Verificación final: leer el archivo guardado para confirmar que user_metadata está ahí
+            try:
+                with open(json_path, "r", encoding="utf-8") as verify_f:
+                    verify_data = json.load(verify_f)
+                    verify_user_meta = verify_data.get('raw_stats', {}).get('diagnostics', {}).get('user_metadata', {})
+                    if verify_user_meta:
+                        logger.info(f"✅ [SAVE] VERIFICACIÓN: user_metadata confirmado en archivo guardado: {verify_user_meta}")
+                    else:
+                        logger.error(f"❌ [SAVE] VERIFICACIÓN FALLIDA: user_metadata NO está en el archivo guardado!")
+            except Exception as e:
+                logger.error(f"❌ [SAVE] Error al verificar archivo guardado: {e}")
+            
+        return str(json_path)
 
     def get_brand_statistics(self, brand: str) -> Dict[str, Any]:
         """

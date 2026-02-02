@@ -16,15 +16,24 @@ from dotenv import load_dotenv
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Configurar rutas
+# Configurar rutas - buscar .env en la raíz del proyecto
 backend_dir = Path(__file__).parent
-env_path = backend_dir / ".env"
+project_root = backend_dir.parent  # Raíz del proyecto
+env_path = project_root / ".env"  # .env en la raíz
+
+# Fallback: buscar también en backend/ por si acaso
+backend_env_path = backend_dir / ".env"
 
 if env_path.exists():
     logger.info(f"💾 Cargando configuración desde {env_path}")
     load_dotenv(dotenv_path=env_path)
+elif backend_env_path.exists():
+    logger.info(f"💾 Cargando configuración desde {backend_env_path}")
+    load_dotenv(dotenv_path=backend_env_path)
 else:
-    logger.warning("⚠️ No se encontró el archivo .env en la carpeta backend.")
+    logger.warning(f"⚠️ No se encontró el archivo .env. Buscado en:")
+    logger.warning(f"   - {env_path}")
+    logger.warning(f"   - {backend_env_path}")
 
 # Agregar el directorio backend al path para las importaciones
 sys.path.insert(0, str(backend_dir))

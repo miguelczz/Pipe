@@ -1,5 +1,5 @@
 ````markdown
-# 📦 Inventario del Proyecto NetMind (Auto-documentado)
+# 📦 Inventario del Proyecto Pipe (Auto-documentado)
 
 Este archivo resume los componentes reales presentes en el repositorio (backend, frontend, docs, y utilidades) para completar y actualizar la documentación AIDLC.
 

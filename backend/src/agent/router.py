@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 client = OpenAI(api_key=settings.openai_api_key)
 
 
-class NetMindAgent:
+class PipeAgent:
     def __init__(self):
         self.rag = RAGTool()
         self.iptool = IPTool()
@@ -63,7 +63,7 @@ class NetMindAgent:
         # OPTIMIZACIÓN: Combinar validación de relevancia y decisión de herramienta en una sola llamada
         # Esto reduce de 2 llamadas a 1, ahorrando ~2-4 segundos
         combined_prompt = f"""
-You are NetMind, a smart agent that decides which internal tool to use for a user's request.
+You are Pipe, a smart agent specialized in Wireshark capture analysis that decides which internal tool to use for a user's request.
 
 STEP 1: First, determine if the question is relevant to networks, telecommunications, network protocols, or network technologies.
 STEP 2: If relevant, decide which tool to use and create a plan.
@@ -77,7 +77,7 @@ Context (last 5 messages):
 
 RELEVANCE RULES (STEP 1):
     pass
-- CORE DOMAIN UNDERSTANDING: You are a specialized agent for NetMind. Your absolute focus is Band Steering analysis using Wireshark.
+- CORE DOMAIN UNDERSTANDING: You are a specialized agent for Pipe. Your absolute focus is Wireshark capture analysis, Band Steering, and network protocol interpretation.
 - MANDATORY RELEVANCE: "La prueba", "el análisis", "la guía", "el procedimiento", or asking "con qué me guío" ALWAYS refer to the Band Steering project documentation. Mark them as RELEVANT immediately.
 - CONTEXTUAL INFERENCE: Any request about network behavior, WiFi standards (BTM, KVR), or "how to interpret results" is RELEVANT.
 - ELASTIC RELEVANCE: Be extremely flexible. If the user seeks technical guidance or explanation of network outcomes, it is RELEVANT.
@@ -164,7 +164,7 @@ Respond ONLY in JSON format. No extra text or markdown.
             response = client.chat.completions.create(
                 model=self.llm_model,
                 messages=[
-                    {"role": "system", "content": "You are the NetMind Router. Your domain is Network Analysis (Band Steering/Wireshark). 'La prueba' or 'la guía' are ALWAYS relevant to your project. Always respond with valid JSON."},
+                    {"role": "system", "content": "You are the Pipe Router. Your domain is Wireshark Capture Analysis (Band Steering/Network Protocols). 'La prueba' or 'la guía' are ALWAYS relevant to your project. Always respond with valid JSON."},
                     {"role": "user", "content": combined_prompt}
                 ],
                 max_tokens=500,
@@ -196,7 +196,7 @@ Respond ONLY in JSON format. No extra text or markdown.
         
         # Si NO es relevante, retornar inmediatamente
         if not is_relevant:
-            rejection_msg = data.get("rejection_message", "Lo siento, como asistente de NetMind mi especialidad es el análisis de Band Steering y protocolos de red. Tu pregunta parece estar fuera de este ámbito técnico.")
+            rejection_msg = data.get("rejection_message", "Lo siento, como asistente de Pipe mi especialidad es el análisis de capturas Wireshark, Band Steering y protocolos de red. Tu pregunta parece estar fuera de este ámbito técnico.")
             return {
                 "tool": "none",
                 "reason": "out_of_topic",

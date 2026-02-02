@@ -13,7 +13,7 @@ from typing import Annotated, List, Dict, Any, Optional
 from ..tools.rag_tool import RAGTool
 from ..tools.ip_tool import IPTool
 from ..tools.dns_tool import DNSTool
-from ..agent.router import NetMindAgent
+from ..agent.router import PipeAgent
 from ..agent.llm_client import LLMClient
 from ..core.cache import cache_result
 import re
@@ -230,7 +230,7 @@ def planner_node(state: GraphState) -> Dict[str, Any]:
     context = messages_to_agent_state(state.messages)
     
     # Usar el router para generar el plan
-    router = NetMindAgent()
+    router = PipeAgent()
     decision = router.decide(user_prompt, context)
     
     # Verificar si la pregunta fue rechazada por estar fuera de tema
@@ -638,7 +638,7 @@ async def supervisor_node(state: GraphState, config: Optional[RunnableConfig] = 
     if rag_missed_info:
         
         fallback_prompt = f"""
-El sistema RAG no encontró información en los documentos para la pregunta del usuario, pero el usuario requiere una respuesta de NetMind.
+El sistema RAG no encontró información en los documentos para la pregunta del usuario, pero el usuario requiere una respuesta de Pipe.
 Genera una respuesta basada en tu CONOCIMIENTO GENERAL como experto en redes WiFi y Band Steering.
 
 Pregunta del usuario: "{user_prompt}"

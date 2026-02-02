@@ -20,7 +20,12 @@ class FragmentExtractor:
     """
 
     def __init__(self, output_base_dir: str = "data/fragments"):
-        self.output_base_dir = Path(output_base_dir)
+        # Asegurar que el directorio base sea absoluto
+        base_path = Path(output_base_dir)
+        if not base_path.is_absolute():
+            # Si es relativo, resolverlo desde el directorio de trabajo actual
+            base_path = Path(output_base_dir).resolve()
+        self.output_base_dir = base_path
         self.tshark_path = shutil.which("tshark")
         
         # Asegurar que el directorio de salida existe

@@ -47,21 +47,21 @@ export function ChatContainer({ messages, isLoading }) {
               <Logo size="lg" />
             </div>
             <h2 className="text-xl sm:text-2xl font-medium text-dark-text-primary mb-2 sm:mb-3 tracking-tight px-2">
-              Bienvenido a NetMind
+              Bienvenido a Pipe
             </h2>
             <p className="text-dark-text-secondary text-sm sm:text-[15px] leading-relaxed max-w-lg mx-auto px-2">
-              Asistente inteligente especializado en redes y telecomunicaciones.
-              Soporte técnico en conceptos de red, consultas DNS, análisis de direcciones IP y gestión de documentación técnica.
+              Asistente inteligente especializado en análisis de capturas Wireshark.
+              Analiza archivos .pcap/.pcapng, interpreta tráfico de red, identifica protocolos y genera reportes detallados de Band Steering y comportamiento de red.
             </p>
             <div className="mt-6 sm:mt-8 flex flex-wrap gap-2 justify-center px-2">
               <span className="px-3 sm:px-4 py-1.5 sm:py-2 bg-dark-surface-primary border border-dark-border-primary/30 rounded-full text-xs sm:text-sm text-dark-text-secondary">
-                Consultas DNS
+                Análisis .pcap/.pcapng
               </span>
               <span className="px-3 sm:px-4 py-1.5 sm:py-2 bg-dark-surface-primary border border-dark-border-primary/30 rounded-full text-xs sm:text-sm text-dark-text-secondary">
-                Operaciones de Red
+                Band Steering
               </span>
               <span className="px-3 sm:px-4 py-1.5 sm:py-2 bg-dark-surface-primary border border-dark-border-primary/30 rounded-full text-xs sm:text-sm text-dark-text-secondary">
-                Documentación RAG
+                Protocolos WiFi
               </span>
             </div>
           </div>

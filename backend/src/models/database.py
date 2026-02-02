@@ -1,12 +1,15 @@
 """
 Modelos SQLAlchemy para persistencia en base de datos PostgreSQL
 """
+import logging
 from sqlalchemy import create_engine, Column, String, DateTime, Integer, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session as SQLSession
 from datetime import datetime
 from typing import Optional
 from ..settings import settings
+
+logger = logging.getLogger(__name__)
 
 # Base para modelos SQLAlchemy
 Base = declarative_base()
@@ -95,5 +98,12 @@ def init_db():
     Crea todas las tablas en la base de datos.
     Ejecutar una vez al iniciar la aplicación.
     """
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("✓ Base de datos inicializada correctamente")
+    except Exception as e:
+        logger.error(f"❌ Error al inicializar la base de datos: {e}")
+        logger.error("   Verifica que PostgreSQL esté corriendo y que las credenciales en .env sean correctas")
+        logger.error("   Si estás ejecutando fuera de Docker, asegúrate de usar 'localhost' en lugar de 'pipe-postgres'")
+        raise
 

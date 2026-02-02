@@ -1,8 +1,8 @@
-# 📊 Estado del Proyecto NetMind - Alineación con AIDLC
+# 📊 Estado del Proyecto Pipe - Alineación con AIDLC
 
 ## 🎯 Resumen Ejecutivo
 
-Este documento analiza el estado actual del proyecto NetMind y su alineación con el modelo de ciclo de vida AIDLC (AI Development Life Cycle) definido en la documentación.
+Este documento analiza el estado actual del proyecto Pipe y su alineación con el modelo de ciclo de vida AIDLC (AI Development Life Cycle) definido en la documentación.
 
 ## 📋 Fases del Modelo AIDLC
 

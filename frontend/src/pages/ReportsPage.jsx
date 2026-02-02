@@ -19,7 +19,8 @@ import {
   Smartphone,
   Cpu,
   MoreVertical,
-  ArrowRight
+  ArrowRight,
+  Download
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
@@ -31,26 +32,43 @@ export function ReportsPage() {
   const [statusFilter, setStatusFilter] = useState('ALL') // ALL, SUCCESS, FAILED
   const [expandedVendors, setExpandedVendors] = useState({})
   const [isDeleting, setIsDeleting] = useState(null)
+  const [isDownloading, setIsDownloading] = useState(null)
+  const [openDownloadMenu, setOpenDownloadMenu] = useState(null) // ID del reporte con menú abierto
   const navigate = useNavigate()
 
   useEffect(() => {
     fetchReports()
   }, [])
 
+  // Cerrar menú de descarga al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (openDownloadMenu && !event.target.closest('.download-menu-container')) {
+        setOpenDownloadMenu(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [openDownloadMenu])
+
   const fetchReports = async () => {
     setLoading(true)
     try {
       const data = await reportsService.getReports()
-      setReports(data)
+      
+      // Asegurar que data sea un array
+      const reportsArray = Array.isArray(data) ? data : []
+      setReports(reportsArray)
       setError(null)
       
       // Auto-expandir la primera marca por defecto
-      if (data.length > 0) {
-        const firstVendor = data[0].vendor || 'Desconocido'
+      if (reportsArray.length > 0) {
+        const firstVendor = reportsArray[0].vendor || 'Desconocido'
         setExpandedVendors({ [firstVendor]: true })
       }
     } catch (err) {
       setError('No se pudieron cargar los reportes históricos.')
+      setReports([]) // Asegurar que siempre sea un array
     } finally {
       setLoading(false)
     }
@@ -69,6 +87,80 @@ export function ReportsPage() {
       alert('Error al intentar eliminar el reporte.')
     } finally {
       setIsDeleting(null)
+    }
+  }
+
+  const handleDownloadCapture = async (e, reportId, filename) => {
+    e.stopPropagation()
+    setOpenDownloadMenu(null)
+    setIsDownloading(reportId)
+    try {
+      const blob = await reportsService.downloadCapture(reportId)
+      // Crear URL temporal para descarga
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      // Usar el nombre del archivo del reporte o un nombre por defecto
+      const downloadName = filename || `capture_${reportId}.pcap`
+      link.download = downloadName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      const errorMessage = err?.response?.data?.detail || err?.message || 'Error al descargar la captura'
+      if (errorMessage.includes('antes de implementar')) {
+        alert('Este reporte es antiguo y no tiene el archivo guardado. Solo los análisis nuevos permiten descargar la captura original.')
+      } else {
+        alert(`Error al descargar la captura: ${errorMessage}`)
+      }
+    } finally {
+      setIsDownloading(null)
+    }
+  }
+
+  const handleDownloadPDF = async (e, reportId, filename) => {
+    e.stopPropagation()
+    setOpenDownloadMenu(null)
+    setIsDownloading(reportId)
+    try {
+      const blob = await reportsService.downloadPDF(reportId)
+      // Crear URL temporal para descarga
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      // Usar el nombre del archivo del reporte o un nombre por defecto
+      const baseName = filename?.replace(/\.(pcap|pcapng)$/i, '') || `report_${reportId}`
+      link.download = `${baseName}.html`
+      // Abrir en nueva ventana para que el usuario pueda usar "Guardar como PDF" del navegador
+      link.target = '_blank'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      const errorMessage = err?.response?.data?.detail || err?.message || 'Error al descargar el PDF'
+      alert(`Error al descargar el PDF: ${errorMessage}`)
+    } finally {
+      setIsDownloading(null)
+    }
+  }
+
+  const handleDownloadBoth = async (e, reportId, filename) => {
+    e.stopPropagation()
+    setOpenDownloadMenu(null)
+    setIsDownloading(reportId)
+    try {
+      // Descargar ambos archivos secuencialmente
+      await handleDownloadCapture(e, reportId, filename)
+      // Pequeño delay para que el navegador procese la primera descarga
+      await new Promise(resolve => setTimeout(resolve, 500))
+      await handleDownloadPDF(e, reportId, filename)
+    } catch (err) {
+      const errorMessage = err?.response?.data?.detail || err?.message || 'Error al descargar los archivos'
+      alert(`Error al descargar los archivos: ${errorMessage}`)
+    } finally {
+      setIsDownloading(null)
     }
   }
 
@@ -120,43 +212,38 @@ export function ReportsPage() {
           }
       }
 
-      // Extraer SSID: primero intentar desde user_metadata (si existe), luego desde bssid_info
+      // Extraer SSID y client_mac: SIEMPRE usar user_metadata si existe, NUNCA usar bssid_info
+      // El bssid_info puede contener números extraídos del pcap, no los valores del usuario
       let extractedSsid = ''
+      let extractedClientMac = ''
       
-      // 1. Intentar obtener desde user_metadata (si se guardó cuando se hizo el análisis)
-      if (fullDetail.raw_stats?.diagnostics?.user_metadata?.ssid) {
-        extractedSsid = fullDetail.raw_stats.diagnostics.user_metadata.ssid
-      }
-      // 2. Si no está en user_metadata, extraer del bssid_info (tomar el primer SSID válido encontrado)
-      else if (bssidInfo && Object.keys(bssidInfo).length > 0) {
-        // Buscar el primer BSSID que tenga un SSID válido (no 'Unknown' ni vacío)
-        for (const bssid in bssidInfo) {
-          const ssid = bssidInfo[bssid]?.ssid
-          if (ssid && ssid !== 'Unknown' && ssid.trim() !== '') {
-            extractedSsid = ssid
-            break
-          }
-        }
-        // Si no encontramos uno válido, usar el primero disponible
-        if (!extractedSsid) {
-          const firstBssid = Object.keys(bssidInfo)[0]
-          extractedSsid = bssidInfo[firstBssid]?.ssid || ''
-        }
+      // 1. SIEMPRE priorizar user_metadata (valores ingresados por el usuario)
+      if (fullDetail.raw_stats?.diagnostics?.user_metadata) {
+        extractedSsid = fullDetail.raw_stats.diagnostics.user_metadata.ssid || ''
+        extractedClientMac = fullDetail.raw_stats.diagnostics.user_metadata.client_mac || ''
       }
       
-      // Guardar el SSID también en el formattedResult para que esté disponible
-      if (extractedSsid && formattedResult.stats?.diagnostics) {
+      // 2. Si no hay user_metadata, usar valores vacíos (NO usar bssid_info)
+      // Esto asegura que nunca se muestren valores incorrectos extraídos del pcap
+      
+      // Asegurar que user_metadata existe en formattedResult
+      if (formattedResult.stats?.diagnostics) {
         if (!formattedResult.stats.diagnostics.user_metadata) {
           formattedResult.stats.diagnostics.user_metadata = {}
         }
+        // Guardar los valores del usuario (o vacío si no existen)
         formattedResult.stats.diagnostics.user_metadata.ssid = extractedSsid
+        if (extractedClientMac) {
+          formattedResult.stats.diagnostics.user_metadata.client_mac = extractedClientMac
+        }
       }
 
       localStorage.setItem('networkAnalysisResult', JSON.stringify(formattedResult))
       localStorage.setItem('networkAnalysisFileMeta', JSON.stringify({
         name: fullDetail.filename,
         size: fullDetail.total_packets * 100,
-        ssid: extractedSsid
+        ssid: extractedSsid,
+        client_mac: extractedClientMac
       }))
       navigate('/network-analysis')
     })
@@ -164,6 +251,11 @@ export function ReportsPage() {
 
   // Lógica de filtrado y agrupamiento
   const groupedReports = useMemo(() => {
+    // Asegurar que reports sea un array antes de usar filter
+    if (!Array.isArray(reports)) {
+      return {}
+    }
+    
     const filtered = reports.filter(report => {
       const matchSearch = (
         report.filename?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -344,6 +436,47 @@ export function ReportsPage() {
                               </div>
                               
                               <div className="flex items-center gap-2">
+                                {/* Menú de descarga desplegable */}
+                                <div className="relative download-menu-container">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setOpenDownloadMenu(openDownloadMenu === report.id ? null : report.id)
+                                    }}
+                                    className="p-1.5 rounded-lg text-dark-text-muted hover:bg-blue-500/20 hover:text-blue-400 transition-all opacity-0 group-hover:opacity-100"
+                                    title="Opciones de descarga"
+                                  >
+                                    {isDownloading === report.id ? <Loading size="xs" /> : <Download className="w-4 h-4" />}
+                                  </button>
+                                  
+                                  {/* Menú desplegable */}
+                                  {openDownloadMenu === report.id && (
+                                    <div className="absolute right-0 top-full mt-1 bg-dark-bg-secondary border border-dark-border-primary/30 rounded-lg shadow-lg z-50 min-w-[180px] overflow-hidden">
+                                      <button
+                                        onClick={(e) => handleDownloadCapture(e, report.id, report.filename)}
+                                        className="w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-primary transition-colors flex items-center gap-2"
+                                      >
+                                        <Download className="w-4 h-4 text-blue-400" />
+                                        <span>Descargar Captura</span>
+                                      </button>
+                                      <button
+                                        onClick={(e) => handleDownloadPDF(e, report.id, report.filename)}
+                                        className="w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-primary transition-colors flex items-center gap-2 border-t border-dark-border-primary/20"
+                                      >
+                                        <FileText className="w-4 h-4 text-purple-400" />
+                                        <span>Descargar PDF</span>
+                                      </button>
+                                      <button
+                                        onClick={(e) => handleDownloadBoth(e, report.id, report.filename)}
+                                        className="w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-primary transition-colors flex items-center gap-2 border-t border-dark-border-primary/20"
+                                      >
+                                        <Download className="w-4 h-4 text-green-400" />
+                                        <span>Descargar Ambos</span>
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                                
                                 <button
                                   onClick={(e) => handleDeleteReport(e, report.id)}
                                   className="p-1.5 rounded-lg text-dark-text-muted hover:bg-red-500/20 hover:text-red-400 transition-all opacity-0 group-hover:opacity-100"

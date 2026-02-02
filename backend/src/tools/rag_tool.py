@@ -33,7 +33,7 @@ class RAGTool:
     
     # OPTIMIZACIÓN: Pre-compilar prompts estáticos para evitar reconstruirlos en cada llamada
     RELEVANCE_CHECK_PROMPT_TEMPLATE = """
-Analiza si la siguiente pregunta puede ser respondida basándose en la documentación técnica interna, los resultados de análisis de red almacenados o las capacidades de NetMind.
+Analiza si la siguiente pregunta puede ser respondida basándose en la documentación técnica interna, los resultados de análisis de capturas Wireshark almacenados o las capacidades de Pipe.
 
 Pregunta del usuario: "{query_text}"
 
@@ -64,7 +64,7 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
 """
     
     BASE_PROMPT_TEMPLATE = """
-Eres un asistente experto en redes WiFi y Band Steering. Tu objetivo es ayudar al usuario respondiendo sus preguntas basándote en la documentación técnica proporcionada por NetMind.
+Eres un asistente experto en análisis de capturas Wireshark, redes WiFi y Band Steering. Tu objetivo es ayudar al usuario respondiendo sus preguntas basándote en la documentación técnica proporcionada por Pipe.
 Importante: Cualquier dato ambiguo debe interpretarse bajo el espectro de redes (ej: asociación = asociación WiFi 802.11).
 
 INSTRUCCIONES DE RESPUESTA:
@@ -94,18 +94,18 @@ Respuesta:
     pass
 """
     
-    SYSTEM_MESSAGE = """Eres un experto en redes WiFi de NetMind, especializado EXCLUSIVAMENTE en el análisis de Band Steering con Wireshark. 
+    SYSTEM_MESSAGE = """Eres un experto en análisis de capturas Wireshark de Pipe, especializado EXCLUSIVAMENTE en el análisis de Band Steering y protocolos de red. 
 
 TU MISIÓN:
     pass
 1. Responder ÚNICAMENTE basándote en los documentos técnicos proporcionados.
-2. Todo concepto debe interpretarse desde la perspectiva de Wireshark y el proyecto NetMind.
+2. Todo concepto debe interpretarse desde la perspectiva de análisis de capturas Wireshark y el proyecto Pipe.
 3. Si la información no está en los documentos, indica: "No encontré esta información específica en los manuales técnicos de Band Steering, pero basándome en el contexto de la prueba...".
 4. PROHIBIDO: Dar explicaciones generales de redes que no aporten al análisis de Band Steering.
 5. MEMORIA: Mantén el hilo de la conversación para entender a qué se refiere el usuario (ej: si pregunta por "la diferencia", se refiere a la diferencia entre los conceptos de red explicados anteriormente en el contexto de Band Steering).
 """
     
-    RELEVANCE_SYSTEM_MESSAGE = "Eres un analizador técnico de NetMind. 'La prueba', 'el análisis', 'la guía' o 'guiarse' se refieren SIEMPRE al proyecto de Band Steering y deben marcarse como RELEVANTES de forma obligatoria."
+    RELEVANCE_SYSTEM_MESSAGE = "Eres un analizador técnico de Pipe. 'La prueba', 'el análisis', 'la guía' o 'guiarse' se refieren SIEMPRE al análisis de capturas Wireshark y Band Steering y deben marcarse como RELEVANTES de forma obligatoria."
     
     COMPLEXITY_SYSTEM_MESSAGE = "Eres un analizador que determina la complejidad de preguntas."
     
@@ -357,7 +357,7 @@ TU MISIÓN:
                     refinement_prompt = f"""
 Transforma la siguiente "Pregunta Corta" en una "Consulta Técnica Completa" buscando resolver la referencia técnica basada en el "Contexto de Conversación".
 
-EL ENFOQUE DEBE SER EXCLUSIVAMENTE: Band Steering, Wireshark, BTM, WiFi 802.11 y el proyecto NetMind.
+EL ENFOQUE DEBE SER EXCLUSIVAMENTE: Band Steering, análisis de capturas Wireshark, BTM, WiFi 802.11 y el proyecto Pipe.
 
 CONTEXTO DE CONVERSACIÓN (Historial previo):
     pass
@@ -482,7 +482,7 @@ Consulta técnica refinada:
                 if conversation_context:
                     # Construir prompt con contexto para mejor validación
                     relevance_prompt_with_context = f"""
-Analiza si la siguiente pregunta es relevante para NetMind (Análisis de Band Steering con Wireshark).
+Analiza si la siguiente pregunta es relevante para Pipe (Análisis de capturas Wireshark y Band Steering).
 
 CONTEXTO DE CONVERSACIÓN PREVIA:
     pass
@@ -493,7 +493,7 @@ Pregunta del usuario: "{query_text}"
 INSTRUCCIONES CRÍTICAS:
     pass
 - CORE DOMAIN: Si la pregunta trata sobre "la prueba", "guiarse", "resultados", o cualquier aspecto técnico de red mencionado en los manuales, es RELEVANTE.
-- CONTINUIDAD: Si la pregunta es un seguimiento de un tema de redes o del proyecto NetMind, marca como RELEVANTE.
+- CONTINUIDAD: Si la pregunta es un seguimiento de un tema de redes o del proyecto Pipe, marca como RELEVANTE.
 - No seas restrictivo con las palabras; si el usuario busca ayuda técnica o procedimental del sistema, es RELEVANTE.
 
 Responde SOLO con una palabra: "relevante" o "no_relevante".
@@ -560,7 +560,7 @@ Responde SOLO con una palabra: "relevante" o "no_relevante".
         # Si no es relevante, retornar mensaje indicando que no puede responder
         if not is_relevant:
             return {
-                "answer": "Lo siento, mi conocimiento está limitado a la documentación técnica de NetMind y análisis de Band Steering con Wireshark. Tu pregunta parece estar fuera de este ámbito especializado.",
+                "answer": "Lo siento, mi conocimiento está limitado a la documentación técnica de Pipe y análisis de capturas Wireshark y Band Steering. Tu pregunta parece estar fuera de este ámbito especializado.",
                 "hits": 0,
                 "contexts": [],
                 "source": "out_of_topic"

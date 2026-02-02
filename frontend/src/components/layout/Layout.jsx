@@ -32,9 +32,9 @@ export function Layout({ children }) {
               <Logo size="md" />
               <div>
                 <h1 className="text-base sm:text-lg font-medium text-dark-text-primary tracking-tight">
-                  NetMind
+                  Pipe
                 </h1>
-                <p className="text-[10px] sm:text-xs text-dark-text-muted -mt-0.5">Asistente Inteligente</p>
+                <p className="text-[10px] sm:text-xs text-dark-text-muted -mt-0.5">Análisis de Capturas Wireshark</p>
               </div>
             </div>
 
@@ -87,7 +87,7 @@ export function Layout({ children }) {
         <footer className="border-t border-dark-border-primary/30 bg-dark-bg-primary/50 backdrop-blur-sm py-4">
           <div className="container-app">
             <p className="text-center text-xs text-dark-text-muted">
-              NetMind - Sistema inteligente de enrutamiento de consultas
+              Pipe - Análisis inteligente de capturas Wireshark
             </p>
           </div>
         </footer>

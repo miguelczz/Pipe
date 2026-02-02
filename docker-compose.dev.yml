@@ -1,32 +1,27 @@
-version: "3.8"
+# Docker Compose para desarrollo con hot-reload
+# Uso: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# 
+# Este archivo extiende docker-compose.yml agregando:
+# - Volúmenes para montar el código fuente (hot-reload)
+# - Comando con --reload para recargar automáticamente
+# - Variables de entorno de desarrollo
+
 services:
-  postgres:
-    image: postgres:15
+  pipe-backend:
+    # Montar el código fuente como volumen para hot-reload
+    # NOTA: Los volúmenes nombrados (pipe_uploads, pipe_analyses) se heredan del docker-compose.yml
+    volumes:
+      - pipe_uploads:/app/databases/uploads
+      - pipe_analyses:/app/data/analyses
+      # Montar código fuente para desarrollo (hot-reload)
+      # Usar :rw (read-write) para permitir que uvicorn detecte cambios
+      - ./backend/src:/app/src:rw
+      - ./backend/main.py:/app/main.py:rw
+      - ./backend/index_docs.py:/app/index_docs.py:rw
+      - ./backend/langgraph.json:/app/langgraph.json:rw
+    # Sobrescribir comando para usar --reload
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     environment:
-      POSTGRES_USER: pguser
-      POSTGRES_PASSWORD: pgpass
-      POSTGRES_DB: appdb
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    ports:
-      - "5440:5432"
-
-  qdrant:
-    image: qdrant/qdrant:latest
-    ports:
-      - "6444:6333"
-    volumes:
-      - qdrant_storage:/qdrant/storage
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-
-volumes:
-  pgdata:
-  qdrant_storage:
-  redis_data:
+      # Cambiar a desarrollo
+      APP_ENV: development
+      DEBUG: "true"

@@ -1,11 +1,11 @@
-# 🌐 NetMind: Ecosistema Inteligente para Redes y Telecomunicaciones
+# 🔍 Pipe: Análisis Inteligente de Capturas Wireshark
 
-![NetMind Banner](https://img.shields.io/badge/NetMind-Agentic_AI-blue?style=for-the-badge&logo=openai)
+![Pipe Banner](https://img.shields.io/badge/Pipe-Wireshark_Analysis-blue?style=for-the-badge&logo=network)
 ![Status](https://img.shields.io/badge/Status-Production_Ready-green?style=for-the-badge)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688?style=for-the-badge&logo=fastapi&logoColor=white)
 
-**NetMind** es una solución de vanguardia basada en Agentes de IA diseñada específicamente para el sector de redes y telecomunicaciones. Combina la potencia de **LangGraph** para la orquestación de flujos complejos, **RAG** para la consulta de bases de conocimiento técnicas y herramientas nativas de diagnóstico de red.
+**Pipe** es una solución de vanguardia basada en Agentes de IA diseñada específicamente para el análisis de capturas Wireshark (.pcap/.pcapng). Combina la potencia de **LangGraph** para la orquestación de flujos complejos, **RAG** para la consulta de bases de conocimiento técnicas sobre protocolos de red y herramientas especializadas para análisis de tráfico, Band Steering y protocolos WiFi.
 
 ---
 
@@ -25,16 +25,16 @@
 
 | Herramienta | Descripción Técnica | Tecnología Base |
 | :--- | :--- | :--- |
-| **🧠 RAG Core** | Búsqueda semántica en documentos PDF indexados para respuestas técnicas sobre protocolos y estándares. | Qdrant + OpenAI Embeddings |
-| **🛠️ IP Network** | Ejecución de diagnósticos en tiempo real: Pings, Traceroutes y análisis de latencia comparativa. | Python Native Sockets |
-| **🔍 DNS Insight** | Resolución de registros (A, MX, TXT, SPF/DMARC) y auditoría de configuración de dominios. | DNSPython |
-| **⚖️ Supervisor** | Capa de razonamiento crítico que valida la precisión, el tono y la relevancia de cada respuesta. | LLM-based Evaluation |
+| **🧠 RAG Core** | Búsqueda semántica en documentos PDF indexados para respuestas técnicas sobre análisis de capturas Wireshark, protocolos WiFi y Band Steering. | Qdrant + OpenAI Embeddings |
+| **📦 Wireshark Analyzer** | Análisis profundo de archivos .pcap/.pcapng para identificar protocolos, eventos BTM, transiciones de banda y comportamiento de red. | Python + Scapy/Wireshark |
+| **🔄 Band Steering** | Análisis especializado de eventos de Band Steering, códigos de estado BTM y transiciones entre bandas 2.4GHz y 5GHz. | Protocol Analysis |
+| **⚖️ Supervisor** | Capa de razonamiento crítico que valida la precisión, el tono y la relevancia de cada respuesta sobre análisis de capturas. | LLM-based Evaluation |
 
 ---
 
 ## 🏗️ Arquitectura del Sistema
 
-NetMind implementa una arquitectura desacoplada y escalable, centrada en un motor de agentes con estado compartido.
+Pipe implementa una arquitectura desacoplada y escalable, centrada en un motor de agentes con estado compartido especializado en análisis de capturas Wireshark.
 
 ### Flujo Operativo del Agente
 El sistema utiliza un grafo cíclico de 5 nodos para garantizar que cada consulta sea procesada con rigor técnico:
@@ -81,8 +81,8 @@ graph TD
 ### Pasos de Desarrollo Rápido
 1.  Clonar y levantar el backend (desarrollo local):
     ```bash
-    git clone https://github.com/tu-repo/netmind.git
-    cd netmind/backend
+    git clone https://github.com/tu-repo/pipe.git
+    cd pipe/backend
     python -m venv venv
     venv\Scripts\activate   # Windows
     pip install -r requirements.txt

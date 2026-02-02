@@ -299,7 +299,7 @@ export const reportsService = {
    * @returns {Promise} - Lista de reportes resumidos
    */
   async getReports() {
-    const response = await apiClient.get('/reports')
+    const response = await apiClient.get('/reports/')
     return response.data
   },
 
@@ -320,6 +320,30 @@ export const reportsService = {
    */
   async deleteReport(analysisId) {
     const response = await apiClient.delete(`/reports/${analysisId}`)
+    return response.data
+  },
+
+  /**
+   * Descarga el archivo pcap original de un análisis
+   * @param {string} analysisId - ID del análisis
+   * @returns {Promise} - Blob del archivo
+   */
+  async downloadCapture(analysisId) {
+    const response = await apiClient.get(`/reports/${analysisId}/download`, {
+      responseType: 'blob',
+    })
+    return response.data
+  },
+
+  /**
+   * Descarga el PDF del reporte de un análisis
+   * @param {string} analysisId - ID del análisis
+   * @returns {Promise} - Blob del archivo HTML (que se puede convertir a PDF)
+   */
+  async downloadPDF(analysisId) {
+    const response = await apiClient.get(`/reports/${analysisId}/pdf`, {
+      responseType: 'blob',
+    })
     return response.data
   },
 }

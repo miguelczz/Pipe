@@ -1,7 +1,7 @@
 {
-  "name": "netmind",
+  "name": "pipe",
   "version": "1.0.0",
-  "description": "NetMind - Full stack application",
+  "description": "Pipe - Análisis inteligente de capturas Wireshark para Band Steering",
   "scripts": {
     "build": "bash build.sh",
     "heroku-postbuild": "npm run build"

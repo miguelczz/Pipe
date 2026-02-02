@@ -309,7 +309,7 @@ export function NetworkAnalysisPage() {
         }
     }, [result])
 
-    // Sincronizar savedSsid cuando cambian los metadatos o el resultado (para cuando se carga desde reportes)
+    // Sincronizar savedSsid y userClientMac cuando cambian los metadatos o el resultado (para cuando se carga desde reportes)
     // También verificar localStorage directamente para capturar cambios recientes
     React.useEffect(() => {
         // Siempre leer directamente de localStorage para obtener el valor más reciente
@@ -320,16 +320,22 @@ export function NetworkAnalysisPage() {
                 const meta = JSON.parse(savedMetadata)
                 if (meta?.ssid && meta.ssid.trim() !== '') {
                     setSavedSsid(meta.ssid)
-                    return
+                }
+                if (meta?.client_mac && meta.client_mac.trim() !== '') {
+                    setUserClientMac(meta.client_mac)
                 }
             }
             // 2. Si no está en metadatos, buscar en el resultado guardado
             const savedResult = localStorage.getItem('networkAnalysisResult')
             if (savedResult) {
                 const parsed = JSON.parse(savedResult)
-                if (parsed?.stats?.diagnostics?.user_metadata?.ssid) {
-                    setSavedSsid(parsed.stats.diagnostics.user_metadata.ssid)
-                    return
+                if (parsed?.stats?.diagnostics?.user_metadata) {
+                    if (parsed.stats.diagnostics.user_metadata.ssid) {
+                        setSavedSsid(parsed.stats.diagnostics.user_metadata.ssid)
+                    }
+                    if (parsed.stats.diagnostics.user_metadata.client_mac) {
+                        setUserClientMac(parsed.stats.diagnostics.user_metadata.client_mac)
+                    }
                 }
             }
         } catch (e) {
@@ -342,7 +348,29 @@ export function NetworkAnalysisPage() {
 
     // Inputs del usuario para ayudar a la identificación precisa
     const [userSsid, setUserSsid] = useState('')
-    const [userClientMac, setUserClientMac] = useState('')
+    const [userClientMac, setUserClientMac] = useState(() => {
+        try {
+            // Intentar obtener desde networkAnalysisFileMeta
+            const savedMetadata = localStorage.getItem('networkAnalysisFileMeta')
+            if (savedMetadata) {
+                const meta = JSON.parse(savedMetadata)
+                if (meta?.client_mac) {
+                    return meta.client_mac
+                }
+            }
+            // Si no está en metadatos, buscar en el resultado guardado
+            const savedResult = localStorage.getItem('networkAnalysisResult')
+            if (savedResult) {
+                const parsed = JSON.parse(savedResult)
+                if (parsed?.stats?.diagnostics?.user_metadata?.client_mac) {
+                    return parsed.stats.diagnostics.user_metadata.client_mac
+                }
+            }
+            return ''
+        } catch (e) {
+            return ''
+        }
+    })
 
     const handleSelectClick = () => {
         // Resetear el valor para permitir seleccionar el mismo archivo y que dispare onChange
@@ -380,7 +408,8 @@ export function NetworkAnalysisPage() {
         const meta = {
             name: file.name,
             size: file.size,
-            ssid: userSsid.trim() || ''
+            ssid: userSsid.trim() || '',
+            client_mac: userClientMac.trim() || ''
         }
         setFileMetadata(meta)
         setSavedSsid(userSsid.trim() || '')
@@ -405,21 +434,43 @@ export function NetworkAnalysisPage() {
 
             // Guardar en persistencia (con sanitización para evitar QuotaExceededError)
             setResult(res)
-            // Incluir SSID en los metadatos y en el resultado
+            // Incluir SSID y client_mac en los metadatos y en el resultado
             const ssidValue = userSsid.trim() || ''
+            const clientMacValue = userClientMac.trim() || ''
+            console.log('🔍 [ANALYSIS] Guardando SSID:', ssidValue, 'client_mac:', clientMacValue)
             const metaWithSsid = {
                 ...meta,
-                ssid: ssidValue
+                ssid: ssidValue,
+                client_mac: clientMacValue
             }
             setSavedSsid(ssidValue)
+            console.log('✅ [ANALYSIS] metaWithSsid:', metaWithSsid)
             try {
                 const sanitized = sanitizeResultForStorage(res)
-                // Guardar SSID también en el resultado para que esté disponible cuando se carga desde reportes
-                if (ssidValue && sanitized.stats?.diagnostics) {
+                // Guardar SSID y client_mac también en el resultado para que esté disponible cuando se carga desde reportes
+                console.log('🔍 [ANALYSIS] Antes de guardar en sanitized.stats.diagnostics.user_metadata')
+                console.log('🔍 [ANALYSIS] sanitized.stats:', sanitized.stats)
+                console.log('🔍 [ANALYSIS] sanitized.stats.diagnostics:', sanitized.stats?.diagnostics)
+                if (sanitized.stats?.diagnostics) {
                     if (!sanitized.stats.diagnostics.user_metadata) {
                         sanitized.stats.diagnostics.user_metadata = {}
+                        console.log('✅ [ANALYSIS] Creado user_metadata en sanitized.stats.diagnostics')
                     }
-                    sanitized.stats.diagnostics.user_metadata.ssid = ssidValue
+                    if (ssidValue) {
+                        sanitized.stats.diagnostics.user_metadata.ssid = ssidValue
+                        console.log('✅ [ANALYSIS] SSID guardado en sanitized:', ssidValue)
+                    } else {
+                        console.warn('⚠️ [ANALYSIS] SSID vacío, no se guarda')
+                    }
+                    if (clientMacValue) {
+                        sanitized.stats.diagnostics.user_metadata.client_mac = clientMacValue
+                        console.log('✅ [ANALYSIS] client_mac guardado en sanitized:', clientMacValue)
+                    } else {
+                        console.warn('⚠️ [ANALYSIS] client_mac vacío, no se guarda')
+                    }
+                    console.log('✅ [ANALYSIS] user_metadata final en sanitized:', sanitized.stats.diagnostics.user_metadata)
+                } else {
+                    console.error('❌ [ANALYSIS] sanitized.stats.diagnostics no existe!')
                 }
                 localStorage.setItem('networkAnalysisResult', JSON.stringify(sanitized))
                 localStorage.setItem('networkAnalysisFileMeta', JSON.stringify(metaWithSsid))
@@ -431,12 +482,17 @@ export function NetworkAnalysisPage() {
                         delete minimal.stats.diagnostics.wireshark_raw.sample
                         minimal.stats.diagnostics.wireshark_raw.storage_limited = true
                     }
-                    // Guardar SSID también en el resultado mínimo
-                    if (ssidValue && minimal.stats?.diagnostics) {
+                    // Guardar SSID y client_mac también en el resultado mínimo
+                    if (minimal.stats?.diagnostics) {
                         if (!minimal.stats.diagnostics.user_metadata) {
                             minimal.stats.diagnostics.user_metadata = {}
                         }
-                        minimal.stats.diagnostics.user_metadata.ssid = ssidValue
+                        if (ssidValue) {
+                            minimal.stats.diagnostics.user_metadata.ssid = ssidValue
+                        }
+                        if (clientMacValue) {
+                            minimal.stats.diagnostics.user_metadata.client_mac = clientMacValue
+                        }
                     }
                     localStorage.setItem('networkAnalysisResult', JSON.stringify(minimal))
                     localStorage.setItem('networkAnalysisFileMeta', JSON.stringify(metaWithSsid))
@@ -513,7 +569,7 @@ export function NetworkAnalysisPage() {
 
         // El título del documento influye en el nombre del archivo al guardar
         const originalTitle = document.title
-        document.title = `NetMind ${cleanName}`
+        document.title = `Pipe ${cleanName}`
 
         window.print()
         document.title = originalTitle
@@ -550,7 +606,7 @@ export function NetworkAnalysisPage() {
                         Sube un archivo de captura de red en formato 
                         <code className="px-1 py-0.5 rounded bg-dark-bg-secondary text-dark-accent-primary text-[11px] font-mono">
                             .pcap / .pcapng
-                        </code> y NetMind generará un análisis
+                        </code> y Pipe generará un análisis
                         detallado del tráfico observado usando inteligencia artificial.
 
                         
@@ -685,7 +741,7 @@ export function NetworkAnalysisPage() {
                             Analizando captura de red
                         </p>
                         <p className="text-sm text-dark-text-secondary max-w-md">
-                            NetMind está procesando tu archivo y generando un análisis detallado.
+                            Pipe está procesando tu archivo y generando un análisis detallado.
                             Esto puede tardar unos segundos dependiendo del tamaño del archivo.
                         </p>
                     </div>
@@ -711,11 +767,11 @@ export function NetworkAnalysisPage() {
                                         </h3>
                                     </div>
                                     <div className="space-y-2">
-                                        {(savedSsid || fileMetadata?.ssid || userSsid) && (
+                                        {(savedSsid || userSsid) && (
                                             <div className="flex justify-between items-center">
                                                 <p className="text-xs text-dark-text-muted">Red (SSID)</p>
-                                                <p className="text-sm font-medium text-dark-text-primary truncate max-w-[60%] text-right" title={savedSsid || fileMetadata?.ssid || userSsid}>
-                                                    {savedSsid || fileMetadata?.ssid || userSsid || 'N/A'}
+                                                <p className="text-sm font-medium text-dark-text-primary truncate max-w-[60%] text-right" title={savedSsid || userSsid}>
+                                                    {savedSsid || userSsid || 'N/A'}
                                                 </p>
                                             </div>
                                         )}
