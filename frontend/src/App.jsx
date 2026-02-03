@@ -12,14 +12,14 @@ function App() {
     <Router>
       <ChatProvider>
         <ToastProvider>
-          <Layout>
-            <Routes>
-              <Route path="/" element={<ChatPage />} />
-              <Route path="/files" element={<FilesPage />} />
-              <Route path="/network-analysis" element={<NetworkAnalysisPage />} />
-              <Route path="/reports" element={<ReportsPage />} />
-            </Routes>
-          </Layout>
+        <Layout>
+          <Routes>
+            <Route path="/" element={<ChatPage />} />
+            <Route path="/files" element={<FilesPage />} />
+            <Route path="/network-analysis" element={<NetworkAnalysisPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
+          </Routes>
+        </Layout>
         </ToastProvider>
       </ChatProvider>
     </Router>

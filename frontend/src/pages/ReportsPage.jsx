@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { reportsService } from '../services/api'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
@@ -15,16 +15,12 @@ import {
   ChevronRight, 
   History, 
   CheckCircle2, 
-  XCircle, 
   AlertCircle,
   Search,
   Filter,
   Folder,
   ChevronDown,
   Trash2,
-  Smartphone,
-  Cpu,
-  MoreVertical,
   ArrowRight,
   Download,
   CheckSquare,
@@ -53,13 +49,12 @@ export function ReportsPage() {
   const [showFilterPanel, setShowFilterPanel] = useState(false)
   const [selectedVendors, setSelectedVendors] = useState([])
   const [dateRange, setDateRange] = useState({ start: null, end: null })
-  const [showStats, setShowStats] = useState(false)
   const [openStatsMenu, setOpenStatsMenu] = useState(false)
   const [openSortMenu, setOpenSortMenu] = useState(false)
+  const [openSelectionMenu, setOpenSelectionMenu] = useState(false)
   const [stats, setStats] = useState(null)
   const [loadingStats, setLoadingStats] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
-  const [openExportMenu, setOpenExportMenu] = useState(false)
   const [viewMode, setViewMode] = useState(() => {
     const saved = localStorage.getItem('reports_view_mode')
     return saved || 'grid'
@@ -68,7 +63,6 @@ export function ReportsPage() {
   const [isDeleting, setIsDeleting] = useState(null)
   const [isDownloading, setIsDownloading] = useState(null)
   const [openDownloadMenu, setOpenDownloadMenu] = useState(null) // ID del reporte con menú abierto
-  const [isDeletingAll, setIsDeletingAll] = useState(false)
   const [isDeletingVendor, setIsDeletingVendor] = useState(null) // Vendor que se está eliminando
   const [isDeletingSelected, setIsDeletingSelected] = useState(false)
   const navigate = useNavigate()
@@ -84,12 +78,12 @@ export function ReportsPage() {
     deselectAll,
     toggleSelectionMode,
     isSelected,
-    getSelectedItems,
   } = useSelection(reports, 'id')
 
   useEffect(() => {
     fetchReports()
     // fetchStats se llama dentro de fetchReports, no duplicar aquí
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Mantener estadísticas sincronizadas con reportes
@@ -111,6 +105,33 @@ export function ReportsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reports.length]) // Solo depender de la longitud para evitar loops infinitos
+
+  const handleDeleteSelected = useCallback(async () => {
+    if (selectedIds.length === 0) return
+    
+    if (!window.confirm(`¿Estás seguro de que deseas eliminar ${selectedIds.length} reporte${selectedIds.length !== 1 ? 's' : ''} seleccionado${selectedIds.length !== 1 ? 's' : ''}?\n\nEsta acción no se puede deshacer.`)) return
+    
+    setIsDeletingSelected(true)
+    try {
+      const result = await reportsService.deleteMultipleReports(selectedIds)
+      // Actualizar lista local
+      setReports(prev => prev.filter(r => !selectedIds.includes(r.id)))
+      await fetchStats() // Actualizar estadísticas
+      showToast({ 
+        type: 'success', 
+        message: `Se eliminaron ${result.deleted || 0} reportes correctamente` 
+      })
+      deselectAll()
+    } catch (err) {
+      showToast({ 
+        type: 'error', 
+        message: err?.message || 'Error al intentar eliminar los reportes seleccionados' 
+      })
+    } finally {
+      setIsDeletingSelected(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIds, deselectAll, showToast]) // fetchStats se llama dentro pero no necesita estar en deps
 
   const calculateLocalStats = (reportsData) => {
     if (!reportsData || reportsData.length === 0) {
@@ -174,7 +195,11 @@ export function ReportsPage() {
         }
       }
     } catch (err) {
-      console.error('Error al cargar estadísticas:', err)
+      // Solo mostrar error en consola si no es un 404 (endpoint no disponible)
+      // El 404 es esperado si el endpoint no está implementado o no está disponible
+      if (err?.status !== 404) {
+        console.error('Error al cargar estadísticas:', err)
+      }
       // Si falla, usar estadísticas locales si hay reportes
       if (reports.length > 0) {
         const localStats = calculateLocalStats(reports)
@@ -193,19 +218,19 @@ export function ReportsPage() {
       if (openDownloadMenu && !event.target.closest('.download-menu-container')) {
         setOpenDownloadMenu(null)
       }
-      if (openExportMenu && !event.target.closest('.export-menu-container')) {
-        setOpenExportMenu(false)
-      }
       if (openStatsMenu && !event.target.closest('.stats-menu-container')) {
         setOpenStatsMenu(false)
       }
       if (openSortMenu && !event.target.closest('.sort-menu-container')) {
         setOpenSortMenu(false)
       }
+      if (openSelectionMenu && !event.target.closest('.selection-menu-container')) {
+        setOpenSelectionMenu(false)
+      }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [openDownloadMenu, openExportMenu, openStatsMenu, openSortMenu])
+  }, [openDownloadMenu, openStatsMenu, openSortMenu, openSelectionMenu])
 
   // Atajos de teclado globales
   useEffect(() => {
@@ -241,7 +266,7 @@ export function ReportsPage() {
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [selectionMode, selectedCount, selectAll, toggleSelectionMode])
+  }, [selectionMode, selectedCount, selectAll, toggleSelectionMode, handleDeleteSelected])
 
   const fetchReports = async () => {
     setLoading(true)
@@ -296,33 +321,6 @@ export function ReportsPage() {
     }
   }
 
-  const handleDeleteAll = async () => {
-    // Confirmación doble
-    const firstConfirm = window.confirm('⚠️ ADVERTENCIA: Esta acción eliminará TODOS los reportes del sistema.\n\n¿Estás completamente seguro?')
-    if (!firstConfirm) return
-    
-    const secondConfirm = window.confirm('⚠️ ÚLTIMA CONFIRMACIÓN\n\nEsta acción NO se puede deshacer. Todos los reportes serán eliminados permanentemente.\n\n¿Continuar?')
-    if (!secondConfirm) return
-    
-    setIsDeletingAll(true)
-    try {
-      const result = await reportsService.deleteAllReports()
-      setReports([])
-      await fetchStats() // Actualizar estadísticas
-      showToast({ 
-        type: 'success', 
-        message: `Se eliminaron ${result.deleted || 0} reportes correctamente` 
-      })
-    } catch (err) {
-      showToast({ 
-        type: 'error', 
-        message: err?.message || 'Error al intentar eliminar todos los reportes' 
-      })
-    } finally {
-      setIsDeletingAll(false)
-    }
-  }
-
   const handleDeleteVendor = async (e, vendor) => {
     e.stopPropagation()
     const vendorReports = groupedReports[vendor] || []
@@ -356,61 +354,183 @@ export function ReportsPage() {
     }
   }
 
-  const handleDeleteSelected = async () => {
-    if (selectedIds.length === 0) return
-    
-    if (!window.confirm(`¿Estás seguro de que deseas eliminar ${selectedIds.length} reporte${selectedIds.length !== 1 ? 's' : ''} seleccionado${selectedIds.length !== 1 ? 's' : ''}?\n\nEsta acción no se puede deshacer.`)) return
-    
-    setIsDeletingSelected(true)
-    try {
-      const result = await reportsService.deleteMultipleReports(selectedIds)
-      // Actualizar lista local
-      setReports(prev => prev.filter(r => !selectedIds.includes(r.id)))
-      await fetchStats() // Actualizar estadísticas
-      showToast({ 
-        type: 'success', 
-        message: `Se eliminaron ${result.deleted || 0} reportes correctamente` 
-      })
-      deselectAll()
-    } catch (err) {
-      showToast({ 
-        type: 'error', 
-        message: err?.message || 'Error al intentar eliminar los reportes seleccionados' 
-      })
-    } finally {
-      setIsDeletingSelected(false)
-    }
-  }
-
-  const handleExport = async (format = 'json') => {
+  const handleExport = async (format = 'html', specificIds = null) => {
     setIsExporting(true)
     try {
-      const idsToExport = selectionMode && selectedIds.length > 0 ? selectedIds : null
+      // Si se proporcionan IDs específicos, usar esos; sino, usar los seleccionados
+      const idsToExport = specificIds || (selectionMode && selectedIds.length > 0 ? selectedIds : null)
+      
+      console.log('📤 [EXPORT] Iniciando exportación:', { format, idsToExport, selectionMode, selectedIds })
+      
       const blob = await reportsService.exportReports(idsToExport, format)
       
-      // Crear URL temporal para descarga
-      const url = window.URL.createObjectURL(blob)
+      if (!blob) {
+        throw new Error('No se recibió ningún archivo del servidor')
+      }
+      
+      console.log('✅ [EXPORT] Blob recibido:', { 
+        size: blob.size, 
+        type: blob.type,
+        isBlob: blob instanceof Blob
+      })
+      
+      // Verificar que el blob tenga contenido válido
+      if (!blob || blob.size === 0) {
+        throw new Error('El archivo exportado está vacío')
+      }
+     
+      // Para HTML, usar el blob directamente
+      let blobToDownload = blob
+      
+      console.log('✅ [EXPORT] Blob final para descarga:', {
+        size: blobToDownload.size,
+        type: blobToDownload.type
+      })
+      
+      // Método de descarga mejorado: usar File System Access API si está disponible, sino fallback
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-')
+      const extension = 'html'
+      const filename = `reports_summary_${timestamp}.${extension}`
+      
+      // Intentar usar File System Access API (más confiable)
+      if ('showSaveFilePicker' in window) {
+        try {
+          console.log('💾 [EXPORT] Intentando usar File System Access API...')
+          const fileHandle = await window.showSaveFilePicker({
+            suggestedName: filename,
+            types: [{
+              description: 'HTML Files',
+              accept: {
+                'text/html': ['.html']
+              }
+            }]
+          })
+          
+          const writable = await fileHandle.createWritable()
+          await writable.write(blobToDownload)
+          await writable.close()
+          
+          console.log('✅ [EXPORT] Archivo guardado usando File System Access API')
+          
+          const message = idsToExport 
+            ? `Se exportaron ${idsToExport.length} reporte${idsToExport.length !== 1 ? 's' : ''} como resumen HTML`
+            : `Se exportaron todos los reportes como resumen HTML`
+          
+          showToast({ 
+            type: 'success', 
+            message 
+          })
+          return
+        } catch (fsError) {
+          // Si el usuario cancela, no es un error
+          if (fsError.name === 'AbortError') {
+            console.log('ℹ️ [EXPORT] Usuario canceló la descarga')
+            return
+          }
+          console.warn('⚠️ [EXPORT] File System Access API falló, usando método alternativo:', fsError)
+        }
+      }
+      
+      // Método alternativo: descarga tradicional mejorada
+      console.log('📥 [EXPORT] Usando método de descarga tradicional')
+      
+      // Crear el link de descarga con todos los atributos necesarios
+      const url = window.URL.createObjectURL(blobToDownload)
       const link = document.createElement('a')
       link.href = url
-      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-')
-      link.download = `reports_export_${timestamp}.${format}`
+      link.style.display = 'none'
+      link.download = filename
+      link.setAttribute('download', filename) // Asegurar atributo download
+      link.setAttribute('type', blobToDownload.type) // Agregar tipo MIME
+      
+      console.log('📥 [EXPORT] Preparando descarga:', { 
+        filename, 
+        url: url.substring(0, 50) + '...',
+        blobSize: blobToDownload.size,
+        blobType: blobToDownload.type
+      })
+      
+      // Agregar al DOM de forma más visible (aunque hidden)
+      link.style.position = 'fixed'
+      link.style.top = '-9999px'
+      link.style.left = '-9999px'
       document.body.appendChild(link)
+      
+      // Disparar la descarga de forma simple y directa (una sola vez)
+      console.log('🖱️ [EXPORT] Ejecutando descarga')
+      
+      // Simplemente hacer click en el link una sola vez
       link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
+      
+      console.log('✅ [EXPORT] Descarga iniciada')
+      
+      // Limpiar después de un breve delay para asegurar que la descarga se inicie
+      setTimeout(() => {
+        try {
+          if (link.parentNode) {
+            document.body.removeChild(link)
+          }
+          window.URL.revokeObjectURL(url)
+          console.log('🧹 [EXPORT] Limpieza completada')
+        } catch (cleanupError) {
+          console.warn('⚠️ [EXPORT] Error en limpieza (no crítico):', cleanupError)
+        }
+      }, 1000)
       
       const message = idsToExport 
-        ? `Se exportaron ${idsToExport.length} reportes en formato ${format.toUpperCase()}`
-        : `Se exportaron todos los reportes en formato ${format.toUpperCase()}`
+        ? `Se exportaron ${idsToExport.length} reporte${idsToExport.length !== 1 ? 's' : ''} como resumen HTML`
+        : `Se exportaron todos los reportes como resumen HTML`
       
       showToast({ 
         type: 'success', 
         message 
       })
     } catch (err) {
+      console.error('❌ [EXPORT] Error al exportar:', err)
+      console.error('❌ [EXPORT] Detalles del error:', {
+        message: err?.message,
+        status: err?.status,
+        data: err?.data,
+        response: err?.response,
+        stack: err?.stack
+      })
+      
+      let errorMessage = 'Error al exportar los reportes'
+      
+      // Intentar leer el mensaje de error del blob
+      if (err?.data instanceof Blob) {
+        try {
+          const text = await err.data.text()
+          const errorData = JSON.parse(text)
+          errorMessage = errorData.detail || errorData.message || errorMessage
+        } catch (parseError) {
+          // Si no se puede parsear, usar el mensaje del error
+          if (err?.message) {
+            errorMessage = err.message
+          }
+        }
+      } else if (err?.response?.data) {
+        // Si es un blob de error, intentar leerlo
+        if (err.response.data instanceof Blob) {
+          try {
+            const text = await err.response.data.text()
+            const errorData = JSON.parse(text)
+            errorMessage = errorData.detail || errorData.message || errorMessage
+          } catch (parseError) {
+            errorMessage = `Error ${err.response.status}: ${err.response.statusText || err.message || 'Error desconocido'}`
+          }
+        } else {
+          errorMessage = err.response.data.detail || err.response.data.message || errorMessage
+        }
+      } else if (err?.message) {
+        errorMessage = err.message
+      } else if (err?.status) {
+        errorMessage = `Error ${err.status}: ${errorMessage}`
+      }
+      
       showToast({ 
         type: 'error', 
-        message: err?.message || 'Error al exportar los reportes' 
+        message: errorMessage
       })
     } finally {
       setIsExporting(false)
@@ -446,28 +566,49 @@ export function ReportsPage() {
     }
   }
 
-  const handleDownloadPDF = async (e, reportId, filename) => {
+  const handleDownloadPDF = async (e, reportId) => {
     e.stopPropagation()
     setOpenDownloadMenu(null)
     setIsDownloading(reportId)
     try {
+      // Descargar el PDF persistido directamente desde el backend
       const blob = await reportsService.downloadPDF(reportId)
+      
+      // Obtener información del reporte para el nombre del archivo
+      const report = reports.find(r => r.id === reportId)
+      const fileName = report?.filename || `report_${reportId}`
+      const cleanName = fileName.split('.')[0].replace(/_/g, ' ').trim()
+      const pdfFilename = `Pipe_${cleanName}.pdf`
+      
       // Crear URL temporal para descarga
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      // Usar el nombre del archivo del reporte o un nombre por defecto
-      const baseName = filename?.replace(/\.(pcap|pcapng)$/i, '') || `report_${reportId}`
-      link.download = `${baseName}.html`
-      // Abrir en nueva ventana para que el usuario pueda usar "Guardar como PDF" del navegador
-      link.target = '_blank'
+      link.download = pdfFilename
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
       window.URL.revokeObjectURL(url)
+      
+      showToast({
+        type: 'success',
+        message: 'PDF descargado correctamente'
+      })
     } catch (err) {
       const errorMessage = err?.response?.data?.detail || err?.message || 'Error al descargar el PDF'
-      alert(`Error al descargar el PDF: ${errorMessage}`)
+      
+      // Si el PDF no existe, informar al usuario que debe exportarlo primero
+      if (err?.response?.status === 404 || errorMessage.includes('no encontrado')) {
+        showToast({
+          type: 'warning',
+          message: 'PDF no encontrado. Por favor, exporta el PDF primero desde la página de análisis.'
+        })
+      } else {
+        showToast({
+          type: 'error',
+          message: `Error al descargar el PDF: ${errorMessage}`
+        })
+      }
     } finally {
       setIsDownloading(null)
     }
@@ -482,7 +623,7 @@ export function ReportsPage() {
       await handleDownloadCapture(e, reportId, filename)
       // Pequeño delay para que el navegador procese la primera descarga
       await new Promise(resolve => setTimeout(resolve, 500))
-      await handleDownloadPDF(e, reportId, filename)
+      await handleDownloadPDF(e, reportId)
     } catch (err) {
       const errorMessage = err?.response?.data?.detail || err?.message || 'Error al descargar los archivos'
       alert(`Error al descargar los archivos: ${errorMessage}`)
@@ -601,7 +742,7 @@ export function ReportsPage() {
     
     // Búsqueda por MAC (formato común: XX:XX:XX:XX:XX:XX o XXXXXXXXXXXX)
     const macPattern = /^([0-9a-f]{2}[:-]?){5}([0-9a-f]{2})$/i
-    const isMacSearch = macPattern.test(term.replace(/[:\-]/g, ''))
+    macPattern.test(term.replace(/[:-]/g, ''))
     
     // Si parece una búsqueda MAC, buscar en el detalle del reporte
     // Por ahora solo buscamos en campos básicos, pero esto se puede expandir
@@ -618,26 +759,30 @@ export function ReportsPage() {
       let comparison = 0
       
       switch (field) {
-        case 'date':
+        case 'date': {
           const dateA = new Date(a.timestamp || 0).getTime()
           const dateB = new Date(b.timestamp || 0).getTime()
           comparison = dateA - dateB
           break
-        case 'name':
+        }
+        case 'name': {
           const nameA = (a.filename || '').toLowerCase()
           const nameB = (b.filename || '').toLowerCase()
           comparison = nameA.localeCompare(nameB)
           break
-        case 'vendor':
+        }
+        case 'vendor': {
           const vendorA = (a.vendor || '').toLowerCase()
           const vendorB = (b.vendor || '').toLowerCase()
           comparison = vendorA.localeCompare(vendorB)
           break
-        case 'verdict':
+        }
+        case 'verdict': {
           const verdictA = (a.verdict || '').toUpperCase()
           const verdictB = (b.verdict || '').toUpperCase()
           comparison = verdictA.localeCompare(verdictB)
           break
+        }
         default:
           return 0
       }
@@ -690,7 +835,8 @@ export function ReportsPage() {
       groups[vendor].push(report)
       return groups
     }, {})
-  }, [reports, searchTerm, statusFilter, sortBy, selectedVendors, dateRange])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reports, searchTerm, statusFilter, sortBy, selectedVendors, dateRange]) // sortReports es estable y no necesita estar en deps
 
   // Obtener lista única de vendors para el filtro
   const availableVendors = useMemo(() => {
@@ -710,21 +856,35 @@ export function ReportsPage() {
 
   const formatDate = (dateStr) => {
     if (!dateStr) return 'N/A'
+    
+    // Crear fecha y convertir a zona horaria de Bogotá (America/Bogota, UTC-5)
     const date = new Date(dateStr)
-    const d = String(date.getDate()).padStart(2, '0')
-    const m = String(date.getMonth() + 1).padStart(2, '0')
-    const y = date.getFullYear()
     
-    // Formato 12 horas con AM/PM
-    let h = date.getHours()
-    const ampm = h >= 12 ? 'PM' : 'AM'
-    h = h % 12
-    h = h ? h : 12 // 0 debería ser 12
-    const hours = String(h).padStart(2, '0')
-    const min = String(date.getMinutes()).padStart(2, '0')
-    const s = String(date.getSeconds()).padStart(2, '0')
+    // Usar Intl.DateTimeFormat para obtener la fecha en hora de Bogotá
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Bogota',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
+    })
     
-    return `${d}/${m}/${y} ${hours}:${min}:${s} ${ampm}`
+    // Obtener las partes de la fecha en hora de Bogotá
+    const parts = formatter.formatToParts(date)
+    
+    const year = parts.find(p => p.type === 'year')?.value || ''
+    const month = parts.find(p => p.type === 'month')?.value || ''
+    const day = parts.find(p => p.type === 'day')?.value || ''
+    const hour = parts.find(p => p.type === 'hour')?.value || ''
+    const minute = parts.find(p => p.type === 'minute')?.value || ''
+    const second = parts.find(p => p.type === 'second')?.value || ''
+    const dayPeriod = parts.find(p => p.type === 'dayPeriod')?.value || ''
+    
+    // Formatear en formato DD/MM/YYYY HH:MM:SS AM/PM
+    return `${day}/${month}/${year} ${hour}:${minute}:${second} ${dayPeriod.toUpperCase()}`
   }
 
   return (
@@ -740,86 +900,104 @@ export function ReportsPage() {
             </h1>
           </div>
 
-          {/* Barra Horizontal con todas las funcionalidades */}
-          <div className="flex flex-wrap items-center gap-3">
-          {/* Búsqueda con espaciado */}
-          <div className="relative w-72 flex-shrink-0 mr-4">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-text-muted" />
-            <input
-              type="text"
-              placeholder="Buscar..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-dark-bg-secondary border border-dark-border-primary/30 rounded-xl py-2 pl-9 pr-3 text-sm text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary/50 transition-all placeholder:text-dark-text-muted/60"
-            />
+        {/* Chips de Estado - Filtros y Orden Activos */}
+        {(statusFilter !== 'ALL' || selectedVendors.length > 0 || dateRange.start || dateRange.end || sortBy !== 'date_desc') && (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {(statusFilter !== 'ALL' || selectedVendors.length > 0 || dateRange.start || dateRange.end) && (
+              <div className="flex items-center gap-1.5 bg-dark-bg-secondary/60 px-2.5 py-1 rounded-lg border border-dark-border-primary/20">
+                <Filter className="w-3 h-3 text-dark-text-muted" />
+                <span className="text-dark-text-muted">Filtros activos:</span>
+                <span className="text-dark-text-primary font-medium">
+                  {selectedVendors.length + (dateRange.start ? 1 : 0) + (dateRange.end ? 1 : 0) + (statusFilter !== 'ALL' ? 1 : 0)}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Barra Horizontal con todas las funcionalidades */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Grupo 1: Acciones de Selección */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Menú de Selección */}
+            {reports.length > 0 && (
+              <div className="relative selection-menu-container">
+                <Button
+                  variant={selectionMode ? 'primary' : 'secondary'}
+                  size="sm"
+                  onClick={() => {
+                    if (selectionMode) {
+                      toggleSelectionMode()
+                    } else {
+                      setOpenSelectionMenu(!openSelectionMenu)
+                    }
+                  }}
+                  className="whitespace-nowrap"
+                >
+                  {selectionMode ? (
+                    <>
+                      <X className="w-4 h-4 mr-1.5" />
+                      Salir
+                    </>
+                  ) : (
+                    <>
+                      <CheckSquare className="w-4 h-4 mr-1.5" />
+                      Seleccionar
+                    </>
+                  )}
+                </Button>
+              {!selectionMode && openSelectionMenu && (
+                <div className="absolute right-0 top-full mt-1.5 bg-dark-surface-primary border border-dark-border-primary/40 rounded-lg shadow-gemini z-[100] min-w-[200px] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                  <button
+                    onClick={() => {
+                      toggleSelectionMode()
+                      setOpenSelectionMenu(false)
+                    }}
+                    className="w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-all duration-150 ease-out flex items-center gap-2 active:scale-[0.98]"
+                  >
+                    <CheckSquare className="w-4 h-4 text-dark-accent-primary" />
+                    <span>Activar Selección</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      toggleSelectionMode()
+                      selectAll()
+                      setOpenSelectionMenu(false)
+                    }}
+                    className="w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-colors flex items-center gap-2 border-t border-dark-border-primary/20"
+                  >
+                    <CheckSquare className="w-4 h-4 text-green-400" />
+                    <span>Seleccionar Todos</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           </div>
 
-
-          {/* Toggle Modo Selección */}
-          {reports.length > 0 && (
-            <Button
-              variant={selectionMode ? 'primary' : 'secondary'}
-              size="sm"
-              onClick={toggleSelectionMode}
-              className="whitespace-nowrap"
-            >
-              {selectionMode ? (
-                <>
-                  <X className="w-4 h-4 mr-1.5" />
-                  Salir
-                </>
-              ) : (
-                <>
-                  <CheckSquare className="w-4 h-4 mr-1.5" />
-                  Seleccionar
-                </>
-              )}
-            </Button>
-          )}
-
-          {/* Botón Eliminar Todo */}
-          {!selectionMode && reports.length > 0 && (
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={handleDeleteAll}
-              disabled={isDeletingAll || loading}
-              className="whitespace-nowrap"
-            >
-              {isDeletingAll ? (
-                <>
-                  <Loading size="xs" className="mr-1.5" />
-                  Eliminando...
-                </>
-              ) : (
-                <>
-                  <Trash2 className="w-4 h-4 mr-1.5" />
-                  Eliminar Todo
-                </>
-              )}
-            </Button>
-          )}
-
-          {/* Botón Ordenar (Menú Desplegable) */}
-          {reports.length > 0 && (
-            <div className="relative sort-menu-container">
-              <Button
-                variant={openSortMenu ? 'primary' : 'secondary'}
-                size="sm"
-                onClick={() => setOpenSortMenu(!openSortMenu)}
-                className="whitespace-nowrap"
-              >
-                <ArrowUpDown className="w-4 h-4 mr-1.5" />
-                Ordenar
-              </Button>
+          {/* Grupo 2: Vista y Datos (Ordenar, Estadísticas, Filtros) */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Botón Ordenar (Menú Desplegable) */}
+            {reports.length > 0 && (
+              <div className="relative sort-menu-container">
+                <Button
+                  variant={openSortMenu ? 'primary' : 'secondary'}
+                  size="sm"
+                  onClick={() => setOpenSortMenu(!openSortMenu)}
+                  className="whitespace-nowrap"
+                >
+                  <ArrowUpDown className="w-4 h-4 mr-1.5" />
+                  Ordenar
+                </Button>
               {openSortMenu && (
-                <div className="absolute right-0 top-full mt-1.5 bg-dark-surface-primary border border-dark-border-primary/40 rounded-lg shadow-gemini z-[100] min-w-[180px] overflow-hidden">
+                <div className="absolute right-0 top-full mt-1.5 bg-dark-surface-primary border border-dark-border-primary/40 rounded-lg shadow-gemini z-[100] min-w-[180px] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                   <button
                     onClick={() => {
                       setSortBy('date_desc')
                       setOpenSortMenu(false)
                     }}
-                    className={`w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-colors flex items-center gap-2 ${
+                    className={`w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-all duration-150 ease-out flex items-center gap-2 active:scale-[0.98] ${
                       sortBy === 'date_desc' ? 'bg-dark-bg-secondary' : ''
                     }`}
                   >
@@ -831,7 +1009,7 @@ export function ReportsPage() {
                       setSortBy('date_asc')
                       setOpenSortMenu(false)
                     }}
-                    className={`w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-colors flex items-center gap-2 border-t border-dark-border-primary/20 ${
+                    className={`w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-all duration-150 ease-out flex items-center gap-2 border-t border-dark-border-primary/20 active:scale-[0.98] ${
                       sortBy === 'date_asc' ? 'bg-dark-bg-secondary' : ''
                     }`}
                   >
@@ -843,7 +1021,7 @@ export function ReportsPage() {
                       setSortBy('name_asc')
                       setOpenSortMenu(false)
                     }}
-                    className={`w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-colors flex items-center gap-2 border-t border-dark-border-primary/20 ${
+                    className={`w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-all duration-150 ease-out flex items-center gap-2 border-t border-dark-border-primary/20 active:scale-[0.98] ${
                       sortBy === 'name_asc' ? 'bg-dark-bg-secondary' : ''
                     }`}
                   >
@@ -855,7 +1033,7 @@ export function ReportsPage() {
                       setSortBy('name_desc')
                       setOpenSortMenu(false)
                     }}
-                    className={`w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-colors flex items-center gap-2 border-t border-dark-border-primary/20 ${
+                    className={`w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-all duration-150 ease-out flex items-center gap-2 border-t border-dark-border-primary/20 active:scale-[0.98] ${
                       sortBy === 'name_desc' ? 'bg-dark-bg-secondary' : ''
                     }`}
                   >
@@ -867,7 +1045,7 @@ export function ReportsPage() {
                       setSortBy('vendor_asc')
                       setOpenSortMenu(false)
                     }}
-                    className={`w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-colors flex items-center gap-2 border-t border-dark-border-primary/20 ${
+                    className={`w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-all duration-150 ease-out flex items-center gap-2 border-t border-dark-border-primary/20 active:scale-[0.98] ${
                       sortBy === 'vendor_asc' ? 'bg-dark-bg-secondary' : ''
                     }`}
                   >
@@ -879,7 +1057,7 @@ export function ReportsPage() {
                       setSortBy('vendor_desc')
                       setOpenSortMenu(false)
                     }}
-                    className={`w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-colors flex items-center gap-2 border-t border-dark-border-primary/20 ${
+                    className={`w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-all duration-150 ease-out flex items-center gap-2 border-t border-dark-border-primary/20 active:scale-[0.98] ${
                       sortBy === 'vendor_desc' ? 'bg-dark-bg-secondary' : ''
                     }`}
                   >
@@ -891,7 +1069,7 @@ export function ReportsPage() {
                       setSortBy('verdict_asc')
                       setOpenSortMenu(false)
                     }}
-                    className={`w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-colors flex items-center gap-2 border-t border-dark-border-primary/20 ${
+                    className={`w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-all duration-150 ease-out flex items-center gap-2 border-t border-dark-border-primary/20 active:scale-[0.98] ${
                       sortBy === 'verdict_asc' ? 'bg-dark-bg-secondary' : ''
                     }`}
                   >
@@ -903,7 +1081,7 @@ export function ReportsPage() {
                       setSortBy('verdict_desc')
                       setOpenSortMenu(false)
                     }}
-                    className={`w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-colors flex items-center gap-2 border-t border-dark-border-primary/20 ${
+                    className={`w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-all duration-150 ease-out flex items-center gap-2 border-t border-dark-border-primary/20 active:scale-[0.98] ${
                       sortBy === 'verdict_desc' ? 'bg-dark-bg-secondary' : ''
                     }`}
                   >
@@ -935,100 +1113,72 @@ export function ReportsPage() {
             </div>
           )}
 
-          {/* Botón Filtros Avanzados */}
-          <Button
-            variant={showFilterPanel || selectedVendors.length > 0 || dateRange.start || dateRange.end || statusFilter !== 'ALL' ? 'primary' : 'secondary'}
-            size="sm"
-            onClick={() => setShowFilterPanel(!showFilterPanel)}
-            className="whitespace-nowrap"
-          >
-            <Filter className="w-4 h-4 mr-1.5" />
-            Filtros
-            {(selectedVendors.length > 0 || dateRange.start || dateRange.end || statusFilter !== 'ALL') && (
-              <span className="ml-1.5 bg-white/20 px-1.5 py-0.5 rounded text-xs">
-                {selectedVendors.length + (dateRange.start ? 1 : 0) + (dateRange.end ? 1 : 0) + (statusFilter !== 'ALL' ? 1 : 0)}
-              </span>
-            )}
-          </Button>
-
-          {/* Toggle Vista Grid/Lista */}
-          {reports.length > 0 && (
-            <div className="flex bg-dark-bg-secondary/50 rounded-xl p-1 border border-dark-border-primary/20">
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`p-2 rounded-lg transition-all ${
-                  viewMode === 'grid'
-                    ? 'bg-dark-accent-primary text-white'
-                    : 'text-dark-text-muted hover:text-dark-text-primary'
-                }`}
-                title="Vista Grid"
-              >
-                <Grid3x3 className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setViewMode('list')}
-                className={`p-2 rounded-lg transition-all ${
-                  viewMode === 'list'
-                    ? 'bg-dark-accent-primary text-white'
-                    : 'text-dark-text-muted hover:text-dark-text-primary'
-                }`}
-                title="Vista Lista"
-              >
-                <List className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-
-          {/* Botón Exportar */}
-          {!selectionMode && reports.length > 0 && (
-            <div className="relative export-menu-container">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setOpenExportMenu(!openExportMenu)}
-                disabled={isExporting}
-                className="whitespace-nowrap"
-              >
-                {isExporting ? (
-                  <>
-                    <Loading size="xs" className="mr-1.5" />
-                    Exportando...
-                  </>
-                ) : (
-                  <>
-                    <FileDown className="w-4 h-4 mr-1.5" />
-                    Exportar
-                  </>
-                )}
-              </Button>
-              {openExportMenu && (
-                <div className="absolute right-0 top-full mt-1.5 bg-dark-surface-primary border border-dark-border-primary/40 rounded-lg shadow-gemini z-50 min-w-[160px] overflow-hidden">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleExport('json')
-                      setOpenExportMenu(false)
-                    }}
-                    className="w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-colors flex items-center gap-2"
-                  >
-                    <FileDown className="w-4 h-4 text-blue-400" />
-                    <span>Exportar JSON</span>
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleExport('csv')
-                      setOpenExportMenu(false)
-                    }}
-                    className="w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-colors flex items-center gap-2 border-t border-dark-border-primary/20"
-                  >
-                    <FileDown className="w-4 h-4 text-green-400" />
-                    <span>Exportar CSV</span>
-                  </button>
-                </div>
+            {/* Botón Filtros Avanzados */}
+            <Button
+              variant={showFilterPanel || selectedVendors.length > 0 || dateRange.start || dateRange.end || statusFilter !== 'ALL' ? 'primary' : 'secondary'}
+              size="sm"
+              onClick={() => setShowFilterPanel(!showFilterPanel)}
+              className="whitespace-nowrap"
+            >
+              <Filter className="w-4 h-4 mr-1.5" />
+              Filtros
+              {(selectedVendors.length > 0 || dateRange.start || dateRange.end || statusFilter !== 'ALL') && (
+                <span className="ml-1.5 bg-white/20 px-1.5 py-0.5 rounded text-xs">
+                  {selectedVendors.length + (dateRange.start ? 1 : 0) + (dateRange.end ? 1 : 0) + (statusFilter !== 'ALL' ? 1 : 0)}
+                </span>
               )}
-            </div>
-          )}
+            </Button>
+          </div>
+
+          {/* Grupo 3: Salida (Exportar, Vista) */}
+          <div className="flex flex-wrap items-center gap-2">
+
+                {/* Toggle Vista Grid/Lista */}
+                {reports.length > 0 && (
+                  <div className={`flex bg-dark-bg-secondary/50 rounded-xl p-1 border transition-all ${
+                    viewMode === 'grid' 
+                      ? 'border-dark-accent-primary/40 shadow-gemini-sm' 
+                      : viewMode === 'list'
+                      ? 'border-dark-accent-primary/40 shadow-gemini-sm'
+                      : 'border-dark-border-primary/20'
+                  }`}>
+                    <button
+                      onClick={() => setViewMode('grid')}
+                      className={`p-1.5 rounded-lg transition-all ${
+                        viewMode === 'grid'
+                          ? 'bg-dark-accent-primary text-white shadow-sm'
+                          : 'text-dark-text-muted hover:text-dark-text-primary hover:bg-dark-bg-secondary/50'
+                      }`}
+                      title="Vista Grid"
+                    >
+                      <Grid3x3 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setViewMode('list')}
+                      className={`p-1.5 rounded-lg transition-all ${
+                        viewMode === 'list'
+                          ? 'bg-dark-accent-primary text-white shadow-sm'
+                          : 'text-dark-text-muted hover:text-dark-text-primary hover:bg-dark-bg-secondary/50'
+                      }`}
+                      title="Vista Lista"
+                    >
+                      <List className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+          {/* Búsqueda a la derecha */}
+          <div className="relative w-72 flex-shrink-0 ml-auto">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-text-muted" />
+            <input
+              type="text"
+              placeholder="Buscar..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-dark-bg-secondary border border-dark-border-primary/30 rounded-xl py-1.5 pl-9 pr-3 text-sm text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary/50 transition-all placeholder:text-dark-text-muted/60"
+            />
+          </div>
         </div>
       </div>
 
@@ -1036,7 +1186,7 @@ export function ReportsPage() {
       <div className=" w-full min-w-0 space-y-6 mt-12">
         {/* Panel de Filtros Avanzados */}
         {showFilterPanel && (
-          <div>
+          <div className="animate-in fade-in slide-in-from-top-2 duration-300 ease-out">
             <FilterPanel
               isOpen={showFilterPanel}
               onClose={() => setShowFilterPanel(false)}
@@ -1120,53 +1270,31 @@ export function ReportsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {/* Menú de Exportación */}
-                    <div className="relative export-menu-container">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => setOpenExportMenu(!openExportMenu)}
-                        disabled={isExporting}
-                      >
-                        {isExporting ? (
-                          <>
-                            <Loading size="xs" className="mr-2" />
-                            Exportando...
-                          </>
-                        ) : (
-                          <>
-                            <FileDown className="w-4 h-4 mr-2" />
-                            Exportar ({selectedCount})
-                          </>
-                        )}
-                      </Button>
-                      {openExportMenu && (
-                        <div className="absolute right-0 top-full mt-1.5 bg-dark-surface-primary border border-dark-border-primary/40 rounded-lg shadow-gemini z-50 min-w-[160px] overflow-hidden">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleExport('json')
-                              setOpenExportMenu(false)
-                            }}
-                            className="w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-colors flex items-center gap-2"
-                          >
-                            <FileDown className="w-4 h-4 text-blue-400" />
-                            <span>Exportar JSON</span>
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleExport('csv')
-                              setOpenExportMenu(false)
-                            }}
-                            className="w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-colors flex items-center gap-2 border-t border-dark-border-primary/20"
-                          >
-                            <FileDown className="w-4 h-4 text-green-400" />
-                            <span>Exportar CSV</span>
-                          </button>
-                        </div>
+                    {/* Botón de Exportación Directo */}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          await handleExport('html')
+                        } catch (error) {
+                          console.error('Error en handleExport HTML:', error)
+                        }
+                      }}
+                      disabled={isExporting}
+                    >
+                      {isExporting ? (
+                        <>
+                          <Loading size="xs" className="mr-2" />
+                          Exportando...
+                        </>
+                      ) : (
+                        <>
+                          <FileDown className="w-4 h-4 mr-2" />
+                          Exportar Resumen ({selectedCount})
+                        </>
                       )}
-                    </div>
+                    </Button>
                     
                     <Button
                       variant="danger"
@@ -1194,6 +1322,31 @@ export function ReportsPage() {
             {Object.entries(groupedReports).map(([vendor, vendorReports]) => {
               const isOpen = expandedVendors[vendor]
               
+              // Calcular estado de selección para esta marca
+              const vendorReportIds = vendorReports.map(r => r.id)
+              const selectedVendorReports = vendorReportIds.filter(id => isSelected(id))
+              const allSelected = selectedVendorReports.length === vendorReportIds.length && vendorReportIds.length > 0
+              const someSelected = selectedVendorReports.length > 0 && selectedVendorReports.length < vendorReportIds.length
+              
+              const handleToggleVendorSelection = (e) => {
+                e.stopPropagation()
+                if (allSelected) {
+                  // Deseleccionar todos los reportes de esta marca
+                  vendorReportIds.forEach(id => {
+                    if (isSelected(id)) {
+                      toggleSelection(id)
+                    }
+                  })
+                } else {
+                  // Seleccionar todos los reportes de esta marca
+                  vendorReportIds.forEach(id => {
+                    if (!isSelected(id)) {
+                      toggleSelection(id)
+                    }
+                  })
+                }
+              }
+              
               return (
                 <div key={vendor} className="space-y-3 w-full">
                   {/* Folder Header */}
@@ -1208,8 +1361,30 @@ export function ReportsPage() {
                       onClick={() => toggleVendor(vendor)}
                       className="flex items-center gap-4 flex-1 cursor-pointer"
                     >
-                      <div className={`p-2 rounded-lg transition-colors ${isOpen ? 'bg-dark-accent-primary text-white' : 'bg-dark-bg-secondary text-dark-accent-primary'}`}>
-                        <Folder className="w-5 h-5 flex-shrink-0" />
+                      {/* Checkbox para seleccionar todos los reportes de esta marca */}
+                      {selectionMode && (
+                        <button
+                          onClick={handleToggleVendorSelection}
+                          className="flex-shrink-0"
+                          title={allSelected ? 'Deseleccionar todos' : 'Seleccionar todos'}
+                        >
+                          {allSelected ? (
+                            <CheckSquare className="w-5 h-5 text-dark-accent-primary" />
+                          ) : someSelected ? (
+                            <div className="relative">
+                              <Square className="w-5 h-5 text-dark-text-muted" />
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="w-3 h-0.5 bg-dark-accent-primary"></div>
+                              </div>
+                            </div>
+                          ) : (
+                            <Square className="w-5 h-5 text-dark-text-muted hover:text-dark-text-primary transition-colors" />
+                          )}
+                        </button>
+                      )}
+                      
+                      <div className={`p-2 rounded-lg transition-all duration-200 ease-out ${isOpen ? 'bg-dark-accent-primary text-white scale-110' : 'bg-dark-bg-secondary text-dark-accent-primary hover:scale-105'}`}>
+                        <Folder className={`w-5 h-5 flex-shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-0' : 'rotate-[-15deg]'}`} />
                       </div>
                       <div>
                         <h2 className="text-lg font-bold text-dark-text-primary flex items-center gap-2 uppercase tracking-wide">
@@ -1236,22 +1411,25 @@ export function ReportsPage() {
                       </button>
                       <button
                         onClick={() => toggleVendor(vendor)}
-                        className="p-1 text-dark-text-muted hover:text-dark-text-primary transition-colors"
+                        className="p-1 text-dark-text-muted hover:text-dark-text-primary transition-all duration-200 ease-out hover:scale-110 active:scale-95"
                       >
-                        {isOpen ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                        {isOpen ? <ChevronDown className="w-5 h-5 transition-transform duration-200" /> : <ChevronRight className="w-5 h-5 transition-transform duration-200" />}
                       </button>
                     </div>
                   </div>
 
                   {/* Folder Content (Files) */}
                   {isOpen && (
-                    <div className={`w-full min-w-0 ${openDownloadMenu ? 'overflow-visible' : 'overflow-hidden'}`}>
+                    <div className={`w-full min-w-0 transition-all duration-300 ease-out ${openDownloadMenu ? 'overflow-visible' : 'overflow-hidden'}`}>
                       {viewMode === 'grid' ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3 pl-0 md:pl-2 w-full min-w-0">
-                          {vendorReports.map((report) => (
+                          {vendorReports.map((report, index) => (
                             <Card 
                           key={report.id} 
-                          className={`relative group p-5 hover:border-dark-accent-primary/40 bg-dark-surface-primary/50 hover:bg-dark-surface-primary border-dark-border-primary/20 transition-all duration-300 hover:shadow-gemini-sm ${isDeleting === report.id ? 'opacity-50 pointer-events-none' : ''} ${selectionMode ? 'cursor-default' : 'cursor-pointer'} ${openDownloadMenu === report.id ? 'overflow-visible' : ''}`}
+                          className={`relative group p-5 hover:border-dark-accent-primary/40 bg-dark-surface-primary/50 hover:bg-dark-surface-primary border-dark-border-primary/20 transition-all duration-300 ease-out hover:shadow-gemini-sm hover:scale-[1.02] ${isDeleting === report.id ? 'opacity-50 pointer-events-none' : ''} ${selectionMode ? 'cursor-default' : 'cursor-pointer'} ${openDownloadMenu === report.id ? 'overflow-visible' : ''}`}
+                          style={{ 
+                            animation: `fadeInUp 0.3s ease-out ${index * 30}ms both`
+                          }}
                           onClick={() => {
                             if (selectionMode) {
                               toggleSelection(report.id)
@@ -1290,7 +1468,7 @@ export function ReportsPage() {
                                   </button>
                                 )}
                                 <div className="flex-1 min-w-0">
-                                  <h3 className="text-base font-semibold text-dark-text-primary truncate leading-tight group-hover:text-dark-accent-primary transition-colors">
+                                  <h3 className="text-base font-semibold text-dark-text-primary truncate leading-tight group-hover:text-dark-accent-primary transition-colors duration-150 ease-out">
                                     {report.model || 'Dispositivo Desconocido'}
                                   </h3>
                                   <div className="flex items-center gap-1.5 text-xs text-dark-text-muted mt-1.5">
@@ -1312,7 +1490,7 @@ export function ReportsPage() {
                                       e.stopPropagation()
                                       setOpenDownloadMenu(openDownloadMenu === report.id ? null : report.id)
                                     }}
-                                    className="p-1.5 rounded-md text-dark-text-muted hover:bg-blue-500/15 hover:text-blue-400 transition-all opacity-0 group-hover:opacity-100"
+                                    className="p-1.5 rounded-md text-dark-text-muted hover:bg-blue-500/15 hover:text-blue-400 transition-all duration-150 ease-out opacity-0 group-hover:opacity-100 hover:scale-110 active:scale-95"
                                     title="Opciones de descarga"
                                   >
                                     {isDownloading === report.id ? <Loading size="xs" /> : <Download className="w-3.5 h-3.5" />}
@@ -1320,26 +1498,26 @@ export function ReportsPage() {
                                   
                                   {/* Menú desplegable */}
                                   {openDownloadMenu === report.id && (
-                                    <div className="absolute right-0 top-full mt-1.5 bg-dark-surface-primary border border-dark-border-primary/40 rounded-lg shadow-gemini z-[9999] min-w-[180px] overflow-hidden">
+                                    <div className="absolute right-0 top-full mt-1.5 bg-dark-surface-primary border border-dark-border-primary/40 rounded-lg shadow-gemini z-[9999] min-w-[180px] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                                       <button
                                         onClick={(e) => handleDownloadCapture(e, report.id, report.filename)}
-                                        className="w-full px-3.5 py-2 text-left text-xs text-dark-text-primary hover:bg-dark-bg-secondary transition-colors flex items-center gap-2"
+                                        className="w-full px-3.5 py-2 text-left text-xs text-dark-text-primary hover:bg-dark-bg-secondary transition-all duration-150 ease-out flex items-center gap-2 active:scale-[0.98]"
                                       >
-                                        <Download className="w-3.5 h-3.5 text-blue-400" />
+                                        <Download className="w-3.5 h-3.5 text-blue-400 transition-transform duration-150 hover:scale-110" />
                                         <span>Descargar Captura</span>
                                       </button>
                                       <button
-                                        onClick={(e) => handleDownloadPDF(e, report.id, report.filename)}
-                                        className="w-full px-3.5 py-2 text-left text-xs text-dark-text-primary hover:bg-dark-bg-secondary transition-colors flex items-center gap-2 border-t border-dark-border-primary/20"
+                                        onClick={(e) => handleDownloadPDF(e, report.id)}
+                                        className="w-full px-3.5 py-2 text-left text-xs text-dark-text-primary hover:bg-dark-bg-secondary transition-all duration-150 ease-out flex items-center gap-2 border-t border-dark-border-primary/20 active:scale-[0.98]"
                                       >
-                                        <FileText className="w-3.5 h-3.5 text-purple-400" />
+                                        <FileText className="w-3.5 h-3.5 text-purple-400 transition-transform duration-150 hover:scale-110" />
                                         <span>Descargar PDF</span>
                                       </button>
                                       <button
                                         onClick={(e) => handleDownloadBoth(e, report.id, report.filename)}
-                                        className="w-full px-3.5 py-2 text-left text-xs text-dark-text-primary hover:bg-dark-bg-secondary transition-colors flex items-center gap-2 border-t border-dark-border-primary/20"
+                                        className="w-full px-3.5 py-2 text-left text-xs text-dark-text-primary hover:bg-dark-bg-secondary transition-all duration-150 ease-out flex items-center gap-2 border-t border-dark-border-primary/20 active:scale-[0.98]"
                                       >
-                                        <Download className="w-3.5 h-3.5 text-green-400" />
+                                        <Download className="w-3.5 h-3.5 text-green-400 transition-transform duration-150 hover:scale-110" />
                                         <span>Descargar Ambos</span>
                                       </button>
                                     </div>
@@ -1348,10 +1526,10 @@ export function ReportsPage() {
                                 
                                 <button
                                   onClick={(e) => handleDeleteReport(e, report.id)}
-                                  className="p-1.5 rounded-md text-dark-text-muted hover:bg-red-500/15 hover:text-red-400 transition-all opacity-0 group-hover:opacity-100"
+                                  className="p-1.5 rounded-md text-dark-text-muted hover:bg-red-500/15 hover:text-red-400 transition-all duration-150 ease-out opacity-0 group-hover:opacity-100 hover:scale-110 active:scale-95"
                                   title="Eliminar reporte"
                                 >
-                                  {isDeleting === report.id ? <Loading size="xs" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                  {isDeleting === report.id ? <Loading size="xs" /> : <Trash2 className="w-3.5 h-3.5 transition-transform duration-150" />}
                                 </button>
                                 
                                 <div className={`flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide ${
@@ -1445,7 +1623,7 @@ export function ReportsPage() {
         }}
         onDownloadPDF={(e) => {
           if (contextMenu.report) {
-            handleDownloadPDF(e, contextMenu.report.id, contextMenu.report.filename)
+            handleDownloadPDF(e, contextMenu.report.id)
           }
         }}
         report={contextMenu.report}

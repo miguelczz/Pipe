@@ -254,6 +254,21 @@ export const filesService = {
  */
 export const networkAnalysisService = {
   /**
+   * Guarda el PDF del reporte de un análisis desde el HTML proporcionado
+   * @param {string} analysisId - ID del análisis
+   * @param {string} htmlContent - Contenido HTML del reporte
+   * @returns {Promise} - Respuesta del servidor
+   */
+  async savePDF(analysisId, htmlContent) {
+    const response = await apiClient.post(`/reports/${analysisId}/pdf`, htmlContent, {
+      headers: {
+        'Content-Type': 'text/plain',
+      },
+    })
+    return response.data
+  },
+
+  /**
    * Sube una captura de red (pcap/pcapng) y obtiene el análisis de la IA
    * @param {File} file - Archivo de captura
    * @returns {Promise} - Análisis y estadísticas básicas
@@ -336,9 +351,24 @@ export const reportsService = {
   },
 
   /**
-   * Descarga el PDF del reporte de un análisis
+   * Guarda el PDF del reporte de un análisis desde el HTML proporcionado
    * @param {string} analysisId - ID del análisis
-   * @returns {Promise} - Blob del archivo HTML (que se puede convertir a PDF)
+   * @param {string} htmlContent - Contenido HTML del reporte
+   * @returns {Promise} - Respuesta del servidor
+   */
+  async savePDF(analysisId, htmlContent) {
+    const response = await apiClient.post(`/reports/${analysisId}/pdf`, htmlContent, {
+      headers: {
+        'Content-Type': 'text/plain',
+      },
+    })
+    return response.data
+  },
+
+  /**
+   * Descarga el PDF persistido del reporte de un análisis
+   * @param {string} analysisId - ID del análisis
+   * @returns {Promise} - Blob del archivo PDF
    */
   async downloadPDF(analysisId) {
     const response = await apiClient.get(`/reports/${analysisId}/pdf`, {
@@ -396,17 +426,109 @@ export const reportsService = {
    * @param {string} format - Formato de exportación: 'json' o 'csv'
    * @returns {Promise} - Blob del archivo exportado
    */
-  async exportReports(ids = null, format = 'json') {
+      async exportReports(ids = null, format = 'html') {
     const params = new URLSearchParams()
-    if (ids && ids.length > 0) {
-      params.append('ids', ids.join(','))
+    // Solo agregar IDs si hay elementos válidos
+    if (ids && Array.isArray(ids) && ids.length > 0) {
+      // Filtrar IDs válidos (no null, undefined, o vacíos)
+      const validIds = ids.filter(id => id != null && id !== '')
+      if (validIds.length > 0) {
+        params.append('ids', validIds.join(','))
+      }
     }
     params.append('format', format)
     
-    const response = await apiClient.get(`/reports/export?${params.toString()}`, {
-      responseType: 'blob',
-    })
-    return response.data
+    const url = `/reports/export?${params.toString()}`
+    console.log('🌐 [API] Llamando a exportReports:', { url, ids, format })
+    
+    try {
+      const response = await apiClient.get(url, {
+        responseType: 'blob',
+        validateStatus: (status) => status < 500, // Permitir 4xx para manejar errores manualmente
+      })
+      
+      console.log('✅ [API] Respuesta recibida:', { 
+        status: response.status, 
+        blobSize: response.data?.size,
+        blobType: response.data?.type 
+      })
+      
+      // Si la respuesta es un error (status >= 400), el blob contiene el mensaje de error
+      if (response.status >= 400) {
+        try {
+          const text = await response.data.text()
+          const errorData = JSON.parse(text)
+          throw new Error(errorData.detail || errorData.message || `Error ${response.status}`)
+        } catch (parseError) {
+          // Si no es JSON válido, lanzar error genérico
+          throw new Error(`Error ${response.status}: No se pudo exportar los reportes`)
+        }
+      }
+      
+      // Verificar que el blob tenga contenido
+      if (!response.data || response.data.size === 0) {
+        throw new Error('El archivo exportado está vacío')
+      }
+      
+      // Obtener el tipo MIME desde los headers de la respuesta
+      const contentType = response.headers['content-type'] || 
+                          response.headers['Content-Type'] || 
+                          'application/octet-stream'
+      
+      console.log('📋 [API] Content-Type desde headers:', contentType)
+      
+      // Asegurar que sea un Blob válido con el tipo MIME correcto
+      let blob = response.data
+      if (!(blob instanceof Blob)) {
+        // Si no es un Blob, intentar crear uno
+        blob = new Blob([response.data], { type: contentType })
+      } else if (blob.type !== contentType && blob.type === 'application/octet-stream') {
+        // Si el blob tiene el tipo incorrecto, crear uno nuevo con el tipo correcto
+        const arrayBuffer = await blob.arrayBuffer()
+        blob = new Blob([arrayBuffer], { type: contentType })
+      }
+      
+      console.log('✅ [API] Blob final:', { 
+        size: blob.size, 
+        type: blob.type,
+        isBlob: blob instanceof Blob,
+        originalType: response.data?.type
+      })
+      
+      return blob
+    } catch (error) {
+      console.error('❌ [API] Error en exportReports:', error)
+      
+      // Si el error tiene data que es un Blob, intentar leer el mensaje
+      if (error.data instanceof Blob) {
+        try {
+          const text = await error.data.text()
+          const errorData = JSON.parse(text)
+          const errorMessage = errorData.detail || errorData.message || 'Error al exportar reportes'
+          console.error('❌ [API] Mensaje de error del backend:', errorMessage)
+          throw new Error(errorMessage)
+        } catch (parseError) {
+          console.error('❌ [API] Error al parsear blob de error:', parseError)
+          // Si no se puede parsear, usar el mensaje del error original
+        }
+      }
+      
+      // Si el error tiene response.data que es un Blob
+      if (error.response?.data instanceof Blob) {
+        try {
+          const text = await error.response.data.text()
+          const errorData = JSON.parse(text)
+          const errorMessage = errorData.detail || errorData.message || 'Error al exportar reportes'
+          console.error('❌ [API] Mensaje de error del backend:', errorMessage)
+          throw new Error(errorMessage)
+        } catch (parseError) {
+          console.error('❌ [API] Error al parsear blob de error:', parseError)
+          // Si no se puede parsear, usar el mensaje del error original
+        }
+      }
+      
+      throw error
+    }
   },
 }
 

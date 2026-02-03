@@ -562,14 +562,220 @@ export function NetworkAnalysisPage() {
         return mapping[verdict] || verdict.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())
     }
 
+    // Función para generar HTML limpio para PDF
+    const generatePDFHTML = () => {
+        if (!result) return ''
+        
+        const fileName = result?.file_name || fileMetadata?.name || ''
+        const cleanName = cleanFileName(fileName).split('.')[0].replace(/_/g, ' ').trim()
+        const device = result.band_steering?.device || {}
+        const vendor = device.vendor || 'Desconocido'
+        const model = device.device_model || 'Genérico'
+        const verdict = result.band_steering?.verdict || 'UNKNOWN'
+        const ssid = savedSsid || fileMetadata?.ssid || ''
+        const analysisText = result.analysis || 'No hay análisis disponible'
+        
+        // Convertir markdown básico a HTML (solo párrafos y saltos de línea)
+        const formatAnalysis = (text) => {
+            if (!text) return ''
+            return text
+                .split('\n\n')
+                .map(para => {
+                    if (para.trim()) {
+                        return `<p>${para.trim().replace(/\n/g, '<br>')}</p>`
+                    }
+                    return ''
+                })
+                .filter(p => p)
+                .join('')
+        }
+        
+        const htmlContent = `<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pipe ${cleanName}</title>
+    <style>
+        @page {
+            margin: 1.5cm;
+            size: A4;
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-size: 12pt;
+            line-height: 1.6;
+            color: #1a1a1a;
+            background: white;
+            padding: 20px;
+        }
+        .header {
+            border-bottom: 3px solid #6366f1;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+        }
+        h1 {
+            font-size: 24pt;
+            color: #1a1a1a;
+            margin-bottom: 10px;
+        }
+        .info-section {
+            background: #f8f9fa;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 25px;
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        .info-label {
+            font-weight: 600;
+            color: #6b7280;
+            font-size: 10pt;
+        }
+        .info-value {
+            color: #1a1a1a;
+            font-size: 11pt;
+            text-align: right;
+        }
+        .verdict-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 10pt;
+        }
+        .verdict-success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        .verdict-failed {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .analysis-section {
+            margin-top: 30px;
+        }
+        h2 {
+            font-size: 18pt;
+            color: #1a1a1a;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 8px;
+        }
+        .analysis-content {
+            background: #ffffff;
+            border-left: 4px solid #6366f1;
+            padding: 20px;
+            margin-top: 15px;
+            line-height: 1.8;
+        }
+        .analysis-content p {
+            margin-bottom: 12px;
+        }
+        .footer {
+            margin-top: 50px;
+            text-align: center;
+            color: #6b7280;
+            font-size: 9pt;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 15px;
+        }
+        @media print {
+            body {
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Análisis de Capturas de Red</h1>
+    </div>
+    
+    <div class="info-section">
+        <div class="info-row">
+            <span class="info-label">Archivo analizado:</span>
+            <span class="info-value">${cleanName}</span>
+        </div>
+        ${ssid ? `<div class="info-row">
+            <span class="info-label">Red (SSID):</span>
+            <span class="info-value">${ssid}</span>
+        </div>` : ''}
+        <div class="info-row">
+            <span class="info-label">Marca:</span>
+            <span class="info-value">${vendor}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Modelo:</span>
+            <span class="info-value">${model}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Veredicto:</span>
+            <span class="info-value">
+                <span class="verdict-badge ${['SUCCESS', 'EXCELLENT', 'GOOD'].includes(verdict) ? 'verdict-success' : 'verdict-failed'}">
+                    ${verdict}
+                </span>
+            </span>
+        </div>
+    </div>
+    
+    <div class="analysis-section">
+        <h2>Análisis Detallado</h2>
+        <div class="analysis-content">
+            ${formatAnalysis(analysisText)}
+        </div>
+    </div>
+    
+    <div class="footer">
+        Generado por Pipe - Análisis de Capturas Wireshark
+    </div>
+</body>
+</html>`
+        
+        return htmlContent
+    }
+
     // Función para manejar la impresión/PDF
-    const handlePrint = () => {
+    const handlePrint = async () => {
         const fileName = result?.file_name || fileMetadata?.name || ''
         const cleanName = cleanFileName(fileName).split('.')[0].replace(/_/g, ' ').trim()
 
         // El título del documento influye en el nombre del archivo al guardar
         const originalTitle = document.title
         document.title = `Pipe ${cleanName}`
+
+        // Obtener el analysis_id del resultado
+        const analysisId = result?.band_steering?.analysis_id
+        
+        // Si hay un analysis_id, persistir el PDF antes de imprimir
+        if (analysisId) {
+            try {
+                // Generar HTML limpio y completo para el PDF
+                const htmlContent = generatePDFHTML()
+                
+                if (htmlContent) {
+                    // Enviar al backend para persistir el PDF
+                    await networkAnalysisService.savePDF(analysisId, htmlContent)
+                    console.log('✅ PDF persistido correctamente')
+                }
+            } catch (error) {
+                console.error('⚠️ Error al persistir PDF:', error)
+                // Continuar con la impresión aunque falle la persistencia
+            }
+        }
 
         window.print()
         document.title = originalTitle
