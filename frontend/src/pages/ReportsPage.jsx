@@ -198,7 +198,6 @@ export function ReportsPage() {
       // Solo mostrar error en consola si no es un 404 (endpoint no disponible)
       // El 404 es esperado si el endpoint no está implementado o no está disponible
       if (err?.status !== 404) {
-        console.error('Error al cargar estadísticas:', err)
       }
       // Si falla, usar estadísticas locales si hay reportes
       if (reports.length > 0) {
@@ -360,19 +359,12 @@ export function ReportsPage() {
       // Si se proporcionan IDs específicos, usar esos; sino, usar los seleccionados
       const idsToExport = specificIds || (selectionMode && selectedIds.length > 0 ? selectedIds : null)
       
-      console.log('📤 [EXPORT] Iniciando exportación:', { format, idsToExport, selectionMode, selectedIds })
       
       const blob = await reportsService.exportReports(idsToExport, format)
       
       if (!blob) {
         throw new Error('No se recibió ningún archivo del servidor')
       }
-      
-      console.log('✅ [EXPORT] Blob recibido:', { 
-        size: blob.size, 
-        type: blob.type,
-        isBlob: blob instanceof Blob
-      })
       
       // Verificar que el blob tenga contenido válido
       if (!blob || blob.size === 0) {
@@ -382,11 +374,6 @@ export function ReportsPage() {
       // Para HTML, usar el blob directamente
       let blobToDownload = blob
       
-      console.log('✅ [EXPORT] Blob final para descarga:', {
-        size: blobToDownload.size,
-        type: blobToDownload.type
-      })
-      
       // Método de descarga mejorado: usar File System Access API si está disponible, sino fallback
       const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-')
       const extension = 'html'
@@ -395,7 +382,6 @@ export function ReportsPage() {
       // Intentar usar File System Access API (más confiable)
       if ('showSaveFilePicker' in window) {
         try {
-          console.log('💾 [EXPORT] Intentando usar File System Access API...')
           const fileHandle = await window.showSaveFilePicker({
             suggestedName: filename,
             types: [{
@@ -410,7 +396,6 @@ export function ReportsPage() {
           await writable.write(blobToDownload)
           await writable.close()
           
-          console.log('✅ [EXPORT] Archivo guardado usando File System Access API')
           
           const message = idsToExport 
             ? `Se exportaron ${idsToExport.length} reporte${idsToExport.length !== 1 ? 's' : ''} como resumen HTML`
@@ -424,15 +409,12 @@ export function ReportsPage() {
         } catch (fsError) {
           // Si el usuario cancela, no es un error
           if (fsError.name === 'AbortError') {
-            console.log('ℹ️ [EXPORT] Usuario canceló la descarga')
             return
           }
-          console.warn('⚠️ [EXPORT] File System Access API falló, usando método alternativo:', fsError)
         }
       }
       
       // Método alternativo: descarga tradicional mejorada
-      console.log('📥 [EXPORT] Usando método de descarga tradicional')
       
       // Crear el link de descarga con todos los atributos necesarios
       const url = window.URL.createObjectURL(blobToDownload)
@@ -443,13 +425,6 @@ export function ReportsPage() {
       link.setAttribute('download', filename) // Asegurar atributo download
       link.setAttribute('type', blobToDownload.type) // Agregar tipo MIME
       
-      console.log('📥 [EXPORT] Preparando descarga:', { 
-        filename, 
-        url: url.substring(0, 50) + '...',
-        blobSize: blobToDownload.size,
-        blobType: blobToDownload.type
-      })
-      
       // Agregar al DOM de forma más visible (aunque hidden)
       link.style.position = 'fixed'
       link.style.top = '-9999px'
@@ -457,12 +432,10 @@ export function ReportsPage() {
       document.body.appendChild(link)
       
       // Disparar la descarga de forma simple y directa (una sola vez)
-      console.log('🖱️ [EXPORT] Ejecutando descarga')
       
       // Simplemente hacer click en el link una sola vez
       link.click()
       
-      console.log('✅ [EXPORT] Descarga iniciada')
       
       // Limpiar después de un breve delay para asegurar que la descarga se inicie
       setTimeout(() => {
@@ -471,9 +444,8 @@ export function ReportsPage() {
             document.body.removeChild(link)
           }
           window.URL.revokeObjectURL(url)
-          console.log('🧹 [EXPORT] Limpieza completada')
         } catch (cleanupError) {
-          console.warn('⚠️ [EXPORT] Error en limpieza (no crítico):', cleanupError)
+          // Ignorar errores de limpieza
         }
       }, 1000)
       
@@ -486,15 +458,6 @@ export function ReportsPage() {
         message 
       })
     } catch (err) {
-      console.error('❌ [EXPORT] Error al exportar:', err)
-      console.error('❌ [EXPORT] Detalles del error:', {
-        message: err?.message,
-        status: err?.status,
-        data: err?.data,
-        response: err?.response,
-        stack: err?.stack
-      })
-      
       let errorMessage = 'Error al exportar los reportes'
       
       // Intentar leer el mensaje de error del blob
@@ -576,9 +539,17 @@ export function ReportsPage() {
       
       // Obtener información del reporte para el nombre del archivo
       const report = reports.find(r => r.id === reportId)
-      const fileName = report?.filename || `report_${reportId}`
-      const cleanName = fileName.split('.')[0].replace(/_/g, ' ').trim()
-      const pdfFilename = `Pipe_${cleanName}.pdf`
+      // Intentar usar el modelo del dispositivo si está disponible
+      let pdfFilename = `Pipe ${reportId}.pdf`
+      if (report) {
+        if (report.model && report.model !== 'Unknown' && report.model !== 'Genérico') {
+          pdfFilename = `Pipe ${report.model.toUpperCase()}.pdf`
+        } else {
+          const fileName = report.filename || `report_${reportId}`
+          const cleanName = fileName.split('.')[0].replace(/_/g, ' ').trim()
+          pdfFilename = `Pipe ${cleanName.toUpperCase()}.pdf`
+        }
+      }
       
       // Crear URL temporal para descarga
       const url = window.URL.createObjectURL(blob)
@@ -854,11 +825,38 @@ export function ReportsPage() {
     }))
   }
 
+  const formatTime = (seconds) => {
+    if (!seconds || seconds === 0) return '0s'
+    if (seconds < 1) return `${Math.round(seconds * 1000)}ms`
+    if (seconds < 60) return `${seconds.toFixed(1)}s`
+    const minutes = Math.floor(seconds / 60)
+    const secs = (seconds % 60).toFixed(1)
+    return `${minutes}m ${secs}s`
+  }
+
   const formatDate = (dateStr) => {
     if (!dateStr) return 'N/A'
     
-    // Crear fecha y convertir a zona horaria de Bogotá (America/Bogota, UTC-5)
-    const date = new Date(dateStr)
+    // Crear fecha - manejar diferentes formatos de timestamp
+    let date
+    if (typeof dateStr === 'string') {
+      // Si el string no tiene información de zona horaria (no termina en Z, +XX:XX, o -XX:XX)
+      // y tiene el formato ISO básico (YYYY-MM-DDTHH:MM:SS), tratarlo como UTC
+      const isoPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/
+      if (isoPattern.test(dateStr) && !dateStr.includes('Z') && !dateStr.match(/[+-]\d{2}:\d{2}$/)) {
+        // Agregar 'Z' para indicar UTC
+        date = new Date(dateStr + 'Z')
+      } else {
+        date = new Date(dateStr)
+      }
+    } else {
+      date = new Date(dateStr)
+    }
+    
+    // Verificar que la fecha sea válida
+    if (isNaN(date.getTime())) {
+      return 'N/A'
+    }
     
     // Usar Intl.DateTimeFormat para obtener la fecha en hora de Bogotá
     const formatter = new Intl.DateTimeFormat('en-US', {
@@ -1278,7 +1276,7 @@ export function ReportsPage() {
                         try {
                           await handleExport('html')
                         } catch (error) {
-                          console.error('Error en handleExport HTML:', error)
+                          // El error ya se maneja en handleExport
                         }
                       }}
                       disabled={isExporting}
@@ -1541,9 +1539,6 @@ export function ReportsPage() {
                                 </div>
                               </div>
                             </div>
-
-                            {/* Divider sutil */}
-                            <div className="h-[1px] bg-dark-border-primary/10"></div>
 
                             {/* Metadata y Acciones */}
                             <div className="flex items-center justify-between pt-1">

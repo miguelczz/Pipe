@@ -3,7 +3,7 @@ Schemas Pydantic para el análisis de Band Steering.
 Definiciones de estructuras de datos para eventos 802.11, BTM, métricas y reportes.
 """
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any, Union
 from pydantic import BaseModel, Field
 
@@ -182,7 +182,7 @@ class BandSteeringAnalysis(BaseModel):
     """
     analysis_id: str = Field(..., description="UUID del análisis")
     filename: str = Field(..., description="Nombre del archivo pcap original")
-    analysis_timestamp: datetime = Field(default_factory=datetime.now, description="Fecha de análisis")
+    analysis_timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Fecha de análisis")
     
     # Métricas Globales
     total_packets: int = Field(0, description="Total paquetes analizados")

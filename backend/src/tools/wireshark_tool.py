@@ -1647,27 +1647,10 @@ class WiresharkTool:
                 transitions_summary += f"... y {len(sa['transitions']) - 5} transiciones más\n"
             transitions_summary += "\n"
         
-        # Bloque de métricas canónicas en formato tabla simple para el LLM.
-        # Cualquier número que el modelo necesite mencionar en el informe
-        # DEBE provenir de aquí y no inferirse.
-        canonical_metrics_block = (
-            "## TABLA DE MÉTRICAS CANÓNICAS (NO INVENTAR NÚMEROS)\n\n"
-            f"- archivo: {file_name}\n"
-            f"- total_wlan_packets: {stats['total_wlan_packets']}\n"
-            f"- steering_attempts: {sa['steering_attempts']}\n"
-            f"- successful_transitions: {sa['successful_transitions']}\n"
-            f"- btm_requests: {bc.get('btm_stats', {}).get('requests', 0) if isinstance(bc, dict) else 0}\n"
-            f"- btm_responses: {bc.get('btm_stats', {}).get('responses', 0) if isinstance(bc, dict) else 0}\n"
-            f"- btm_accept: {d.get('wireshark_raw', {}).get('summary', {}).get('btm', {}).get('responses_accept', 0)}\n"
-            f"- deauth_count: {d.get('wireshark_raw', {}).get('summary', {}).get('deauth', {}).get('count', 0)}\n"
-            f"- disassoc_count: {d.get('wireshark_raw', {}).get('summary', {}).get('disassoc', {}).get('count', 0)}\n"
-            f"- k_support: {d.get('band_counters', {}).get('kvr_stats', {}).get('11k', False)}\n"
-            f"- v_support: {d.get('band_counters', {}).get('kvr_stats', {}).get('11v', False)}\n"
-            f"- r_support: {d.get('band_counters', {}).get('kvr_stats', {}).get('11r', False)}\n\n"
-        )
-
         return (
             f"# ANÁLISIS DE CAPTURA WIRESHARK - BAND STEERING\n\n"
+            f"**⚠️ IMPORTANTE: Todos los valores numéricos en este resumen provienen directamente de la captura de Wireshark/tshark. "
+            f"No se deben estimar, redondear o inventar números que no aparezcan explícitamente aquí.**\n\n"
             f"{btm_success_note}"
             f"**Archivo:** {file_name}\n"
             f"**Paquetes WLAN analizados:** {stats['total_wlan_packets']}\n"
@@ -1684,7 +1667,6 @@ class WiresharkTool:
             f"**Tiempo promedio de transición:** {sa['avg_transition_time']}s\n"
             f"**Tiempo máximo de transición:** {sa['max_transition_time']}s\n\n"
             f"---\n\n"
-            f"{canonical_metrics_block}"
             f"{preventive_summary}"
             f"{kvr_summary}"
             f"{btm_summary}"
@@ -1742,12 +1724,6 @@ class WiresharkTool:
             "**NOTA IMPORTANTE:** Aunque hubo 1 transición exitosa, la prueba es FALLIDA debido a los checks\n"
             "críticos que no se cumplieron. Las transiciones exitosas se mencionan como contexto técnico,\n"
             "pero no cambian el veredicto.'\n\n"
-            
-            "## TABLA DE MÉTRICAS CANÓNICAS (IMPORTANTE)\n"
-            "El resumen técnico incluye una sección llamada 'TABLA DE MÉTRICAS CANÓNICAS (NO INVENTAR NÚMEROS)'.\n"
-            "- Esa tabla contiene todos los números que puedes usar (paquetes, intentos de steering, éxitos, BTM, deauth, etc.).\n"
-            "- Si necesitas mencionar un número, COPIA exactamente el valor de esa tabla.\n"
-            "- Está TERMINANTEMENTE PROHIBIDO inferir, redondear o inventar cantidades que no estén en esa tabla.\n\n"
 
             "## ESTRUCTURA DEL REPORTE (ADAPTATIVA)\n\n"
             
@@ -1809,8 +1785,24 @@ class WiresharkTool:
             "## REGLAS ESTRICTAS\n"
             "1. **CONSISTENCIA**: Si la tabla dice SUCCESS, tu conclusión es EXITOSA.\n"
             "2. **TONO**: Si es SUCCESS, el tono debe ser positivo, reconociendo el cumplimiento de los estándares.\n"
-            "3. **NÚMEROS**: SOLO puedes usar los números que aparecen en 'TABLA DE MÉTRICAS CANÓNICAS'. No estimes ni cambies valores.\n"
-            "4. **IDIOMA**: ESPAÑOL.\n"
+            "3. **NÚMEROS - CRÍTICO**: \n"
+            "   - TODOS los números que uses DEBEN aparecer explícitamente en el resumen técnico.\n"
+            "   - Estos valores provienen DIRECTAMENTE de la captura de Wireshark/tshark.\n"
+            "   - ESTÁ TERMINANTEMENTE PROHIBIDO:\n"
+            "     * Estimar o aproximar valores\n"
+            "     * Redondear números (excepto si ya vienen redondeados en el resumen)\n"
+            "     * Inventar cantidades que no aparezcan en el resumen\n"
+            "     * Calcular promedios o estadísticas que no estén en el resumen\n"
+            "     * Usar valores 'típicos' o 'esperados' en lugar de los valores reales\n"
+            "   - Si un número no aparece en el resumen técnico, NO lo menciones.\n"
+            "   - Ejemplo: Si el resumen dice '3 transiciones exitosas', usa exactamente '3', no 'aproximadamente 3' ni 'alrededor de 3'.\n"
+            "4. **CAMBIOS DE BANDA - REGLA CRÍTICA**:\n"
+            "   - El resumen técnico incluye una sección '📊 RESUMEN DE STEERING EFECTIVO (VALORES CORREGIDOS)' que muestra el número CORRECTO de cambios de banda.\n"
+            "   - SIEMPRE usa el número de cambios de banda que aparece en esa sección, NO el que pueda aparecer en otras partes del resumen.\n"
+            "   - Si la sección dice 'Cambios de banda físicos detectados: X', usa exactamente ese valor X en tu análisis.\n"
+            "   - NO uses el número de transiciones individuales que puedan tener 'is_band_change' marcado, ya que ese cálculo puede ser incorrecto.\n"
+            "   - El valor corregido se calculó comparando transiciones consecutivas y es el único valor confiable.\n"
+            "5. **IDIOMA**: ESPAÑOL.\n"
         )
 
         completion = self.client.chat.completions.create(

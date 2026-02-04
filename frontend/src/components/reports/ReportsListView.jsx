@@ -2,6 +2,15 @@ import { Card } from '../ui/Card'
 import { FileText, Calendar, CheckCircle2, XCircle, ArrowRight, Trash2, Download, MoreVertical } from 'lucide-react'
 import { Loading } from '../ui/Loading'
 
+const formatTime = (seconds) => {
+  if (!seconds || seconds === 0) return '0s'
+  if (seconds < 1) return `${Math.round(seconds * 1000)}ms`
+  if (seconds < 60) return `${seconds.toFixed(1)}s`
+  const minutes = Math.floor(seconds / 60)
+  const secs = (seconds % 60).toFixed(1)
+  return `${minutes}m ${secs}s`
+}
+
 /**
  * Vista de lista para reportes (alternativa a la vista grid)
  */

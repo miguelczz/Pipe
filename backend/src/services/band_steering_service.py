@@ -6,6 +6,7 @@ import logging
 import json
 import os
 import shutil
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, List
@@ -202,9 +203,44 @@ class BandSteeringService:
             file_name=file_name
         )
         
+        # Recalcular el veredicto basándose en los checks corregidos (que ahora tienen el cálculo correcto de cambios de banda)
+        # El veredicto ya debería estar correcto porque los checks se calcularon con la lógica corregida,
+        # pero lo recalculamos para asegurarnos de que sea consistente
+        corrected_verdict = self.btm_analyzer._determine_verdict(
+            checks=analysis.compliance_checks,
+            transitions=analysis.transitions,
+            btm_rate=analysis.btm_success_rate,
+            success_count=analysis.successful_transitions
+        )
+        analysis.verdict = corrected_verdict
+        
         # Añadir información de cumplimiento al summary para el LLM
         technical_summary += f"\n\n## AUDITORÍA DE CUMPLIMIENTO (BAND STEERING)\n\n"
         technical_summary += f"**Veredicto Final:** {analysis.verdict}\n\n"
+        
+        # Agregar información explícita sobre cambios de banda calculados correctamente ANTES de los checks
+        # para que el agente tenga contexto claro desde el inicio
+        steering_check = next((c for c in analysis.compliance_checks if c.check_name == "Steering Efectivo"), None)
+        if steering_check:
+            # Extraer el número de cambios de banda del details del check (que ya está corregido)
+            details = steering_check.details or ""
+            # El formato es: "TRANSICIONES CON CAMBIO DE BANDA: X | TRANSICIONES TOTALES: Y | BTM ACCEPT: Z"
+            band_change_match = re.search(r'TRANSICIONES CON CAMBIO DE BANDA:\s*(\d+)', details)
+            total_match = re.search(r'TRANSICIONES TOTALES:\s*(\d+)', details)
+            btm_match = re.search(r'BTM ACCEPT:\s*(\d+)', details)
+            
+            if band_change_match:
+                band_change_count = int(band_change_match.group(1))
+                total_transitions = int(total_match.group(1)) if total_match else 0
+                btm_accept = int(btm_match.group(1)) if btm_match else 0
+                
+                technical_summary += f"### 📊 RESUMEN DE STEERING EFECTIVO (VALORES CORREGIDOS)\n\n"
+                technical_summary += f"**⚠️ IMPORTANTE:** Los siguientes valores fueron calculados comparando transiciones consecutivas para detectar cambios reales de banda, incluso si el campo `is_band_change` individual no estaba marcado correctamente.\n\n"
+                technical_summary += f"- **Cambios de banda físicos detectados:** {band_change_count}\n"
+                technical_summary += f"- **Transiciones exitosas totales:** {total_transitions}\n"
+                technical_summary += f"- **BTM Accept (Status Code 0):** {btm_accept}\n\n"
+                technical_summary += f"**NOTA CRÍTICA:** El número de cambios de banda ({band_change_count}) es el valor CORRECTO calculado mediante comparación de transiciones consecutivas. "
+                technical_summary += f"Este es el valor que debe usarse para determinar si el steering fue efectivo, NO el número que pueda aparecer en otras secciones del resumen.\n\n"
         
         # Separar checks en pasados y fallidos para claridad
         passed_checks = [c for c in analysis.compliance_checks if c.passed]
@@ -236,6 +272,12 @@ class BandSteeringService:
                 technical_summary += "Fallo general sin checks específicos identificados.\n"
         elif analysis.verdict == "SUCCESS":
             technical_summary += "La prueba fue exitosa: se cumplieron los criterios de band steering.\n"
+            if steering_check and steering_check.passed:
+                # Extraer el número de cambios de banda para mencionarlo en el éxito
+                band_change_match = re.search(r'TRANSICIONES CON CAMBIO DE BANDA:\s*(\d+)', steering_check.details or "")
+                if band_change_match:
+                    band_change_count = int(band_change_match.group(1))
+                    technical_summary += f"Se detectaron {band_change_count} cambio(s) de banda exitoso(s), cumpliendo con el criterio mínimo requerido.\n"
         
         analysis.analysis_text = self.wireshark_tool._ask_llm_for_analysis(technical_summary)
 

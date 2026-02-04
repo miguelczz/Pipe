@@ -269,6 +269,18 @@ export const networkAnalysisService = {
   },
 
   /**
+   * Descarga el PDF persistido del reporte de un análisis
+   * @param {string} analysisId - ID del análisis
+   * @returns {Promise} - Blob del archivo PDF
+   */
+  async downloadPDF(analysisId) {
+    const response = await apiClient.get(`/reports/${analysisId}/pdf`, {
+      responseType: 'blob',
+    })
+    return response.data
+  },
+
+  /**
    * Sube una captura de red (pcap/pcapng) y obtiene el análisis de la IA
    * @param {File} file - Archivo de captura
    * @returns {Promise} - Análisis y estadísticas básicas
