@@ -4,6 +4,7 @@ import { filesService } from '../services/api'
 import { Button } from '../components/ui/Button'
 import { Loading } from '../components/ui/Loading'
 import { Upload, Trash2, FileText, Calendar } from 'lucide-react'
+import { useToast } from '../hooks/useToast'
 
 /**
  * Página para gestionar archivos subidos
@@ -11,6 +12,7 @@ import { Upload, Trash2, FileText, Calendar } from 'lucide-react'
 export function FilesPage() {
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef(null)
+  const { showToast } = useToast()
 
   const {
     data: files = [],
@@ -33,7 +35,10 @@ export function FilesPage() {
     if (!file) return
 
     if (file.type !== 'application/pdf') {
-      alert('Solo se permiten archivos PDF')
+      showToast({
+        type: 'warning',
+        message: 'Solo se permiten archivos PDF',
+      })
       e.target.value = '' // Reset input
       return
     }
@@ -42,10 +47,16 @@ export function FilesPage() {
     try {
       await filesService.uploadFile(file)
       await refetch()
-      alert('Archivo subido correctamente')
+      showToast({
+        type: 'success',
+        message: 'Archivo subido correctamente',
+      })
       e.target.value = '' // Reset input
     } catch (error) {
-      alert(`Error al subir archivo: ${error.message || 'Error desconocido'}`)
+      showToast({
+        type: 'error',
+        message: `Error al subir archivo: ${error.message || 'Error desconocido'}`,
+      })
       e.target.value = '' // Reset input
     } finally {
       setUploading(false)
@@ -59,7 +70,10 @@ export function FilesPage() {
       await filesService.deleteFile(documentId)
       await refetch()
     } catch (error) {
-      alert(`Error al eliminar archivo: ${error.message}`)
+      showToast({
+        type: 'error',
+        message: `Error al eliminar archivo: ${error.message}`,
+      })
     }
   }
 

@@ -1,14 +1,12 @@
 """
-Sistema de cache con Redis para mejorar el rendimiento
+Sistema de cache con Redis para mejorar el rendimiento.
+Proporciona utilidades de cacheado sin gestionar logging.
 """
 import json
 import hashlib
-import logging
 from functools import wraps
 from typing import Any, Optional, Callable, TYPE_CHECKING
 from ..settings import settings
-
-logger = logging.getLogger(__name__)
 
 try:
     import redis

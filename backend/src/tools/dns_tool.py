@@ -1,10 +1,8 @@
 """
-Herramienta DNS - Consultas de registros DNS para dominios
+Herramienta DNS - Consultas de registros DNS para dominios.
+Encapsula la lógica de resolución sin gestionar logging de infraestructura.
 """
-import logging
 from typing import Dict, Any, List, Optional
-
-logger = logging.getLogger(__name__)
 
 # Import opcional de dnspython
 try:
@@ -404,7 +402,7 @@ class DNSTool:
                 for record in dmarc_subdomain_result.get("records", []):
                     if isinstance(record, str) and record.lower().startswith("v=dmarc1"):
                         dmarc_records.append(record)
-        except:
+        except Exception:
             pass
         
         if dmarc_records:

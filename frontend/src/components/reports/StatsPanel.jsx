@@ -1,4 +1,3 @@
-import { Card } from '../ui/Card'
 import { BarChart3, TrendingUp, Package, Clock, CheckCircle2, XCircle } from 'lucide-react'
 
 /**

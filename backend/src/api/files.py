@@ -1,7 +1,7 @@
 """
-API endpoints para gestión de archivos - Refactorizado para usar repositorios
+API endpoints para gestión de archivos - Refactorizado para usar repositorios.
+Expone operaciones de subida, listado y borrado sin lógica de logging.
 """
-import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from typing import List
@@ -12,8 +12,6 @@ from ..repositories.document_repository import DocumentRepository
 from ..repositories.qdrant_repository import get_qdrant_repository
 from ..services.embeddings_service import process_and_store_pdf, delete_by_id
 from datetime import datetime
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/files", tags=["files"])
 

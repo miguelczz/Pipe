@@ -1,14 +1,12 @@
 """
 Evaluador RAGAS para medir la calidad de las respuestas del agente.
-Captura datos durante la ejecución y calcula métricas de evaluación.
+Captura datos durante la ejecución y calcula métricas de evaluación,
+sin acoplarse a ningún mecanismo de logging específico.
 """
-import logging
 import os
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
-
-logger = logging.getLogger(__name__)
 
 # Import opcional de ragas - si no está disponible, el evaluador funcionará en modo degradado
 try:
@@ -294,7 +292,7 @@ class RAGASEvaluator:
                                         mean_value = numeric_col.mean()
                                         if pd.notna(mean_value):
                                             metrics_dict[metric_name] = float(mean_value)
-                                except:
+                                except Exception:
                                     continue
                 elif hasattr(result, '__iter__') and not isinstance(result, (str, bytes)):
                     # Intentar iterar sobre las claves
@@ -314,7 +312,7 @@ class RAGASEvaluator:
                                             metrics_dict[metric_name] = float(np.mean(value))
                                         else:
                                             metrics_dict[metric_name] = float(sum(value) / len(value))
-                                    except:
+                                    except Exception:
                                         metrics_dict[metric_name] = float(sum(value) / len(value)) if value else 0.0
                         else:
                             # Intentar acceder directamente a las métricas conocidas

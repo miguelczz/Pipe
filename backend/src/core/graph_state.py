@@ -8,10 +8,7 @@ from langgraph.channels import LastValue
 from langgraph.graph import add_messages
 from langchain_core.messages import AnyMessage
 from typing import Annotated
-import logging
 import time
-
-logger = logging.getLogger(__name__)
 
 
 class GraphState(BaseModel):

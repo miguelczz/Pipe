@@ -17,7 +17,7 @@ export function useChat() {
     getOrCreateSessionId(SESSION_CONFIG.STORAGE_KEY)
   )
   const abortControllerRef = useRef(null)
-  const [isLoadingHistory, setIsLoadingHistory] = useState(true)
+  const [, setIsLoadingHistory] = useState(true)
   const hasLoadedRef = useRef(false)
 
   // Guardar sessionId en localStorage cuando cambia
@@ -221,8 +221,7 @@ export function useChat() {
       // Guardar la función de cancelación
       abortControllerRef.current = cancelStream
     } catch (err) {
-      // Manejo de errores síncronos (no debería ocurrir con el nuevo enfoque)
-      
+        // Manejo de errores síncronos (no debería ocurrir con el nuevo enfoque)
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === assistantMessageId
@@ -260,7 +259,8 @@ export function useChat() {
     const messagesKey = `${SESSION_CONFIG.STORAGE_KEY}_messages`
     try {
       localStorage.removeItem(messagesKey)
-    } catch (err) {
+    } catch {
+      // Ignorar fallos de localStorage (privado, cuota, etc.)
     }
     
     if (abortControllerRef.current) {

@@ -1,83 +1,9 @@
 import { Copy, Check, AlertCircle, User } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '../../utils/cn'
-import { TOOL_NAMES } from '../../config/constants'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { Logo } from '../common/Logo'
 import { Loading } from '../ui/Loading'
-
-/**
- * Parsea y renderiza tablas en formato markdown o texto plano
- */
-function parseTable(content) {
-  if (!content || typeof content !== 'string') {
-    return [{ type: 'text', content: content || '' }]
-  }
-
-  // Detectar tablas markdown (| col1 | col2 |)
-  // Buscar bloques de tablas markdown (mínimo 2 líneas con pipes)
-  const lines = content.split('\n')
-  const parts = []
-  let currentText = ''
-  let i = 0
-
-  while (i < lines.length) {
-    const line = lines[i]
-    
-    // Detectar inicio de tabla markdown (línea con pipes)
-    if (line.includes('|') && line.split('|').length >= 3) {
-      const tableLines = []
-      let j = i
-      
-      // Recopilar líneas consecutivas que parecen tabla
-      while (j < lines.length && lines[j].includes('|')) {
-        tableLines.push(lines[j])
-        j++
-      }
-      
-      // Validar que sea una tabla válida (mínimo header + separator + 1 fila)
-      if (tableLines.length >= 2) {
-        // Agregar texto acumulado antes de la tabla
-        if (currentText.trim()) {
-          parts.push({ type: 'text', content: currentText.trim() })
-          currentText = ''
-        }
-        
-        // Parsear la tabla
-        const headers = tableLines[0].split('|').map(h => h.trim()).filter(h => h && !h.match(/^[-:]+$/))
-        const separator = tableLines[1] // Línea de separador (puede ignorarse)
-        const rows = tableLines.slice(2)
-          .filter(row => {
-            const cells = row.split('|').map(c => c.trim()).filter(c => c)
-            return cells.length === headers.length && cells.some(c => c)
-          })
-          .map(row => 
-            row.split('|')
-              .map(cell => cell.trim())
-              .filter((_, idx, arr) => idx > 0 && idx < arr.length - 1)
-          )
-        
-        if (headers.length > 0 && rows.length > 0) {
-          parts.push({ type: 'table', headers, rows })
-        }
-        
-        i = j
-        continue
-      }
-    }
-    
-    // Si no es tabla, acumular como texto
-    currentText += (currentText ? '\n' : '') + line
-    i++
-  }
-  
-  // Agregar texto restante
-  if (currentText.trim()) {
-    parts.push({ type: 'text', content: currentText.trim() })
-  }
-  
-  return parts.length > 0 ? parts : [{ type: 'text', content }]
-}
 
 /**
  * Componente para renderizar una tabla
@@ -143,6 +69,7 @@ export function Message({ message }) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (error) {
+      // Ignorar errores de portapapeles
     }
   }
 

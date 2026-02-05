@@ -1,15 +1,13 @@
 """
-Repositorio para operaciones con Qdrant (base de datos vectorial)
+Repositorio para operaciones con Qdrant (base de datos vectorial).
+Centraliza el acceso a la base vectorial sin gestionar logging de aplicación.
 """
 import uuid
-import logging
 from typing import List, Dict, Optional
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
 from ..settings import settings
 from ..utils.embeddings import embedding_for_text_batch
-
-logger = logging.getLogger(__name__)
 
 QDRANT_COLLECTION = "documents"
 

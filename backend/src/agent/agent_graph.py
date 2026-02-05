@@ -17,11 +17,7 @@ from ..agent.router import PipeAgent
 from ..agent.llm_client import LLMClient
 from ..core.cache import cache_result
 import re
-import logging
 import time
-
-# Logger para este módulo
-logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------

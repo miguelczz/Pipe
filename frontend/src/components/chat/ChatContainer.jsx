@@ -1,7 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Bot } from 'lucide-react'
 import { Message } from './Message'
-import { Loading } from '../ui/Loading'
 import { Logo } from '../common/Logo'
 import { cn } from '../../utils/cn'
 

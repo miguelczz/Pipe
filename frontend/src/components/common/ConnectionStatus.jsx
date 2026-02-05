@@ -1,6 +1,5 @@
-import { AlertCircle, Info } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 import { cn } from '../../utils/cn'
-import { API_URL } from '../../config/constants'
 
 /**
  * Componente para mostrar el estado de conexión con el servidor

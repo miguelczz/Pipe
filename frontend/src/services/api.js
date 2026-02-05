@@ -68,12 +68,10 @@ export const agentService = {
    * @returns {Promise} - Respuesta de limpieza
    */
   async clearSession(sessionId) {
-    try {
-      const response = await apiClient.delete(`${API_ENDPOINTS.AGENT_SESSION}/${sessionId}`)
-      return response.data
-    } catch (error) {
-      throw error
-    }
+    const response = await apiClient.delete(
+      `${API_ENDPOINTS.AGENT_SESSION}/${sessionId}`
+    )
+    return response.data
   },
 
   /**
@@ -136,6 +134,7 @@ export const agentService = {
         let buffer = ''
         let finalResponse = null
 
+        // eslint-disable-next-line no-constant-condition -- Lectura de stream hasta done
         while (true) {
           const { done, value } = await reader.read()
           
@@ -175,6 +174,7 @@ export const agentService = {
                   return
                 }
               } catch (e) {
+                // Ignorar líneas JSON inválidas en el stream
               }
             }
           }
@@ -182,6 +182,7 @@ export const agentService = {
       })
       .catch((error) => {
         if (error.name === 'AbortError') {
+          // Cancelación esperada, no propagar
         } else {
           onError(error)
         }
@@ -300,6 +301,7 @@ export const networkAnalysisService = {
         formData.append('user_metadata', JSON.stringify(cleaned))
       }
     } catch (e) {
+      // Ignorar fallos al limpiar metadata
     }
 
     const uploadClient = axios.create({
@@ -313,6 +315,47 @@ export const networkAnalysisService = {
       },
     })
 
+    return response.data
+  },
+}
+
+/**
+ * Servicio para herramientas de red (subnet, MAC/OUI, DNS)
+ */
+export const toolsService = {
+  /**
+   * Calcula información de una subred a partir de un CIDR
+   * @param {string} cidr - Ej: "192.168.1.0/24"
+   * @returns {Promise} - Resultado del cálculo
+   */
+  async calculateSubnet(cidr) {
+    const response = await apiClient.get(
+      `/tools/subnet-calc?cidr=${encodeURIComponent(cidr)}`
+    )
+    return response.data
+  },
+
+  /**
+   * Consulta fabricante (OUI) de una MAC
+   * @param {string} mac - Ej: "00:0c:29:4f:8e:35"
+   * @returns {Promise} - Información de fabricante
+   */
+  async lookupMac(mac) {
+    const response = await apiClient.get(
+      `/tools/mac-lookup?mac=${encodeURIComponent(mac)}`
+    )
+    return response.data
+  },
+
+  /**
+   * Consulta registros DNS de un dominio
+   * @param {string} domain - Ej: "google.com"
+   * @returns {Promise} - Registros DNS
+   */
+  async dnsLookup(domain) {
+    const response = await apiClient.get(
+      `/tools/dns-lookup?domain=${encodeURIComponent(domain)}`
+    )
     return response.data
   },
 }
@@ -451,18 +494,10 @@ export const reportsService = {
     params.append('format', format)
     
     const url = `/reports/export?${params.toString()}`
-    console.log('🌐 [API] Llamando a exportReports:', { url, ids, format })
-    
     try {
       const response = await apiClient.get(url, {
         responseType: 'blob',
         validateStatus: (status) => status < 500, // Permitir 4xx para manejar errores manualmente
-      })
-      
-      console.log('✅ [API] Respuesta recibida:', { 
-        status: response.status, 
-        blobSize: response.data?.size,
-        blobType: response.data?.type 
       })
       
       // Si la respuesta es un error (status >= 400), el blob contiene el mensaje de error
@@ -487,8 +522,6 @@ export const reportsService = {
                           response.headers['Content-Type'] || 
                           'application/octet-stream'
       
-      console.log('📋 [API] Content-Type desde headers:', contentType)
-      
       // Asegurar que sea un Blob válido con el tipo MIME correcto
       let blob = response.data
       if (!(blob instanceof Blob)) {
@@ -500,27 +533,16 @@ export const reportsService = {
         blob = new Blob([arrayBuffer], { type: contentType })
       }
       
-      console.log('✅ [API] Blob final:', { 
-        size: blob.size, 
-        type: blob.type,
-        isBlob: blob instanceof Blob,
-        originalType: response.data?.type
-      })
-      
       return blob
     } catch (error) {
-      console.error('❌ [API] Error en exportReports:', error)
-      
       // Si el error tiene data que es un Blob, intentar leer el mensaje
       if (error.data instanceof Blob) {
         try {
           const text = await error.data.text()
           const errorData = JSON.parse(text)
           const errorMessage = errorData.detail || errorData.message || 'Error al exportar reportes'
-          console.error('❌ [API] Mensaje de error del backend:', errorMessage)
           throw new Error(errorMessage)
         } catch (parseError) {
-          console.error('❌ [API] Error al parsear blob de error:', parseError)
           // Si no se puede parsear, usar el mensaje del error original
         }
       }
@@ -531,10 +553,8 @@ export const reportsService = {
           const text = await error.response.data.text()
           const errorData = JSON.parse(text)
           const errorMessage = errorData.detail || errorData.message || 'Error al exportar reportes'
-          console.error('❌ [API] Mensaje de error del backend:', errorMessage)
           throw new Error(errorMessage)
         } catch (parseError) {
-          console.error('❌ [API] Error al parsear blob de error:', parseError)
           // Si no se puede parsear, usar el mensaje del error original
         }
       }

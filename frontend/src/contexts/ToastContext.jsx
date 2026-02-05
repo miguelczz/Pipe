@@ -38,6 +38,7 @@ export function ToastProvider({ children }) {
 /**
  * Hook para usar el contexto de Toast
  */
+// eslint-disable-next-line react-refresh/only-export-components -- Contexto exporta Provider y hook por diseño
 export function useToast() {
   const context = useContext(ToastContext)
   if (!context) {

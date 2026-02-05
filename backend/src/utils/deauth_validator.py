@@ -9,9 +9,6 @@ Este módulo es crítico para:
 3. Unificar la lógica entre wireshark_tool.py y btm_analyzer.py
 """
 from typing import Dict, Tuple
-import logging
-
-logger = logging.getLogger(__name__)
 
 # Reason codes IEEE 802.11 que indican salida GRACEFUL (normal/voluntaria)
 GRACEFUL_DEAUTH_REASONS = {

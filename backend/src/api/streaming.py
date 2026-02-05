@@ -1,8 +1,8 @@
 """
-Módulo para streaming de respuestas usando Server-Sent Events (SSE)
+Módulo para streaming de respuestas usando Server-Sent Events (SSE).
+Se limita a exponer el flujo del grafo del agente vía SSE.
 """
 import json
-import logging
 from typing import AsyncIterator, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
@@ -14,7 +14,6 @@ from ..agent.agent_graph import graph
 from ..settings import settings
 
 router = APIRouter(prefix="/agent", tags=["agent"])
-logger = logging.getLogger(__name__)
 
 
 async def stream_graph_execution(
@@ -220,7 +219,7 @@ async def agent_query_stream(
                         data = json.loads(data_str)
                         if data.get("type") == "final_response":
                             assistant_response = data.get("data", {}).get("content")
-                    except:
+                    except Exception:
                         pass
                 
                 # Enviar el chunk al cliente

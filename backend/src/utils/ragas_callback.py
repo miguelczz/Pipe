@@ -1,15 +1,13 @@
 """
 Callback handler para LangGraph que captura datos para evaluación con RAGAS.
+Se limita a orquestar la captura sin responsabilidades de logging.
 """
-import logging
 from typing import Any, Dict, List, Optional
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.outputs import LLMResult
 from langchain_core.agents import AgentAction, AgentFinish
 
 from .ragas_evaluator import get_evaluator
-
-logger = logging.getLogger(__name__)
 
 
 class RAGASCallbackHandler(BaseCallbackHandler):

@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { MessageSquare, FileText, Trash2, Activity, History } from 'lucide-react'
+import { MessageSquare, FileText, Trash2, Activity, History, Network } from 'lucide-react'
 import { cn } from '../../utils/cn'
 import { useChatContext } from '../../contexts/ChatContext'
 import { Button } from '../ui/Button'
@@ -19,6 +19,7 @@ export function Layout({ children }) {
     { path: '/files', label: 'Archivos', icon: FileText },
     { path: '/network-analysis', label: 'Pruebas', icon: Activity },
     { path: '/reports', label: 'Reportes', icon: History },
+    { path: '/tools', label: 'Herramientas', icon: Network },
   ]
 
   return (

@@ -2,10 +2,7 @@ from ..models.schemas import AgentState
 from datetime import datetime
 from typing import Optional, Dict, Any
 import threading
-import logging
 from ..settings import settings
-
-logger = logging.getLogger(__name__)
 
 
 # GlobalState eliminado - no se usaba en ningún lugar del código

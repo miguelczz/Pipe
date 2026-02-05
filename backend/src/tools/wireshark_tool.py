@@ -1,9 +1,9 @@
 """
-Herramienta para análisis de capturas de red (Wireshark / PCAP) asistido por IA.
-Enfocada específicamente en auditoría de Band Steering (802.11).
+Herramienta especializada para análisis de capturas de red (Wireshark / PCAP)
+enfocada en auditoría de Band Steering (802.11). Provee métricas y estructuras
+de datos que actúan como fuente de verdad para el resto del sistema.
 """
 
-import logging
 import os
 from collections import Counter
 from typing import Dict, Any, Optional
@@ -11,8 +11,6 @@ from typing import Dict, Any, Optional
 from openai import OpenAI
 from ..settings import settings
 from ..utils.deauth_validator import DeauthValidator, REASSOC_TIMEOUT_SECONDS
-
-logger = logging.getLogger(__name__)
 
 
 class WiresharkTool:
@@ -47,7 +45,7 @@ class WiresharkTool:
                 # Intentar parsear como hex sin prefijo
                 try:
                     val = int(subtype_clean, 16)
-                except:
+                except Exception:
                     return -1
             
             # wlan.fc.type_subtype viene como type * 256 + subtype
@@ -452,7 +450,7 @@ class WiresharkTool:
                     try:
                         if category_code:
                             cat_val = int(category_code) if category_code.isdigit() else int(category_code, 16)
-                    except:
+                    except Exception:
                         pass
 
                     if subtype_int == 13 and cat_val == 10: # Category 10 = WNM
@@ -461,7 +459,7 @@ class WiresharkTool:
                         try:
                             if action_code:
                                 ac_val = int(action_code) if action_code.isdigit() else int(action_code, 16)
-                        except: 
+                        except Exception:
                             pass
 
                         if "btm_stats" not in band_counters:
@@ -615,7 +613,8 @@ class WiresharkTool:
                                      "sa": wlan_sa,
                                      "da": wlan_da
                                  })
-                         except: pass
+                         except Exception:
+                             pass
 
                     # --- DETECCIÓN DE SOPORTE KVR (802.11k/v/r) ---
                     # 11v (WNM) y 11k (Radio Measurement) operan sobre Action Frames (Subtype 13)
@@ -658,7 +657,7 @@ class WiresharkTool:
                                     "time": timestamp,
                                     "bssid": bssid
                                 })
-                        except:
+                        except Exception:
                             pass
 
                     
@@ -803,79 +802,13 @@ class WiresharkTool:
                 }.get(subtype_val, f"Unknown (0x{subtype_val:02x})")
         
         # 1. Determinar MAC de Cliente (preciso y robusto)
-        # Evitar seleccionar MACs de AP/BSSID o direcciones circunstanciales.
-        # Priorizamos evidencia fuerte: Assoc/Reassoc Request, BTM Response,
-        # y también RSSI samples (emisor real). Si el usuario proporciona
-        # explícitamente una MAC de cliente, se respeta siempre que sea válida.
-        client_mac = "Desconocido"
-        
-        def is_valid_client_mac(mac: str) -> bool:
-            if not mac or mac == "ff:ff:ff:ff:ff:ff" or mac == "00:00:00:00:00:00":
-                return False
-            try:
-                first_octet = int(mac.split(':')[0], 16)
-                if first_octet & 1: return False
-            except: return False
-            return True
-
-        def _normalize_mac(mac: str) -> str:
-            return (mac or "").lower().replace("-", ":").strip()
-
-        known_bssids = set(_normalize_mac(b) for b in (bssid_info or {}).keys() if b)
-
-        # Si el usuario proporcionó explícitamente la MAC del cliente y es válida,
-        # respetarla siempre que no sea un BSSID conocido.
-        if client_mac_hint:
-            hint_norm = _normalize_mac(client_mac_hint)
-            if is_valid_client_mac(hint_norm) and hint_norm not in known_bssids:
-                client_mac = hint_norm
-
-        # Score por MAC con pesos por tipo de evidencia (solo si no hay hint fiable)
-        mac_score = Counter()
-
-        # A) Evidencia desde eventos 802.11 (steering_events)
-        # - Association/Reassociation Request: el cliente es el emisor (SA)
-        # - BTM Response: el cliente es el emisor del response
-        for ev in steering_events:
-            subtype = ev.get("subtype")
-            ev_type = ev.get("type")
-            ev_event_type = ev.get("event_type")
-
-            # Candidate via client_mac calculado (cuando exista)
-            cand = _normalize_mac(ev.get("client_mac"))
-            if cand and is_valid_client_mac(cand) and cand not in known_bssids:
-                # Peso base
-                mac_score[cand] += 1
-
-            # Association/Reassociation Request -> SA del evento
-            if subtype in [0, 2]:
-                cand_sa = _normalize_mac(ev.get("sa") or ev.get("wlan_sa"))
-                if cand_sa and is_valid_client_mac(cand_sa) and cand_sa not in known_bssids:
-                    mac_score[cand_sa] += 5
-
-            # BTM Response explícito (formato WiresharkTool)
-            if ev_type == "btm" and ev_event_type == "response":
-                cand_cli = _normalize_mac(ev.get("client_mac"))
-                if cand_cli and is_valid_client_mac(cand_cli) and cand_cli not in known_bssids:
-                    mac_score[cand_cli] += 8
-
-        # B) Evidencia desde RSSI samples: el cliente es el emisor real de frames con RSSI
-        for s in temp_signal_samples:
-            cand_sa = _normalize_mac(s.get("sa"))
-            if cand_sa and is_valid_client_mac(cand_sa) and cand_sa not in known_bssids:
-                mac_score[cand_sa] += 2
-
-        # C) Fallback: frecuencia de aparición global en all_client_macs (menos confiable)
-        fallback_clients = [
-            _normalize_mac(m)
-            for m in all_client_macs
-            if is_valid_client_mac(_normalize_mac(m)) and _normalize_mac(m) not in known_bssids
-        ]
-        if fallback_clients:
-            mac_score.update(Counter(fallback_clients))
-
-        if client_mac == "Desconocido" and mac_score:
-            client_mac = mac_score.most_common(1)[0][0]
+        client_mac = self._select_primary_client_mac(
+            steering_events=steering_events,
+            temp_signal_samples=temp_signal_samples,
+            all_client_macs=all_client_macs,
+            bssid_info=bssid_info,
+            client_mac_hint=client_mac_hint,
+        )
 
         # 2. Análisis de sesiones de clientes y transiciones
         steering_analysis = self._analyze_steering_patterns(steering_events, bssid_info, band_counters, client_mac)
@@ -883,66 +816,18 @@ class WiresharkTool:
         # 3. Evaluación de calidad de captura para band steering
         capture_quality = self._evaluate_capture_quality(steering_analysis, steering_events)
 
-        # ---------------------------------------------------------------
-        # ⚠️ IMPORTANTE: Fuente de verdad numérica
-        # ---------------------------------------------------------------
-        # A partir de este punto construimos el bloque `diagnostics`, que
-        # es consumido por el resto del backend como **única** fuente de
-        # verdad numérica sobre la captura. Cualquier otro servicio que
-        # necesite métricas (BTM, transiciones, KVR, etc.) debe leerlas
-        # desde aquí y NO recalcularlas desde cero.
-        #
-        # Campos clave:
-        # - diagnostics.wireshark_raw.summary.*  -> contadores exactos
-        # - diagnostics.band_counters           -> vistas agregadas
-        # - steering_analysis                   -> resumen de steering
-        #
-        # `BTMAnalyzer` y `BandSteeringService` combinan estos valores
-        # pero no los modifican; cuando necesiten ajustes, se debe
-        # cambiar esta función y mantener el resto como consumidores
-        # pasivos.
-        # ---------------------------------------------------------------
-        # Roles sugeridos para BSSIDs (maestro/esclavo) según banda.
-        # Convención: 5GHz suele ser el objetivo (maestro) y 2.4GHz el fallback (esclavo).
-        # Si solo existe una banda, ese BSSID queda como maestro.
-        bssid_roles: Dict[str, Any] = {}
-        try:
-            bssids_5 = [
-                b for b, v in (bssid_info or {}).items()
-                if isinstance(v, dict) and str(v.get("band", "")).lower().startswith("5")
-            ]
-            bssids_24 = [
-                b for b, v in (bssid_info or {}).items()
-                if isinstance(v, dict) and ("2.4" in str(v.get("band", "")).lower() or "2,4" in str(v.get("band", "")).lower())
-            ]
-
-            if bssids_5 and bssids_24:
-                for b in bssids_5:
-                    bssid_roles[b] = {"role": "maestro", "band": "5GHz"}
-                for b in bssids_24:
-                    bssid_roles[b] = {"role": "esclavo", "band": "2.4GHz"}
-            elif bssids_5:
-                for b in bssids_5:
-                    bssid_roles[b] = {"role": "maestro", "band": "5GHz"}
-            elif bssids_24:
-                for b in bssids_24:
-                    bssid_roles[b] = {"role": "maestro", "band": "2.4GHz"}
-        except Exception:
-            bssid_roles = {}
-
-        diagnostics = {
-            "tcp_retransmissions": tcp_retransmissions,
-            "wlan_retries": wlan_retries,
-            "dns_errors": dns_errors,
-            "steering_events_count": len(steering_events),
-            "unique_bssid_count": len(bssid_info),
-            "bssid_info": bssid_info,
-            "bssid_roles": bssid_roles,
-            "client_mac": client_mac,
-            "capture_quality": capture_quality,
-            "band_counters": band_counters,  # Nuevo: Contadores para steering preventivo
-            "wireshark_raw": wireshark_raw,  # Fuente de verdad: datos exactos de tshark
-        }
+        # 3. Construir bloque de diagnósticos (fuente de verdad numérica)
+        diagnostics = self._build_diagnostics_block(
+            tcp_retransmissions=tcp_retransmissions,
+            wlan_retries=wlan_retries,
+            dns_errors=dns_errors,
+            steering_events=steering_events,
+            bssid_info=bssid_info,
+            client_mac=client_mac,
+            capture_quality=capture_quality,
+            band_counters=band_counters,
+            wireshark_raw=wireshark_raw,
+        )
 
         # 4. Filtrar muestras de señal para gráfica continua
         final_signal_samples = []
@@ -972,15 +857,187 @@ class WiresharkTool:
             "top_destinations": dst_counter.most_common(10),
         }
 
-    def _analyze_steering_patterns(self, events: list, bssid_info: dict, band_counters: dict = None, primary_client_mac: str = None) -> Dict[str, Any]:
+    def _select_primary_client_mac(
+        self,
+        steering_events,
+        temp_signal_samples,
+        all_client_macs,
+        bssid_info,
+        client_mac_hint: Optional[str],
+    ) -> str:
+        """
+        Determina la MAC principal del cliente usando múltiples fuentes de evidencia.
+        
+        Prioriza:
+        - Hint explícito del usuario (si es válido y no es BSSID).
+        - Eventos 802.11 (Assoc/Reassoc Request, BTM Response).
+        - Muestras de RSSI (emisor real).
+        - Frecuencia de aparición global como último recurso.
+        """
+        client_mac = "Desconocido"
+
+        def is_valid_client_mac(mac: str) -> bool:
+            if not mac or mac in ("ff:ff:ff:ff:ff:ff", "00:00:00:00:00:00"):
+                return False
+            try:
+                first_octet = int(mac.split(":")[0], 16)
+                # Filtrar direcciones multicast / group
+                if first_octet & 1:
+                    return False
+            except Exception:
+                return False
+            return True
+
+        def _normalize_mac(mac: str) -> str:
+            return (mac or "").lower().replace("-", ":").strip()
+
+        known_bssids = set(
+            _normalize_mac(b) for b in (bssid_info or {}).keys() if b
+        )
+
+        # 1) Hint explícito del usuario
+        if client_mac_hint:
+            hint_norm = _normalize_mac(client_mac_hint)
+            if is_valid_client_mac(hint_norm) and hint_norm not in known_bssids:
+                return hint_norm
+
+        mac_score = Counter()
+
+        # 2) Evidencia fuerte desde eventos 802.11
+        for ev in steering_events:
+            subtype = ev.get("subtype")
+            ev_type = ev.get("type")
+            ev_event_type = ev.get("event_type")
+
+            # Candidate via client_mac calculado (cuando exista)
+            cand = _normalize_mac(ev.get("client_mac"))
+            if cand and is_valid_client_mac(cand) and cand not in known_bssids:
+                mac_score[cand] += 1
+
+            # Association/Reassociation Request -> SA del evento
+            if subtype in [0, 2]:
+                cand_sa = _normalize_mac(ev.get("sa") or ev.get("wlan_sa"))
+                if cand_sa and is_valid_client_mac(cand_sa) and cand_sa not in known_bssids:
+                    mac_score[cand_sa] += 5
+
+            # BTM Response explícito (formato WiresharkTool)
+            if ev_type == "btm" and ev_event_type == "response":
+                cand_cli = _normalize_mac(ev.get("client_mac"))
+                if cand_cli and is_valid_client_mac(cand_cli) and cand_cli not in known_bssids:
+                    mac_score[cand_cli] += 8
+
+        # 3) Evidencia desde RSSI samples: el cliente es el emisor real de frames con RSSI
+        for s in temp_signal_samples:
+            cand_sa = _normalize_mac(s.get("sa"))
+            if cand_sa and is_valid_client_mac(cand_sa) and cand_sa not in known_bssids:
+                mac_score[cand_sa] += 2
+
+        # 4) Fallback: frecuencia de aparición global en all_client_macs (menos confiable)
+        fallback_clients = [
+            _normalize_mac(m)
+            for m in all_client_macs
+            if is_valid_client_mac(_normalize_mac(m))
+            and _normalize_mac(m) not in known_bssids
+        ]
+        if fallback_clients:
+            mac_score.update(Counter(fallback_clients))
+
+        if mac_score:
+            client_mac = mac_score.most_common(1)[0][0]
+
+        return client_mac
+
+    def _compute_bssid_roles(self, bssid_info: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Calcula roles sugeridos para BSSIDs (maestro/esclavo) según banda.
+        
+        Convención:
+        - 5GHz -> maestro (objetivo principal).
+        - 2.4GHz -> esclavo/fallback (o maestro si es la única banda).
+        """
+        bssid_roles: Dict[str, Any] = {}
+        try:
+            bssids_5 = [
+                b
+                for b, v in (bssid_info or {}).items()
+                if isinstance(v, dict)
+                and str(v.get("band", "")).lower().startswith("5")
+            ]
+            bssids_24 = [
+                b
+                for b, v in (bssid_info or {}).items()
+                if isinstance(v, dict)
+                and (
+                    "2.4" in str(v.get("band", "")).lower()
+                    or "2,4" in str(v.get("band", "")).lower()
+                )
+            ]
+
+            if bssids_5 and bssids_24:
+                for b in bssids_5:
+                    bssid_roles[b] = {"role": "maestro", "band": "5GHz"}
+                for b in bssids_24:
+                    bssid_roles[b] = {"role": "esclavo", "band": "2.4GHz"}
+            elif bssids_5:
+                for b in bssids_5:
+                    bssid_roles[b] = {"role": "maestro", "band": "5GHz"}
+            elif bssids_24:
+                for b in bssids_24:
+                    bssid_roles[b] = {"role": "maestro", "band": "2.4GHz"}
+        except Exception:
+            # En caso de cualquier incoherencia, devolvemos sin roles adicionales
+            bssid_roles = {}
+
+        return bssid_roles
+
+    def _build_diagnostics_block(
+        self,
+        tcp_retransmissions: int,
+        wlan_retries: int,
+        dns_errors: int,
+        steering_events,
+        bssid_info: Dict[str, Any],
+        client_mac: str,
+        capture_quality: Dict[str, Any],
+        band_counters: Dict[str, Any],
+        wireshark_raw: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Construye el bloque `diagnostics`, fuente de verdad numérica.
+        
+        Centraliza la estructura que consumen otros servicios (`BTMAnalyzer`,
+        `BandSteeringService`, etc.) sin recalcular métricas en múltiples sitios.
+        """
+        bssid_roles = self._compute_bssid_roles(bssid_info)
+
+        return {
+            "tcp_retransmissions": tcp_retransmissions,
+            "wlan_retries": wlan_retries,
+            "dns_errors": dns_errors,
+            "steering_events_count": len(steering_events),
+            "unique_bssid_count": len(bssid_info),
+            "bssid_info": bssid_info,
+            "bssid_roles": bssid_roles,
+            "client_mac": client_mac,
+            "capture_quality": capture_quality,
+            "band_counters": band_counters,  # Contadores para steering preventivo
+            "wireshark_raw": wireshark_raw,  # Datos exactos de tshark
+        }
+
+    def _analyze_steering_patterns(
+        self,
+        events: list,
+        bssid_info: dict,
+        band_counters: dict = None,
+        primary_client_mac: str = None,
+    ) -> Dict[str, Any]:
         """
         Analiza patrones de band steering en los eventos capturados.
         
         Soporta:
-            pass
-        1. Steering agresivo (Deauth → Reassoc)
-        2. Steering asistido (Reassoc directa)
-        3. Steering preventivo (Client Steering silenciando 2.4GHz)
+        1. Steering agresivo (Deauth → Reassoc).
+        2. Steering asistido (Reassoc directa).
+        3. Steering preventivo (client steering silenciando 2.4GHz).
         """
         
         # Detectar Steering Preventivo (siempre se chequea, incluso sin eventos de transición)
@@ -1001,318 +1058,67 @@ class WiresharkTool:
                 "preventive_steering": False
             }
         
-        # Ordenar eventos por timestamp
-        sorted_events = sorted(events, key=lambda x: x["timestamp"])
-        
-        # Filtrar BSSIDs conocidos para evitar agrupar eventos por BSSID en lugar de cliente
-        known_bssids_set = set(bssid_info.keys()) if bssid_info else set()
-        
-        def is_bssid(mac: str) -> bool:
-            """Verifica si una MAC es un BSSID conocido"""
-            if not mac:
-                return True
-            mac_normalized = mac.lower().replace('-', ':')
-            for bssid in known_bssids_set:
-                if bssid.lower().replace('-', ':') == mac_normalized:
-                    return True
-            return False
-        
-        # Agrupar por cliente, filtrando BSSIDs
-        client_events = {}
-        for event in sorted_events:
-            client = event.get("client_mac")
-            # Solo agregar si tiene client_mac válido y no es un BSSID conocido
-            if client and client != "" and not is_bssid(client):
-                if client not in client_events:
-                    client_events[client] = []
-                client_events[client].append(event)
-        
-        transitions = []
-        total_steering_attempts = 0
-        successful_transitions = 0
-        
-        # --- CORRECCIÓN LÓGICA: Contar éxito BTM como transición exitosa ---
-        # Si hubo BTM Accept, el cliente cooperó exitosamente, aunque no hayamos visto el paquete Reassoc
-        if band_counters and "btm_stats" in band_counters:
-            btm_stats = band_counters["btm_stats"]
-            
-            # Contar solo BTM Requests del cliente principal si está especificado
-            if primary_client_mac:
-                btm_requests_count = sum(
-                    1 for event in sorted_events 
-                    if event.get("type") == "btm" 
-                    and event.get("event_type") == "request"
-                    and event.get("client_mac") == primary_client_mac
-                )
-            else:
-                # Si no hay cliente principal, contar todos los requests
-                btm_requests_count = btm_stats.get("requests", 0)
-            
-            # Si hubo BTM Requests, contar como intentos de steering
-            if btm_requests_count > 0:
-                total_steering_attempts += btm_requests_count
-            
-            # Contar TODOS los responses exitosos (status_code 0) desde los eventos
-            # Solo contar eventos del cliente principal si está especificado
-            # No solo verificar si existe uno, sino contar todos los éxitos reales
-            btm_successful_responses = sum(
-                1 for event in sorted_events 
-                if event.get("type") == "btm" 
-                and event.get("event_type") == "response"
-                and (event.get("status_code") == 0 or str(event.get("status_code")) == "0")
-                and (not primary_client_mac or event.get("client_mac") == primary_client_mac)
-            )
-            
-            if btm_successful_responses > 0:
-                successful_transitions += btm_successful_responses
+        (
+            sorted_events,
+            client_events,
+        ) = self._group_events_by_client(events=events, bssid_info=bssid_info)
 
-        failed_transitions = 0
-        loop_detected = False
-        transition_times = []
+        (
+            total_steering_attempts,
+            successful_transitions,
+        ) = self._count_btm_attempts_and_successes(
+            sorted_events=sorted_events,
+            band_counters=band_counters,
+            primary_client_mac=primary_client_mac,
+        )
+
+        (
+            transitions,
+            client_attempts,
+            client_successes,
+            failed_transitions,
+            loop_detected,
+            transition_times,
+        ) = self._analyze_client_transitions(
+            client_events=client_events,
+            bssid_info=bssid_info,
+        )
+
+        total_steering_attempts += client_attempts
+        successful_transitions += client_successes
         
-        # Función auxiliar para normalizar bandas y evitar falsos negativos
-        def normalize_band(band):
-            """Normaliza el formato de banda para comparación consistente."""
-            if not band:
-                return None
-            band_str = str(band).lower()
-            if '5' in band_str:
-                return '5GHz'
-            if '2.4' in band_str or '2,4' in band_str:
-                return '2.4GHz'
-            return band
-        
-        # Analizar cada cliente
-        for client_mac, client_event_list in client_events.items():
-            if len(client_event_list) < 2:
-                continue
-            
-            # Rastrear BSSID actual del cliente
-            current_bssid = None
-            last_reassoc_time = None
-            
-            for i, event in enumerate(client_event_list):
-                event_subtype = event["subtype"]
-                
-                # CASO 1: Steering agresivo (Deauth/Disassoc → Reassoc)
-                if event_subtype in [10, 12]:  # Disassoc o Deauth
-                    deauth_band = event["band"]
-                    deauth_time = event["timestamp"]
-                    reason_code = event["reason_code"]
-                    deauth_bssid = event.get("bssid")
-                    
-                    # VALIDAR DEAUTH: Solo contar si es dirigido y forzado
-                    is_forced, classification, desc = DeauthValidator.validate_and_classify(event, client_mac)
-                    if not is_forced:
-                        continue
-                    
-                    total_steering_attempts += 1
-                    
-                    # Buscar reassociation subsecuente
-                    reassoc_found = False
-                    reassoc_time = None
-                    new_bssid = None
-                    new_band = None
-                    
-                    # Usar ventana configurada (15.0s)
-                    reassoc_limit = REASSOC_TIMEOUT_SECONDS
-                    for j in range(i + 1, len(client_event_list)):
-                        next_event = client_event_list[j]
-                        
-                        # Si excedemos la ventana temporal, parar búsqueda
-                        if (next_event["timestamp"] - deauth_time) > reassoc_limit:
-                            break
-                        
-                        # Buscar RESPONSE (1=Assoc Resp, 3=Reassoc Resp)
-                        if next_event["subtype"] in [1, 3]:
-                            # VALIDAR STATUS CODE
-                            current_status_code = next_event.get("assoc_status_code", "0")
-                            try:
-                                s_val = int(current_status_code) if str(current_status_code).isdigit() else 0
-                            except:
-                                s_val = 0
-                            
-                            if s_val == 0:
-                                # Éxito: AP aceptó la asociación
-                                reassoc_found = True
-                                reassoc_time = next_event["timestamp"]
-                                new_bssid = next_event["bssid"]
-                                new_band = next_event["band"]
-                                break
-                            else:
-                                # Fallo: AP rechazó (Status != 0)
-                                reassoc_found = False
-                                break
-                    
-                    transition_time = (reassoc_time - deauth_time) if reassoc_time else None
-                    # Normalizar bandas antes de comparar
-                    deauth_band_norm = normalize_band(deauth_band)
-                    new_band_norm = normalize_band(new_band)
-                    is_band_change = (deauth_band_norm and new_band_norm and deauth_band_norm != new_band_norm)
-                    is_bssid_change = (deauth_bssid and new_bssid and deauth_bssid != new_bssid)
-                    
-                    # Detectar bucles
-                    returned_to_original = False
-                    if reassoc_found and new_bssid and current_bssid:
-                        if new_bssid == current_bssid:
-                            returned_to_original = True
-                            loop_detected = True
-                    
-                    # Clasificar transición
-                    status = self._classify_transition(
-                        reassoc_found, transition_time, is_band_change, 
-                        is_bssid_change, returned_to_original
-                    )
-                    
-                    if status == "SUCCESS":
-                        successful_transitions += 1
-                    elif status in ["LOOP", "TIMEOUT", "NO_REASSOC"]:
-                        failed_transitions += 1
-                    
-                    if transition_time:
-                        transition_times.append(transition_time)
-                    
-                    transitions.append({
-                        "client": client_mac,
-                        "type": "aggressive",  # Steering con Deauth
-                        "deauth_time": deauth_time,
-                        "reassoc_time": reassoc_time,
-                        "transition_time": transition_time,
-                        "from_bssid": deauth_bssid,
-                        "to_bssid": new_bssid,
-                        "from_band": deauth_band,
-                        "to_band": new_band,
-                        "is_band_change": is_band_change,
-                        "reason_code": reason_code,
-                        "status": status,
-                        "returned_to_original": returned_to_original
-                    })
-                    
-                    if reassoc_found and new_bssid:
-                        current_bssid = new_bssid
-                
-                # CASO 2: Steering asistido (Reassociation directa - 802.11k/v/r)
-                elif event_subtype in [2, 3]:  # Reassoc Request o Response
-                    new_bssid = event["bssid"]
-                    new_band = event["band"]
-                    reassoc_time = event["timestamp"]
-                    
-                    # Solo contar si hay cambio de BSSID (no es la primera asociación)
-                    if current_bssid and new_bssid and current_bssid != new_bssid:
-                        total_steering_attempts += 1
-                        
-                        # Calcular tiempo desde última reassoc
-                        transition_time = None
-                        if last_reassoc_time:
-                            transition_time = reassoc_time - last_reassoc_time
-                        
-                        # Determinar banda anterior (del BSSID anterior)
-                        old_band = None
-                        if current_bssid in bssid_info:
-                            old_band = bssid_info[current_bssid].get("band")
-                        
-                        # Normalizar bandas antes de comparar
-                        old_band_norm = normalize_band(old_band)
-                        new_band_norm = normalize_band(new_band)
-                        is_band_change = (old_band_norm and new_band_norm and old_band_norm != new_band_norm)
-                        is_bssid_change = True  # Por definición, ya verificamos que cambió
-                        
-                        # Detectar bucles (volver a BSSID anterior)
-                        returned_to_original = False
-                        # Buscar si vuelve al BSSID anterior en los próximos eventos
-                        for k in range(i + 1, min(i + 5, len(client_event_list))):
-                            if client_event_list[k]["bssid"] == current_bssid:
-                                returned_to_original = True
-                                loop_detected = True
-                                break
-                        
-                        # Clasificar (para steering asistido, siempre hay "reassoc")
-                        status = self._classify_transition(
-                            True, transition_time, is_band_change,
-                            is_bssid_change, returned_to_original
-                        )
-                        
-                        if status == "SUCCESS":
-                            successful_transitions += 1
-                        elif status in ["LOOP", "SLOW"]:
-                            # Para steering asistido, SLOW no es fallo crítico
-                            if status == "LOOP":
-                                failed_transitions += 1
-                        
-                        if transition_time:
-                            transition_times.append(transition_time)
-                        
-                        transitions.append({
-                            "client": client_mac,
-                            "type": "assisted",  # Steering asistido (802.11k/v/r)
-                            "deauth_time": None,
-                            "reassoc_time": reassoc_time,
-                            "transition_time": transition_time,
-                            "from_bssid": current_bssid,
-                            "to_bssid": new_bssid,
-                            "from_band": old_band,
-                            "to_band": new_band,
-                            "is_band_change": is_band_change,
-                            "reason_code": None,
-                            "status": status,
-                            "returned_to_original": returned_to_original
-                        })
-                    
-                    # Actualizar estado del cliente
-                    if new_bssid:
-                        current_bssid = new_bssid
-                        last_reassoc_time = reassoc_time
-                
-                # Actualizar BSSID actual para Association inicial
-                elif event_subtype in [0, 1] and event["bssid"]:
-                    if not current_bssid:  # Primera asociación
-                        current_bssid = event["bssid"]
-                        last_reassoc_time = event["timestamp"]
-        
-        # Calcular métricas
-        avg_transition_time = sum(transition_times) / len(transition_times) if transition_times else 0
-        max_transition_time = max(transition_times) if transition_times else 0
-        
-        # Determinar veredicto general
-        if preventive_detected and total_steering_attempts == 0:
-            # Verificar si hay BTM aunque no haya habido Reassoc (raro, pero posible)
-            btm_accept = False
-            if band_counters.get("btm_stats", {}):
-                for code in band_counters["btm_stats"].get("status_codes", []):
-                    try:
-                        if int(code) == 0: btm_accept = True
-                    except: pass
-            
-            if btm_accept:
-                 verdict = "EXCELLENT" # BTM accept es superior a preventive
-            else:
-                 verdict = "PREVENTIVE_SUCCESS"
-        else:
-            verdict = self._determine_verdict(
-                total_steering_attempts, successful_transitions, 
-                failed_transitions, loop_detected, avg_transition_time,
-                band_counters, 
-                events, 
-                primary_client_mac 
-            )
-        
-        # --- NUEVA REGLA DE SINCRONIZACIÓN ANSI ---
-        # Si detectamos más transiciones físicas que intentos lógicos, 
-        # elevamos los intentos para mantener la coherencia en la UI.
+        avg_transition_time, max_transition_time = self._compute_transition_metrics(
+            transition_times=transition_times,
+        )
+
+        verdict = self._determine_overall_steering_verdict(
+            preventive_detected=preventive_detected,
+            total_steering_attempts=total_steering_attempts,
+            band_counters=band_counters or {},
+            successful_transitions=successful_transitions,
+            failed_transitions=failed_transitions,
+            loop_detected=loop_detected,
+            avg_transition_time=avg_transition_time,
+            events=events,
+            primary_client_mac=primary_client_mac,
+        )
+
         total_attempts_final = max(total_steering_attempts, len(transitions))
-        
+
         return {
             "transitions": transitions,
             "steering_attempts": total_attempts_final,
             "successful_transitions": successful_transitions,
-            "failed_transitions": max(0, total_attempts_final - successful_transitions),
+            "failed_transitions": max(
+                0, total_attempts_final - successful_transitions
+            ),
             "loop_detected": loop_detected or len(transitions) > 3,
             "avg_transition_time": round(avg_transition_time, 3),
             "max_transition_time": round(max_transition_time, 3),
             "transition_times": transition_times,
-            "verdict": verdict, 
+            "verdict": verdict,
             "clients_analyzed": len(client_events),
-            "preventive_steering": preventive_detected
+            "preventive_steering": preventive_detected,
         }
 
     def _detect_preventive_steering(self, diag: dict) -> bool:
@@ -1320,10 +1126,9 @@ class WiresharkTool:
         Detecta Steering Preventivo (Client Steering) o Selección de Banda Exitosa.
         
         Criterio (más flexible):
-            pass
-        1. La red 2.4GHz está disponible (Beacons > 0).
+        1. La red 2.4GHz está disponible (beacons > 0).
         2. El cliente genera tráfico de datos.
-        3. La inmensa mayoría del tráfico (>90%) ocurre en 5GHz.
+        3. La mayoría del tráfico (>90%) ocurre en 5GHz.
         
         Esto indica que el cliente (o la red) prefirió 5GHz sobre 2.4GHz,
         lo cual es el objetivo final del Band Steering.
@@ -1349,6 +1154,462 @@ class WiresharkTool:
              return True
         
         return False
+
+    def _group_events_by_client(
+        self,
+        events: list,
+        bssid_info: dict,
+    ) -> (list, Dict[str, list]):
+        """
+        Ordena eventos por tiempo y los agrupa por cliente, filtrando BSSIDs conocidos.
+        """
+        sorted_events = sorted(events, key=lambda x: x["timestamp"])
+
+        known_bssids_set = set(bssid_info.keys()) if bssid_info else set()
+
+        def is_bssid(mac: str) -> bool:
+            if not mac:
+                return True
+            mac_normalized = mac.lower().replace("-", ":")
+            for bssid in known_bssids_set:
+                if bssid.lower().replace("-", ":") == mac_normalized:
+                    return True
+            return False
+
+        client_events: Dict[str, list] = {}
+        for event in sorted_events:
+            client = event.get("client_mac")
+            if client and client != "" and not is_bssid(client):
+                client_events.setdefault(client, []).append(event)
+
+        return sorted_events, client_events
+
+    def _count_btm_attempts_and_successes(
+        self,
+        sorted_events: list,
+        band_counters: Optional[dict],
+        primary_client_mac: Optional[str],
+    ) -> (int, int):
+        """
+        Cuenta intentos y éxitos de steering basados en BTM (requests/responses).
+        """
+        total_steering_attempts = 0
+        successful_transitions = 0
+
+        if not band_counters or "btm_stats" not in band_counters:
+            return total_steering_attempts, successful_transitions
+
+        btm_stats = band_counters["btm_stats"]
+
+        if primary_client_mac:
+            btm_requests_count = sum(
+                1
+                for event in sorted_events
+                if event.get("type") == "btm"
+                and event.get("event_type") == "request"
+                and event.get("client_mac") == primary_client_mac
+            )
+        else:
+            btm_requests_count = btm_stats.get("requests", 0)
+
+        if btm_requests_count > 0:
+            total_steering_attempts += btm_requests_count
+
+        btm_successful_responses = sum(
+            1
+            for event in sorted_events
+            if event.get("type") == "btm"
+            and event.get("event_type") == "response"
+            and (
+                event.get("status_code") == 0
+                or str(event.get("status_code")) == "0"
+            )
+            and (not primary_client_mac or event.get("client_mac") == primary_client_mac)
+        )
+
+        if btm_successful_responses > 0:
+            successful_transitions += btm_successful_responses
+
+        return total_steering_attempts, successful_transitions
+
+    def _analyze_client_transitions(
+        self,
+        client_events: Dict[str, list],
+        bssid_info: dict,
+    ) -> (list, int, int, int, bool, list):
+        """
+        Analiza, por cliente, transiciones agresivas y asistidas.
+        """
+        transitions = []
+        total_steering_attempts = 0
+        successful_transitions = 0
+        failed_transitions = 0
+        loop_detected = False
+        transition_times: list = []
+
+        def normalize_band(band):
+            if not band:
+                return None
+            band_str = str(band).lower()
+            if "5" in band_str:
+                return "5GHz"
+            if "2.4" in band_str or "2,4" in band_str:
+                return "2.4GHz"
+            return band
+
+        for client_mac, client_event_list in client_events.items():
+            if len(client_event_list) < 2:
+                continue
+
+            current_bssid = None
+            last_reassoc_time = None
+
+            for i, event in enumerate(client_event_list):
+                event_subtype = event["subtype"]
+
+                # Caso 1: Steering agresivo (Deauth/Disassoc → Reassoc)
+                if event_subtype in [10, 12]:
+                    (
+                        new_transitions,
+                        attempts_inc,
+                        success_inc,
+                        fail_inc,
+                        loop_flag,
+                        new_times,
+                        current_bssid,
+                    ) = self._process_aggressive_steering_event(
+                        client_mac=client_mac,
+                        event=event,
+                        client_event_list=client_event_list,
+                        start_index=i,
+                        current_bssid=current_bssid,
+                        normalize_band=normalize_band,
+                    )
+
+                    transitions.extend(new_transitions)
+                    total_steering_attempts += attempts_inc
+                    successful_transitions += success_inc
+                    failed_transitions += fail_inc
+                    if loop_flag:
+                        loop_detected = True
+                    transition_times.extend(new_times)
+
+                # Caso 2: Steering asistido (Reassociation directa)
+                elif event_subtype in [2, 3]:
+                    (
+                        new_transitions,
+                        attempts_inc,
+                        success_inc,
+                        fail_inc,
+                        loop_flag,
+                        new_times,
+                        current_bssid,
+                        last_reassoc_time,
+                    ) = self._process_assisted_steering_event(
+                        client_mac=client_mac,
+                        event=event,
+                        client_event_list=client_event_list,
+                        start_index=i,
+                        current_bssid=current_bssid,
+                        last_reassoc_time=last_reassoc_time,
+                        bssid_info=bssid_info,
+                        normalize_band=normalize_band,
+                    )
+
+                    transitions.extend(new_transitions)
+                    total_steering_attempts += attempts_inc
+                    successful_transitions += success_inc
+                    failed_transitions += fail_inc
+                    if loop_flag:
+                        loop_detected = True
+                    transition_times.extend(new_times)
+
+                # Actualizar BSSID actual para Association inicial
+                elif event_subtype in [0, 1] and event.get("bssid"):
+                    if not current_bssid:
+                        current_bssid = event["bssid"]
+                        last_reassoc_time = event["timestamp"]
+
+        return (
+            transitions,
+            total_steering_attempts,
+            successful_transitions,
+            failed_transitions,
+            loop_detected,
+            transition_times,
+        )
+
+    def _process_aggressive_steering_event(
+        self,
+        client_mac: str,
+        event: dict,
+        client_event_list: list,
+        start_index: int,
+        current_bssid: Optional[str],
+        normalize_band,
+    ):
+        """Procesa un evento de steering agresivo (Deauth/Disassoc)."""
+        transitions = []
+        attempts_inc = 0
+        success_inc = 0
+        fail_inc = 0
+        loop_flag = False
+        new_times = []
+
+        deauth_band = event["band"]
+        deauth_time = event["timestamp"]
+        reason_code = event["reason_code"]
+        deauth_bssid = event.get("bssid")
+
+        is_forced, classification, desc = DeauthValidator.validate_and_classify(
+            event, client_mac
+        )
+        if not is_forced:
+            return transitions, attempts_inc, success_inc, fail_inc, loop_flag, new_times, current_bssid
+
+        attempts_inc += 1
+
+        reassoc_found = False
+        reassoc_time = None
+        new_bssid = None
+        new_band = None
+
+        reassoc_limit = REASSOC_TIMEOUT_SECONDS
+        for next_event in client_event_list[start_index + 1 :]:
+            if (next_event["timestamp"] - deauth_time) > reassoc_limit:
+                break
+
+            if next_event["subtype"] in [1, 3]:
+                current_status_code = next_event.get("assoc_status_code", "0")
+                try:
+                    s_val = (
+                        int(current_status_code)
+                        if str(current_status_code).isdigit()
+                        else 0
+                    )
+                except Exception:
+                    s_val = 0
+
+                if s_val == 0:
+                    reassoc_found = True
+                    reassoc_time = next_event["timestamp"]
+                    new_bssid = next_event["bssid"]
+                    new_band = next_event["band"]
+                    break
+                else:
+                    reassoc_found = False
+                    break
+
+        transition_time = (
+            reassoc_time - deauth_time if reassoc_time is not None else None
+        )
+
+        deauth_band_norm = normalize_band(deauth_band)
+        new_band_norm = normalize_band(new_band)
+        is_band_change = (
+            deauth_band_norm
+            and new_band_norm
+            and deauth_band_norm != new_band_norm
+        )
+        is_bssid_change = (
+            deauth_bssid and new_bssid and deauth_bssid != new_bssid
+        )
+
+        returned_to_original = False
+        if reassoc_found and new_bssid and current_bssid:
+            if new_bssid == current_bssid:
+                returned_to_original = True
+                loop_flag = True
+
+        status = self._classify_transition(
+            reassoc_found,
+            transition_time,
+            is_band_change,
+            is_bssid_change,
+            returned_to_original,
+        )
+
+        if status == "SUCCESS":
+            success_inc += 1
+        elif status in ["LOOP", "TIMEOUT", "NO_REASSOC"]:
+            fail_inc += 1
+
+        if transition_time is not None:
+            new_times.append(transition_time)
+
+        transitions.append(
+            {
+                "client": client_mac,
+                "type": "aggressive",
+                "deauth_time": deauth_time,
+                "reassoc_time": reassoc_time,
+                "transition_time": transition_time,
+                "from_bssid": deauth_bssid,
+                "to_bssid": new_bssid,
+                "from_band": deauth_band,
+                "to_band": new_band,
+                "is_band_change": is_band_change,
+                "reason_code": reason_code,
+                "status": status,
+                "returned_to_original": returned_to_original,
+            }
+        )
+
+        if reassoc_found and new_bssid:
+            current_bssid = new_bssid
+
+        return transitions, attempts_inc, success_inc, fail_inc, loop_flag, new_times, current_bssid
+
+    def _process_assisted_steering_event(
+        self,
+        client_mac: str,
+        event: dict,
+        client_event_list: list,
+        start_index: int,
+        current_bssid: Optional[str],
+        last_reassoc_time: Optional[float],
+        bssid_info: dict,
+        normalize_band,
+    ):
+        """Procesa un evento de steering asistido (reassociation directa)."""
+        transitions = []
+        attempts_inc = 0
+        success_inc = 0
+        fail_inc = 0
+        loop_flag = False
+        new_times = []
+
+        new_bssid = event["bssid"]
+        new_band = event["band"]
+        reassoc_time = event["timestamp"]
+
+        if current_bssid and new_bssid and current_bssid != new_bssid:
+            attempts_inc += 1
+
+            transition_time = None
+            if last_reassoc_time:
+                transition_time = reassoc_time - last_reassoc_time
+
+            old_band = None
+            if current_bssid in bssid_info:
+                old_band = bssid_info[current_bssid].get("band")
+
+            old_band_norm = normalize_band(old_band)
+            new_band_norm = normalize_band(new_band)
+            is_band_change = (
+                old_band_norm
+                and new_band_norm
+                and old_band_norm != new_band_norm
+            )
+            is_bssid_change = True
+
+            returned_to_original = False
+            for next_event in client_event_list[
+                start_index + 1 : min(start_index + 5, len(client_event_list))
+            ]:
+                if next_event.get("bssid") == current_bssid:
+                    returned_to_original = True
+                    loop_flag = True
+                    break
+
+            status = self._classify_transition(
+                True,
+                transition_time,
+                is_band_change,
+                is_bssid_change,
+                returned_to_original,
+            )
+
+            if status == "SUCCESS":
+                success_inc += 1
+            elif status in ["LOOP", "SLOW"]:
+                if status == "LOOP":
+                    fail_inc += 1
+
+            if transition_time is not None:
+                new_times.append(transition_time)
+
+            transitions.append(
+                {
+                    "client": client_mac,
+                    "type": "assisted",
+                    "deauth_time": None,
+                    "reassoc_time": reassoc_time,
+                    "transition_time": transition_time,
+                    "from_bssid": current_bssid,
+                    "to_bssid": new_bssid,
+                    "from_band": old_band,
+                    "to_band": new_band,
+                    "is_band_change": is_band_change,
+                    "reason_code": None,
+                    "status": status,
+                    "returned_to_original": returned_to_original,
+                }
+            )
+
+        if new_bssid:
+            current_bssid = new_bssid
+            last_reassoc_time = reassoc_time
+
+        return (
+            transitions,
+            attempts_inc,
+            success_inc,
+            fail_inc,
+            loop_flag,
+            new_times,
+            current_bssid,
+            last_reassoc_time,
+        )
+
+    def _compute_transition_metrics(self, transition_times: list) -> (float, float):
+        """Calcula métricas agregadas de tiempos de transición."""
+        if not transition_times:
+            return 0.0, 0.0
+
+        avg_transition_time = sum(transition_times) / len(transition_times)
+        max_transition_time = max(transition_times)
+        return avg_transition_time, max_transition_time
+
+    def _determine_overall_steering_verdict(
+        self,
+        preventive_detected: bool,
+        total_steering_attempts: int,
+        band_counters: dict,
+        successful_transitions: int,
+        failed_transitions: int,
+        loop_detected: bool,
+        avg_transition_time: float,
+        events: list,
+        primary_client_mac: Optional[str],
+    ) -> str:
+        """
+        Determina el veredicto global de steering combinando BTM, transiciones y steering preventivo.
+        """
+        if preventive_detected and total_steering_attempts == 0:
+            btm_accept = False
+            if band_counters.get("btm_stats", {}):
+                for code in band_counters["btm_stats"].get("status_codes", []):
+                    try:
+                        if int(code) == 0:
+                            btm_accept = True
+                    except Exception:
+                        pass
+
+            if btm_accept:
+                return "EXCELLENT"
+            return "PREVENTIVE_SUCCESS"
+
+        return self._determine_verdict(
+            total_steering_attempts,
+            successful_transitions,
+            failed_transitions,
+            loop_detected,
+            avg_transition_time,
+            band_counters,
+            events,
+            primary_client_mac,
+        )
     
     def _classify_transition(self, reassoc_found: bool, transition_time: float, 
                             is_band_change: bool, is_bssid_change: bool, 
@@ -1412,8 +1673,9 @@ class WiresharkTool:
                     if c == 0:
                         has_accepted_btm = True
                         break
-                except: pass
-            
+                except Exception:
+                    pass
+
             # Si hubo aceptación BTM
             if has_accepted_btm:
                 if has_issues:
@@ -1562,7 +1824,7 @@ class WiresharkTool:
                     elif c == 8: desc = "8 (Reject - Leaving ESS)"
                     else: desc = f"{c} (Reject/Other)"
                     status_desc.append(desc)
-                except:
+                except Exception:
                     status_desc.append(str(code))
             
             unique_status = list(set(status_desc))

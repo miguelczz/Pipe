@@ -5,6 +5,7 @@ import { Button } from '../components/ui/Button'
 import { Loading } from '../components/ui/Loading'
 import { useToast } from '../hooks/useToast'
 import { useSelection } from '../hooks/useSelection'
+import { useReportsFilters } from '../hooks/useReportsFilters'
 import { FilterPanel } from '../components/reports/FilterPanel'
 import { StatsPanel } from '../components/reports/StatsPanel'
 import { ReportsListView } from '../components/reports/ReportsListView'
@@ -38,27 +39,29 @@ export function ReportsPage() {
   const [reports, setReports] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState('ALL') // ALL, SUCCESS, FAILED
-  const [sortBy, setSortBy] = useState(() => {
-    // Cargar desde localStorage o usar default
-    const saved = localStorage.getItem('reports_sort_by')
-    return saved || 'date_desc'
-  })
+  const {
+    searchTerm,
+    setSearchTerm,
+    statusFilter,
+    setStatusFilter,
+    sortBy,
+    setSortBy,
+    viewMode,
+    setViewMode,
+    showFilterPanel,
+    setShowFilterPanel,
+    selectedVendors,
+    setSelectedVendors,
+    dateRange,
+    setDateRange,
+  } = useReportsFilters()
   const [expandedVendors, setExpandedVendors] = useState({})
-  const [showFilterPanel, setShowFilterPanel] = useState(false)
-  const [selectedVendors, setSelectedVendors] = useState([])
-  const [dateRange, setDateRange] = useState({ start: null, end: null })
   const [openStatsMenu, setOpenStatsMenu] = useState(false)
   const [openSortMenu, setOpenSortMenu] = useState(false)
   const [openSelectionMenu, setOpenSelectionMenu] = useState(false)
   const [stats, setStats] = useState(null)
   const [loadingStats, setLoadingStats] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
-  const [viewMode, setViewMode] = useState(() => {
-    const saved = localStorage.getItem('reports_view_mode')
-    return saved || 'grid'
-  })
   const [contextMenu, setContextMenu] = useState({ isOpen: false, position: null, report: null })
   const [isDeleting, setIsDeleting] = useState(null)
   const [isDownloading, setIsDownloading] = useState(null)
@@ -74,7 +77,6 @@ export function ReportsPage() {
     selectedCount,
     selectionMode,
     toggleSelection,
-    selectAll,
     deselectAll,
     toggleSelectionMode,
     isSelected,
@@ -112,21 +114,20 @@ export function ReportsPage() {
     
     const term = searchTerm.toLowerCase()
     
-    // Búsqueda en campos básicos
+    // Búsqueda en campos básicos (filename, vendor, model)
     const basicMatch = (
       report.filename?.toLowerCase().includes(term) ||
       report.vendor?.toLowerCase().includes(term) ||
       report.model?.toLowerCase().includes(term)
     )
-    
-    // Búsqueda por MAC (formato común: XX:XX:XX:XX:XX:XX o XXXXXXXXXXXX)
-    const macPattern = /^([0-9a-f]{2}[:-]?){5}([0-9a-f]{2})$/i
-    macPattern.test(term.replace(/[:-]/g, ''))
-    
-    // Si parece una búsqueda MAC, buscar en el detalle del reporte
-    // Por ahora solo buscamos en campos básicos, pero esto se puede expandir
-    
-    return basicMatch
+    // Búsqueda por MAC si el término tiene formato MAC (XX:XX:XX:XX:XX:XX o similar)
+    const macNormalized = term.replace(/[:-]/g, '')
+    const looksLikeMac = /^[0-9a-f]{12}$/i.test(macNormalized)
+    const macMatch = looksLikeMac && (
+      (report.client_mac && report.client_mac.replace(/[:-]/g, '').toLowerCase().includes(macNormalized)) ||
+      (report.raw_stats?.diagnostics?.client_mac && report.raw_stats.diagnostics.client_mac.replace(/[:-]/g, '').toLowerCase().includes(macNormalized))
+    )
+    return basicMatch || macMatch
   }
 
   // Función de ordenamiento (movida antes de groupedReports)
@@ -376,6 +377,7 @@ export function ReportsPage() {
       // Solo mostrar error en consola si no es un 404 (endpoint no disponible)
       // El 404 es esperado si el endpoint no está implementado o no está disponible
       if (err?.status !== 404) {
+        console.warn('Error al cargar estadísticas de reportes:', err)
       }
       // Si falla, usar estadísticas locales si hay reportes
       if (reports.length > 0) {
@@ -698,9 +700,15 @@ export function ReportsPage() {
     } catch (err) {
       const errorMessage = err?.response?.data?.detail || err?.message || 'Error al descargar la captura'
       if (errorMessage.includes('antes de implementar')) {
-        alert('Este reporte es antiguo y no tiene el archivo guardado. Solo los análisis nuevos permiten descargar la captura original.')
+        showToast({
+          type: 'warning',
+          message: 'Este reporte es antiguo y no tiene el archivo guardado. Solo los análisis nuevos permiten descargar la captura original.'
+        })
       } else {
-        alert(`Error al descargar la captura: ${errorMessage}`)
+        showToast({
+          type: 'error',
+          message: `Error al descargar la captura: ${errorMessage}`
+        })
       }
     } finally {
       setIsDownloading(null)
@@ -775,14 +783,18 @@ export function ReportsPage() {
       await handleDownloadPDF(e, reportId)
     } catch (err) {
       const errorMessage = err?.response?.data?.detail || err?.message || 'Error al descargar los archivos'
-      alert(`Error al descargar los archivos: ${errorMessage}`)
+      showToast({
+        type: 'error',
+        message: `Error al descargar los archivos: ${errorMessage}`
+      })
     } finally {
       setIsDownloading(null)
     }
   }
 
   const handleViewReport = (report) => {
-    reportsService.getReportDetail(report.id).then(fullDetail => {
+    reportsService.getReportDetail(report.id)
+      .then(fullDetail => {
       let bssidInfo = fullDetail.raw_stats?.diagnostics?.bssid_info || {}
       
       if (Object.keys(bssidInfo).length === 0 && fullDetail.btm_events && fullDetail.btm_events.length > 0) {
@@ -864,17 +876,11 @@ export function ReportsPage() {
       }))
       navigate('/network-analysis')
     })
+      .catch((err) => {
+        const message = err?.response?.data?.detail || err?.response?.data?.message || err?.message || 'No se pudo cargar el detalle del reporte'
+        showToast({ type: 'error', message })
+      })
   }
-
-  // Guardar ordenamiento en localStorage
-  useEffect(() => {
-    localStorage.setItem('reports_sort_by', sortBy)
-  }, [sortBy])
-
-  // Guardar modo de vista en localStorage
-  useEffect(() => {
-    localStorage.setItem('reports_view_mode', viewMode)
-  }, [viewMode])
 
 
   // Obtener lista única de vendors para el filtro
@@ -891,15 +897,6 @@ export function ReportsPage() {
       ...prev,
       [vendor]: !prev[vendor]
     }))
-  }
-
-  const formatTime = (seconds) => {
-    if (!seconds || seconds === 0) return '0s'
-    if (seconds < 1) return `${Math.round(seconds * 1000)}ms`
-    if (seconds < 60) return `${seconds.toFixed(1)}s`
-    const minutes = Math.floor(seconds / 60)
-    const secs = (seconds % 60).toFixed(1)
-    return `${minutes}m ${secs}s`
   }
 
   const formatDate = (dateStr) => {

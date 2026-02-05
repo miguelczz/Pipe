@@ -1,10 +1,11 @@
 """
 Endpoints para análisis de capturas de red (Wireshark / PCAP) asistido por IA.
+Expone el flujo orquestado por BandSteeringService sin responsabilidades
+de logging o de negocio adicionales.
 """
 
 import asyncio
 import concurrent.futures
-import logging
 import os
 import uuid
 from pathlib import Path
@@ -14,8 +15,6 @@ import json
 from fastapi.responses import JSONResponse
 
 from ..services.band_steering_service import BandSteeringService
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/network-analysis", tags=["network-analysis"])
 
@@ -52,14 +51,9 @@ async def analyze_network_capture(
     temp_name = f"{uuid.uuid4()}_{file.filename}"
     temp_path = uploads_dir / temp_name
     
-    logger.info(f"🔍 [UPLOAD] Guardando archivo temporal: {temp_path}")
-    logger.info(f"🔍 [UPLOAD] Nombre original: {file.filename}")
-    logger.info(f"🔍 [UPLOAD] Tamaño: {file.size} bytes")
-
     try:
         content = await file.read()
         temp_path.write_bytes(content)
-        logger.info(f"✅ [UPLOAD] Archivo temporal guardado: {temp_path}, existe: {temp_path.exists()}, tamaño: {temp_path.stat().st_size}")
 
 
         # Parsear metadata opcional del usuario (SSID, MAC cliente, etc.)
@@ -73,8 +67,6 @@ async def analyze_network_capture(
         # Ejecutar el servicio en un thread separado (tshark es bloqueante)
         # Asegurar que temp_path sea absoluto antes de pasarlo al servicio
         temp_path_abs = temp_path.resolve()
-        logger.info(f"🔍 [UPLOAD] Antes de procesar, verificando archivo temporal: {temp_path_abs.exists()}")
-        logger.info(f"🔍 [UPLOAD] Path temporal absoluto: {temp_path_abs}")
         loop = asyncio.get_event_loop()
         result_pkg = await loop.run_in_executor(
             _executor,
@@ -86,13 +78,13 @@ async def analyze_network_capture(
                 )
             )
         )
-        logger.info(f"🔍 [UPLOAD] Después de procesar, archivo temporal todavía existe: {temp_path_abs.exists()}")
-        
         # CRÍTICO: El archivo temporal debe existir cuando se guarda el análisis
         # Asegurar que el path sea absoluto y que el archivo exista
         if not temp_path_abs.exists():
-            logger.error(f"❌ [UPLOAD] El archivo temporal NO existe después del procesamiento: {temp_path_abs}")
-            raise HTTPException(status_code=500, detail="El archivo temporal se perdió durante el procesamiento")
+            raise HTTPException(
+                status_code=500,
+                detail="El archivo temporal se perdió durante el procesamiento",
+            )
 
         analysis = result_pkg["analysis"]
         raw_stats = result_pkg["raw_stats"]
@@ -116,10 +108,8 @@ async def analyze_network_capture(
                     "signal_samples": [s.model_dump(mode='json') for s in analysis.signal_samples] if analysis.signal_samples else []
                 }
             }
-            logger.info(f"✅ [RESPONSE] Respuesta formateada correctamente, analysis_id: {analysis.analysis_id}")
             return JSONResponse(content=response_data)
         except Exception as serialization_error:
-            logger.error(f"❌ [SERIALIZATION] Error al serializar respuesta: {str(serialization_error)}", exc_info=True)
             # Intentar respuesta mínima
             try:
                 minimal_response = {
@@ -133,8 +123,7 @@ async def analyze_network_capture(
                     }
                 }
                 return JSONResponse(content=minimal_response)
-            except Exception as fallback_error:
-                logger.error(f"❌ [FALLBACK] Error incluso en respuesta mínima: {str(fallback_error)}", exc_info=True)
+            except Exception:
                 raise HTTPException(
                     status_code=500,
                     detail=f"Error crítico al serializar respuesta: {str(serialization_error)}"
@@ -149,7 +138,6 @@ async def analyze_network_capture(
             ),
         )
     except Exception as e:
-        logger.error(f"❌ [ERROR] Error al analizar la captura de red: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Error al analizar la captura de red: {str(e)}",

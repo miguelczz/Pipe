@@ -25,7 +25,8 @@ export function getStorageItem(key, defaultValue = null) {
 export function setStorageItem(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value))
-  } catch (error) {
+  } catch {
+    // Ignorar fallos de localStorage (privado, cuota, etc.)
   }
 }
 
@@ -36,7 +37,8 @@ export function setStorageItem(key, value) {
 export function removeStorageItem(key) {
   try {
     localStorage.removeItem(key)
-  } catch (error) {
+  } catch {
+    // Ignorar fallos de localStorage
   }
 }
 

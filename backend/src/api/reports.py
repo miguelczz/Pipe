@@ -3,7 +3,6 @@ from fastapi.responses import FileResponse, Response
 from fastapi import Body
 from pathlib import Path
 import json
-import logging
 from typing import List, Dict, Any, Optional
 from io import BytesIO
 from datetime import datetime
@@ -11,8 +10,6 @@ from collections import Counter
 import pytz
 from ..services.band_steering_service import BandSteeringService
 from ..agent.llm_client import LLMClient
-
-logger = logging.getLogger(__name__)
 
 # WeasyPrint se importará de forma lazy solo cuando se necesite
 WEASYPRINT_AVAILABLE = None
@@ -98,12 +95,6 @@ async def list_reports():
                             
                             verdict = data.get("verdict")
                             analysis_id = data.get("analysis_id")
-                            
-                            # Log para debugging
-                            if not verdict:
-                                logger.warning(f"⚠️ [REPORTS] Análisis {analysis_id} no tiene veredicto en el JSON")
-                            else:
-                                logger.info(f"✅ [REPORTS] Análisis {analysis_id} tiene veredicto: {verdict}")
                             
                             reports.append({
                                 "id": analysis_id,
@@ -1718,7 +1709,7 @@ def _generate_summary_pdf_html(reports: List[Dict[str, Any]], ai_summary_text: s
         try:
             date = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
             return date.strftime('%d/%m/%Y %I:%M %p')
-        except:
+        except Exception:
             return date_str
     
     # Formatear tiempo

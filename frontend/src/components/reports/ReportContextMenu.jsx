@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Eye, Trash2, Copy, Share2, Download, FileText } from 'lucide-react'
+import { Eye, Trash2, Copy, Download, FileText } from 'lucide-react'
 
 /**
  * Menú contextual que aparece al hacer click derecho en un reporte

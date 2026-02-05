@@ -1,9 +1,9 @@
 """
 Ejecutores de herramientas para el agente.
-Cada función ejecuta una herramienta específica y retorna el resultado.
+Cada función ejecuta una herramienta específica y retorna el resultado,
+sin realizar logging ni mezclar responsabilidades de orquestación.
 """
 import re
-import logging
 from typing import Any, Dict, List, Optional
 from ..tools.rag_tool import RAGTool
 from ..tools.ip_tool import IPTool
@@ -19,8 +19,6 @@ from ..agent.helpers import (
     extract_ip_from_text
 )
 from langchain_core.messages import AnyMessage
-
-logger = logging.getLogger(__name__)
 
 rag_tool = RAGTool()
 ip_tool = IPTool()

@@ -1,16 +1,14 @@
 """
-Servicio de embeddings - Refactorizado para usar repositorios y utilidades
+Servicio de embeddings - Refactorizado para usar repositorios y utilidades.
+Se encarga únicamente de procesar PDFs y almacenar sus embeddings en Qdrant.
 """
 import os
 import uuid
-import logging
 from typing import List
 from ..repositories.qdrant_repository import get_qdrant_repository
 from ..utils.text_processing import text_splitter, process_pdf_to_text
 from ..utils.embeddings import embedding_for_text_batch
 from ..settings import settings
-
-logger = logging.getLogger(__name__)
 
 # Instancia global del repositorio Qdrant (Lazy loaded via singleton)
 # _qdrant_repo se puede reemplazar por llamadas directas a get_qdrant_repository() pero para minimizar cambios:

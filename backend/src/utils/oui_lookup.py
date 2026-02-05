@@ -1,12 +1,10 @@
 """
 Servicio de utilidad para búsqueda de fabricantes por OUI (MAC Address).
 Soporta caché local y base de datos estática de fabricantes comunes.
+No realiza logging; solo resuelve fabricantes de manera determinista.
 """
-import logging
 import re
 from typing import Optional, Dict
-
-logger = logging.getLogger(__name__)
 
 class OUILookup:
     """

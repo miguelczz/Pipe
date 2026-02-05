@@ -1,13 +1,11 @@
 """
 Funciones helper para los nodos del agente.
-Centraliza lógica común y elimina duplicación.
+Centraliza lógica común y elimina duplicación, sin gestionar logging.
 """
 import re
-import logging
 from typing import Optional, List, Tuple
 from ..agent.llm_client import LLMClient
 
-logger = logging.getLogger(__name__)
 llm = LLMClient()
 
 

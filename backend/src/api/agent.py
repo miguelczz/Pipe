@@ -1,7 +1,7 @@
 """
-API endpoints para el agente - Refactorizado para usar modelos centralizados
+API endpoints para el agente - Refactorizado para usar modelos centralizados.
+Se limita a adaptar HTTP al grafo de orquestación del agente.
 """
-import logging
 import json
 from fastapi import APIRouter, HTTPException, Depends, Request
 from langchain_core.messages import HumanMessage, AIMessage

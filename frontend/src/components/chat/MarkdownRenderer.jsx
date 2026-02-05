@@ -67,7 +67,7 @@ export function MarkdownRenderer({ content, className }) {
               />
             ),
 
-            strong: ({ node, children, ...props }) => {
+            strong: ({ children, ...props }) => {
               const text = String(children).toUpperCase()
               let colorClass = 'text-white'
               

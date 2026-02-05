@@ -3,15 +3,12 @@ Gestor de sesiones con persistencia en Redis.
 Permite que las sesiones sobrevivan reinicios del servidor y funcionen con múltiples instancias.
 """
 import json
-import logging
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 from ..models.schemas import AgentState, Message
 import redis
 import ssl
 from ..settings import settings
-
-logger = logging.getLogger(__name__)
 
 
 class RedisSessionManager:

@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react'
-import { networkAnalysisService } from '../services/api'
+import React from 'react'
+import { useNetworkAnalysis } from '../hooks/useNetworkAnalysis'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Loading } from '../components/ui/Loading'
@@ -16,9 +16,9 @@ import {
     XCircle,
     X
 } from 'lucide-react'
-import { MarkdownRenderer } from '../components/chat/MarkdownRenderer'
-import { BandSteeringChart } from '../components/charts/BandSteeringChart_v2'
-import { WiresharkTruthPanel } from '../components/WiresharkTruthPanel'
+import { NetworkAnalysisChartSection } from '../components/network/NetworkAnalysisChartSection'
+import { NetworkAnalysisInsightsSection } from '../components/network/NetworkAnalysisInsightsSection'
+import { networkAnalysisService } from '../services/api'
 
 const PRINT_STYLES = `
         @page {
@@ -193,339 +193,23 @@ const PRINT_STYLES = `
       `
 
 export function NetworkAnalysisPage() {
-    const [selectedFile, setSelectedFile] = useState(null)
-    const [uploading, setUploading] = useState(false)
-
-    // Inicializar estado desde localStorage si existe
-    const [result, setResult] = useState(() => {
-        try {
-            const savedResult = localStorage.getItem('networkAnalysisResult')
-            if (!savedResult) return null
-
-            console.log('🔍 [DATA] Cargando resultado desde localStorage')
-
-            const parsed = JSON.parse(savedResult)
-            // Validar estructura básica
-            if (!parsed?.stats) {
-                console.warn('⚠️ [DATA] Resultado en localStorage no tiene estructura válida')
-                localStorage.removeItem('networkAnalysisResult')
-                return null
-            }
-            
-            console.log('🔍 [DATA] Resultado cargado desde localStorage')
-            console.log('🔍 [DATA] band_steering existe:', !!parsed.band_steering)
-            console.log('🔍 [DATA] signal_samples:', parsed.band_steering?.signal_samples?.length || 0)
-            console.log('🔍 [DATA] transitions:', parsed.band_steering?.transitions?.length || 0)
-            
-            return parsed
-        } catch (e) {
-            return null
-        }
-    })
-
-    const [fileMetadata, setFileMetadata] = useState(() => {
-        try {
-            const savedMetadata = localStorage.getItem('networkAnalysisFileMeta')
-            return savedMetadata ? JSON.parse(savedMetadata) : null
-        } catch (e) {
-            return null
-        }
-    })
-
-    // Sincronizar result y fileMetadata cuando se carga la página (para cuando se carga desde reportes)
-    // Esto asegura que se lean los valores más recientes de localStorage después de la navegación
-    React.useEffect(() => {
-        try {
-            const savedResult = localStorage.getItem('networkAnalysisResult')
-            if (savedResult) {
-                const parsed = JSON.parse(savedResult)
-                if (parsed?.stats) {
-                    setResult(parsed)
-                }
-            }
-            const savedMetadata = localStorage.getItem('networkAnalysisFileMeta')
-            if (savedMetadata) {
-                const meta = JSON.parse(savedMetadata)
-                setFileMetadata(meta)
-            }
-        } catch (e) {
-            // Ignorar errores
-        }
-    }, []) // Solo ejecutar una vez al montar
-
-    // Inicializar SSID desde localStorage si existe (buscar en metadatos y en resultado)
-    const [savedSsid, setSavedSsid] = useState(() => {
-        try {
-            // Primero intentar desde networkAnalysisFileMeta
-            const savedMetadata = localStorage.getItem('networkAnalysisFileMeta')
-            if (savedMetadata) {
-                const meta = JSON.parse(savedMetadata)
-                if (meta?.ssid) {
-                    return meta.ssid
-                }
-            }
-            // Si no está en metadatos, buscar en el resultado guardado
-            const savedResult = localStorage.getItem('networkAnalysisResult')
-            if (savedResult) {
-                const parsed = JSON.parse(savedResult)
-                if (parsed?.stats?.diagnostics?.user_metadata?.ssid) {
-                    return parsed.stats.diagnostics.user_metadata.ssid
-                }
-            }
-            return ''
-        } catch (e) {
-            return ''
-        }
-    })
-
-    // Función para limpiar datos antes de guardar en localStorage (evitar QuotaExceededError)
-    const sanitizeResultForStorage = (data) => {
-        if (!data) return null
-
-        const sanitized = JSON.parse(JSON.stringify(data)) // Deep clone
-
-        // Limitar wireshark_raw.sample a máximo 200 paquetes para evitar exceder localStorage
-        if (sanitized?.stats?.diagnostics?.wireshark_raw?.sample) {
-            const sample = sanitized.stats.diagnostics.wireshark_raw.sample
-            if (sample.length > 200) {
-                sanitized.stats.diagnostics.wireshark_raw.sample = sample.slice(0, 200)
-                sanitized.stats.diagnostics.wireshark_raw.truncated = true
-                sanitized.stats.diagnostics.wireshark_raw.original_count = sample.length
-            }
-        }
-
-        return sanitized
-    }
-
-    // Sincronizar persistencia cada vez que result cambia (redundancia de seguridad)
-    React.useEffect(() => {
-        if (result) {
-            try {
-                const sanitized = sanitizeResultForStorage(result)
-                localStorage.setItem('networkAnalysisResult', JSON.stringify(sanitized))
-            } catch (err) {
-                // Si falla, intentar guardar sin los datos raw
-                try {
-                    const minimal = sanitizeResultForStorage(result)
-                    if (minimal?.stats?.diagnostics?.wireshark_raw) {
-                        delete minimal.stats.diagnostics.wireshark_raw.sample
-                        minimal.stats.diagnostics.wireshark_raw.storage_limited = true
-                    }
-                    localStorage.setItem('networkAnalysisResult', JSON.stringify(minimal))
-                } catch (err2) {
-                }
-            }
-        }
-    }, [result])
-
-    // Sincronizar savedSsid y userClientMac cuando cambian los metadatos o el resultado (para cuando se carga desde reportes)
-    // También verificar localStorage directamente para capturar cambios recientes
-    React.useEffect(() => {
-        // Siempre leer directamente de localStorage para obtener el valor más reciente
-        try {
-            // 1. Intentar desde networkAnalysisFileMeta (prioridad más alta)
-            const savedMetadata = localStorage.getItem('networkAnalysisFileMeta')
-            if (savedMetadata) {
-                const meta = JSON.parse(savedMetadata)
-                if (meta?.ssid && meta.ssid.trim() !== '') {
-                    setSavedSsid(meta.ssid)
-                }
-                if (meta?.client_mac && meta.client_mac.trim() !== '') {
-                    setUserClientMac(meta.client_mac)
-                }
-            }
-            // 2. Si no está en metadatos, buscar en el resultado guardado
-            const savedResult = localStorage.getItem('networkAnalysisResult')
-            if (savedResult) {
-                const parsed = JSON.parse(savedResult)
-                if (parsed?.stats?.diagnostics?.user_metadata) {
-                    if (parsed.stats.diagnostics.user_metadata.ssid) {
-                        setSavedSsid(parsed.stats.diagnostics.user_metadata.ssid)
-                    }
-                    if (parsed.stats.diagnostics.user_metadata.client_mac) {
-                        setUserClientMac(parsed.stats.diagnostics.user_metadata.client_mac)
-                    }
-                }
-            }
-        } catch (e) {
-            // Ignorar errores de parsing
-        }
-    }, [fileMetadata, result])
-
-    const [error, setError] = useState('')
-    const fileInputRef = useRef(null)
-
-    // Inputs del usuario para ayudar a la identificación precisa
-    const [userSsid, setUserSsid] = useState('')
-    const [userClientMac, setUserClientMac] = useState(() => {
-        try {
-            // Intentar obtener desde networkAnalysisFileMeta
-            const savedMetadata = localStorage.getItem('networkAnalysisFileMeta')
-            if (savedMetadata) {
-                const meta = JSON.parse(savedMetadata)
-                if (meta?.client_mac) {
-                    return meta.client_mac
-                }
-            }
-            // Si no está en metadatos, buscar en el resultado guardado
-            const savedResult = localStorage.getItem('networkAnalysisResult')
-            if (savedResult) {
-                const parsed = JSON.parse(savedResult)
-                if (parsed?.stats?.diagnostics?.user_metadata?.client_mac) {
-                    return parsed.stats.diagnostics.user_metadata.client_mac
-                }
-            }
-            return ''
-        } catch (e) {
-            return ''
-        }
-    })
-
-    const handleSelectClick = () => {
-        // Resetear el valor para permitir seleccionar el mismo archivo y que dispare onChange
-        if (fileInputRef.current) {
-            fileInputRef.current.value = ''
-        }
-
-        // Validar que el usuario haya completado SSID y MAC antes de permitir seleccionar archivo
-        if (!userSsid.trim() || !userClientMac.trim()) {
-            setError('Debes ingresar el SSID de la red y la MAC del cliente antes de analizar una captura.')
-            return
-        }
-
-        fileInputRef.current?.click()
-    }
-
-    const handleFileChange = (e) => {
-        const file = e.target.files?.[0]
-        if (!file) return
-
-        const lowerName = file.name.toLowerCase()
-        if (!lowerName.endsWith('.pcap') && !lowerName.endsWith('.pcapng')) {
-            setError('Solo se permiten archivos de captura .pcap o .pcapng.')
-            setSelectedFile(null)
-            e.target.value = ''
-            return
-        }
-
-        // Limpiar TODA persistencia anterior al cambiar archivo
-        localStorage.removeItem('networkAnalysisResult')
-        localStorage.removeItem('networkAnalysisFileMeta')
-
-        setError('')
-        setSelectedFile(file)
-        const meta = {
-            name: file.name,
-            size: file.size,
-            ssid: userSsid.trim() || '',
-            client_mac: userClientMac.trim() || ''
-        }
-        setFileMetadata(meta)
-        setSavedSsid(userSsid.trim() || '')
-        setResult(null)
-
-        // Disparar análisis automáticamente
-        performAnalysis(file, meta)
-    }
-
-    const performAnalysis = async (file, meta) => {
-        setUploading(true)
-        setError('')
-        setResult(null)
-
-        try {
-            console.log('🔍 [DATA] Iniciando análisis de captura')
-            console.log('🔍 [DATA] userSsid:', userSsid)
-            console.log('🔍 [DATA] userClientMac:', userClientMac)
-            
-            const res = await networkAnalysisService.analyzeCapture(file, {
-                ssid: userSsid || null,
-                client_mac: userClientMac || null,
-            })
-
-            // Debug: Ver estructura de datos
-            console.log('🔍 [DATA] Resultado recibido del backend')
-            console.log('🔍 [DATA] band_steering existe:', !!res.band_steering)
-            console.log('🔍 [DATA] signal_samples:', res.band_steering?.signal_samples?.length || 0)
-            console.log('🔍 [DATA] transitions:', res.band_steering?.transitions?.length || 0)
-            console.log('🔍 [DATA] btm_events:', res.band_steering?.btm_events?.length || 0)
-            
-            if (res.band_steering?.signal_samples?.length > 0) {
-                console.log('🔍 [DATA] Primer signalSample:', res.band_steering.signal_samples[0])
-                console.log('🔍 [DATA] Último signalSample:', res.band_steering.signal_samples[res.band_steering.signal_samples.length - 1])
-            }
-            
-            if (res.band_steering?.transitions?.length > 0) {
-                console.log('🔍 [DATA] Primer transition:', res.band_steering.transitions[0])
-                console.log('🔍 [DATA] Último transition:', res.band_steering.transitions[res.band_steering.transitions.length - 1])
-            }
-
-            // Guardar en persistencia (con sanitización para evitar QuotaExceededError)
-            setResult(res)
-            // Incluir SSID y client_mac en los metadatos y en el resultado
-            const ssidValue = userSsid.trim() || ''
-            const clientMacValue = userClientMac.trim() || ''
-            const metaWithSsid = {
-                ...meta,
-                ssid: ssidValue,
-                client_mac: clientMacValue
-            }
-            setSavedSsid(ssidValue)
-            try {
-                const sanitized = sanitizeResultForStorage(res)
-                // Guardar SSID y client_mac también en el resultado para que esté disponible cuando se carga desde reportes
-                if (sanitized.stats?.diagnostics) {
-                    if (!sanitized.stats.diagnostics.user_metadata) {
-                        sanitized.stats.diagnostics.user_metadata = {}
-                    }
-                    if (ssidValue) {
-                        sanitized.stats.diagnostics.user_metadata.ssid = ssidValue
-                    } else {
-                    }
-                    if (clientMacValue) {
-                        sanitized.stats.diagnostics.user_metadata.client_mac = clientMacValue
-                    } else {
-                    }
-                } else {
-                }
-                localStorage.setItem('networkAnalysisResult', JSON.stringify(sanitized))
-                localStorage.setItem('networkAnalysisFileMeta', JSON.stringify(metaWithSsid))
-            } catch (err) {
-                // Guardar versión mínima sin sample completo
-                try {
-                    const minimal = sanitizeResultForStorage(res)
-                    if (minimal?.stats?.diagnostics?.wireshark_raw) {
-                        delete minimal.stats.diagnostics.wireshark_raw.sample
-                        minimal.stats.diagnostics.wireshark_raw.storage_limited = true
-                    }
-                    // Guardar SSID y client_mac también en el resultado mínimo
-                    if (minimal.stats?.diagnostics) {
-                        if (!minimal.stats.diagnostics.user_metadata) {
-                            minimal.stats.diagnostics.user_metadata = {}
-                        }
-                        if (ssidValue) {
-                            minimal.stats.diagnostics.user_metadata.ssid = ssidValue
-                        }
-                        if (clientMacValue) {
-                            minimal.stats.diagnostics.user_metadata.client_mac = clientMacValue
-                        }
-                    }
-                    localStorage.setItem('networkAnalysisResult', JSON.stringify(minimal))
-                    localStorage.setItem('networkAnalysisFileMeta', JSON.stringify(metaWithSsid))
-                } catch (err2) {
-                }
-            }
-
-        } catch (err) {
-            const message =
-                err?.message ||
-                err?.data?.detail ||
-                'Ocurrió un error al analizar la captura de red.'
-            setError(message)
-        } finally {
-            setUploading(false)
-        }
-    }
+    const {
+        selectedFile,
+        uploading,
+        result,
+        fileMetadata,
+        savedSsid,
+        error,
+        userSsid,
+        userClientMac,
+        setUserSsid,
+        setUserClientMac,
+        setError,
+        fileInputRef,
+        handleSelectClick,
+        handleFileChange,
+        resetAnalysis,
+    } = useNetworkAnalysis()
 
     // Función para limpiar el nombre del archivo (quitar UUID y prefijos numéricos)
     const cleanFileName = (fileName) => {
@@ -597,8 +281,8 @@ export function NetworkAnalysisPage() {
                     return canvas.toDataURL('image/png', 1.0)
                 }
             }
-        } catch (error) {
-            console.error('Error al capturar el gráfico:', error)
+        } catch {
+            // Error al capturar el gráfico; se devuelve null
         }
         return null
     }
@@ -866,8 +550,7 @@ export function NetworkAnalysisPage() {
                     }
                 }
             }
-        } catch (e) {
-            console.error('Error calculando tiempo medido en PDF:', e)
+        } catch {
             measuredTime = 'N/A'
         }
         
@@ -890,25 +573,12 @@ export function NetworkAnalysisPage() {
         
         // Calcular tiempo en cada banda y en transición (EXACTAMENTE la misma lógica que en el componente)
         const signalSamples = result.band_steering?.signal_samples || []
-        console.log('🔍 [BAND_TIMING PDF] Iniciando cálculo de bandTiming para PDF')
-        console.log('🔍 [BAND_TIMING PDF] signalSamples recibidos:', signalSamples?.length || 0)
-        console.log('🔍 [BAND_TIMING PDF] transitions recibidas:', transitions?.length || 0)
-        if (signalSamples.length > 0) {
-            console.log('🔍 [BAND_TIMING PDF] Primer signalSample:', signalSamples[0])
-            console.log('🔍 [BAND_TIMING PDF] Último signalSample:', signalSamples[signalSamples.length - 1])
-        }
-        if (transitions.length > 0) {
-            console.log('🔍 [BAND_TIMING PDF] Primer transition:', transitions[0])
-            console.log('🔍 [BAND_TIMING PDF] Último transition:', transitions[transitions.length - 1])
-        }
         
         let bandTiming = null
         try {
             const sortedTransitions = (transitions || [])
                 .filter(t => t && t.start_time != null && t.is_successful)
                 .sort((a, b) => Number(a.start_time) - Number(b.start_time))
-            
-            console.log('🔍 [BAND_TIMING PDF] sortedTransitions filtradas:', sortedTransitions.length)
 
             const validTransitions = []
             
@@ -1000,11 +670,7 @@ export function NetworkAnalysisPage() {
                     .sort((a, b) => a.timestamp - b.timestamp)
                 : []
             
-            console.log('🔍 [BAND_TIMING PDF] validSamples procesados:', validSamples.length)
-            if (validSamples.length > 0) {
-                console.log('🔍 [BAND_TIMING PDF] Primer validSample:', validSamples[0])
-                console.log('🔍 [BAND_TIMING PDF] Último validSample:', validSamples[validSamples.length - 1])
-            }
+            // Logs de depuración eliminados para producción
             
             const transitionDurations = validTransitions.map(t => {
                 const transStartTime = normalizeTimestamp(t.start_time) || 0
@@ -1065,16 +731,12 @@ export function NetworkAnalysisPage() {
 
             // FALLBACK: Si no hay suficientes signalSamples, usar transiciones para calcular el rango temporal
             let minTime, maxTime, totalTime
-            
-            console.log('🔍 [BAND_TIMING PDF] sampleTimestamps.length:', sampleTimestamps.length)
-            console.log('🔍 [BAND_TIMING PDF] validTransitions.length:', validTransitions.length)
 
             if (sampleTimestamps.length > 1) {
                 // Usar solo signalSamples para minTime y maxTime (como la gráfica)
                 minTime = Math.min(...sampleTimestamps)
                 maxTime = Math.max(...sampleTimestamps)
                 totalTime = maxTime - minTime
-                console.log('🔍 [BAND_TIMING PDF] Usando signalSamples - minTime:', minTime, 'maxTime:', maxTime, 'totalTime:', totalTime)
             } else if (validTransitions.length > 0) {
                 // FALLBACK: Usar timestamps de transiciones si no hay suficientes samples
                 const transitionTimestamps = []
@@ -1088,7 +750,6 @@ export function NetworkAnalysisPage() {
                         if (normalized != null) transitionTimestamps.push(normalized)
                     }
                 })
-                console.log('🔍 [BAND_TIMING PDF] transitionTimestamps:', transitionTimestamps)
                 if (transitionTimestamps.length > 0) {
                     minTime = Math.min(...transitionTimestamps)
                     maxTime = Math.max(...transitionTimestamps)
@@ -1097,25 +758,19 @@ export function NetworkAnalysisPage() {
                         maxTime = minTime + 1.0 // 1 segundo mínimo
                     }
                     totalTime = maxTime - minTime
-                    console.log('🔍 [BAND_TIMING PDF] Usando transiciones - minTime:', minTime, 'maxTime:', maxTime, 'totalTime:', totalTime)
                 } else {
                     minTime = 0
                     maxTime = 1
                     totalTime = 1
-                    console.log('🔍 [BAND_TIMING PDF] Sin timestamps válidos en transiciones, usando valores por defecto')
                 }
             } else {
                 // Sin datos suficientes, usar valores por defecto mínimos
                 minTime = 0
                 maxTime = 1
                 totalTime = 1
-                console.log('🔍 [BAND_TIMING PDF] Sin datos suficientes, usando valores por defecto mínimos')
             }
 
-            console.log('🔍 [BAND_TIMING PDF] totalTime calculado:', totalTime)
-
-                if (totalTime > 0) {
-                console.log('🔍 [BAND_TIMING PDF] Iniciando cálculo de time24 y time5')
+            if (totalTime > 0) {
                     let time24 = 0
                     let time5 = 0
 
@@ -1250,88 +905,24 @@ export function NetworkAnalysisPage() {
 
                             i = j
                         }
-                } else if (validTransitions.length > 0) {
-                    // FALLBACK: Calcular tiempo en cada banda basándose solo en transiciones
-                    // cuando no hay suficientes signalSamples
-                    let currentBand = null
-                    let lastTime = minTime
-                    
-                    for (let i = 0; i < validTransitions.length; i++) {
-                        const t = validTransitions[i]
-                        const fromBand = normalizeBand(t.from_band || '')
-                        const toBand = normalizeBand(t.to_band || '')
-                        const transStart = Number(t.start_time || 0)
-                        const transEnd = Number(t.end_time != null ? t.end_time : transStart)
-                        
-                        // Determinar banda inicial si es la primera transición
-                        if (i === 0 && fromBand) {
-                            currentBand = fromBand
-                            // Tiempo antes de la primera transición
-                            if (transStart > minTime) {
-                                const periodDuration = transStart - minTime
-                                if (currentBand === '2.4GHz') {
-                                    time24 += periodDuration
-                                } else if (currentBand === '5GHz') {
-                                    time5 += periodDuration
-                                }
-                            }
-                        }
-                        
-                        // Tiempo en la banda destino después de la transición
-                        if (toBand) {
-                            const nextTransStart = (i + 1 < validTransitions.length) 
-                                ? Number(validTransitions[i + 1].start_time || 0) 
-                                : maxTime
-                            const periodDuration = nextTransStart - transEnd
-                            
-                            if (periodDuration > 0) {
-                                if (toBand === '2.4GHz') {
-                                    time24 += periodDuration
-                                } else if (toBand === '5GHz') {
-                                    time5 += periodDuration
-                                }
-                            }
-                            currentBand = toBand
-                        }
-                    }
-                    
-                    // Si no hay transiciones pero hay una banda conocida, asignar todo el tiempo a esa banda
-                    if (validTransitions.length === 0 && signalSamples.length > 0) {
-                        const firstSample = signalSamples[0]
-                        const band = normalizeBand(firstSample.band || '')
-                        if (band === '2.4GHz') {
-                            time24 = totalTime
-                        } else if (band === '5GHz') {
-                            time5 = totalTime
-                        }
-                    }
-                    }
+                }
 
                     const totalTransitionTime = transitionDurations.reduce((a, b) => a + b, 0)
                     const totalBandTime = time24 + time5
                     const expectedTotal = totalTime - totalTransitionTime
 
-                console.log('🔍 [BAND_TIMING PDF] ANTES de ajuste - time24:', time24, 'time5:', time5)
-                console.log('🔍 [BAND_TIMING PDF] totalTransitionTime:', totalTransitionTime)
-                console.log('🔍 [BAND_TIMING PDF] totalBandTime:', totalBandTime)
-                console.log('🔍 [BAND_TIMING PDF] expectedTotal:', expectedTotal)
-                console.log('🔍 [BAND_TIMING PDF] totalTime:', totalTime)
-
                     // Ajustar tiempos si hay discrepancia, pero mantener la proporción
                     if (expectedTotal > 0 && Math.abs(totalBandTime - expectedTotal) > 0.1) {
-                    console.log('🔍 [BAND_TIMING PDF] Aplicando ajuste de tiempos - discrepancia detectada')
                         if (totalBandTime > expectedTotal * 1.1) {
                             // Si el tiempo de banda es mucho mayor, escalar hacia abajo
                             const scale = expectedTotal / totalBandTime
                             time24 *= scale
                             time5 *= scale
-                        console.log('🔍 [BAND_TIMING PDF] Escalando hacia abajo - scale:', scale)
                         } else if (totalBandTime < expectedTotal * 0.9) {
                             // Si el tiempo de banda es menor, ajustar proporcionalmente
                             const scale = expectedTotal / totalBandTime
                             time24 *= scale
                             time5 *= scale
-                        console.log('🔍 [BAND_TIMING PDF] Escalando hacia arriba - scale:', scale)
                         }
                     }
 
@@ -1349,11 +940,6 @@ export function NetworkAnalysisPage() {
                     // Recalcular totalBandTime después del ajuste
                     const finalTotalBandTime = time24 + time5
                     const finalTotalTime = finalTotalBandTime + totalTransitionTime
-                
-                console.log('🔍 [BAND_TIMING PDF] DESPUÉS de ajuste - time24:', time24, 'time5:', time5)
-                console.log('🔍 [BAND_TIMING PDF] finalTotalBandTime:', finalTotalBandTime)
-                console.log('🔍 [BAND_TIMING PDF] finalTotalTime:', finalTotalTime)
-                console.log('🔍 [BAND_TIMING PDF] transitionsWithDuration:', transitionsWithDuration.length)
                     
                     bandTiming = {
                         time24,
@@ -1364,8 +950,6 @@ export function NetworkAnalysisPage() {
                         transitions: transitionsWithDuration,
                         transitionDurations
                     }
-                
-                console.log('🔍 [BAND_TIMING PDF] bandTiming final:', bandTiming)
             } else {
                 console.warn('⚠️ [BAND_TIMING PDF] totalTime <= 0, no se puede calcular bandTiming')
             }
@@ -2709,7 +2293,7 @@ export function NetworkAnalysisPage() {
                     if (htmlContent) {
                         // Guardar el PDF en el backend
                         await networkAnalysisService.savePDF(analysisId, htmlContent)
-                        console.log('✅ [PDF] PDF generado y guardado automáticamente')
+                    // PDF generado y guardado automáticamente
                     }
                 } catch (error) {
                     // No mostrar error al usuario, solo loguear
@@ -2723,7 +2307,8 @@ export function NetworkAnalysisPage() {
                 clearTimeout(timeoutId)
             }
         }
-    }, [result]) // Se ejecuta cuando result cambia
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- Solo debe ejecutarse cuando result cambia; generatePDFHTML usa result internamente
+    }, [result])
 
     // Función para descargar el PDF directamente
     const handleDownloadPDF = async () => {
@@ -2738,7 +2323,7 @@ export function NetworkAnalysisPage() {
         const analysisId = result?.band_steering?.analysis_id
         
         if (!analysisId) {
-            alert('No se puede generar el PDF: falta el ID del análisis')
+            setError('No se puede generar el PDF: falta el ID del análisis')
             return
         }
 
@@ -2750,7 +2335,7 @@ export function NetworkAnalysisPage() {
             const htmlContent = generatePDFHTML()
             
             if (!htmlContent) {
-                alert('Error al generar el contenido del PDF')
+                setError('Error al generar el contenido del PDF')
                 return
             }
 
@@ -2779,59 +2364,13 @@ export function NetworkAnalysisPage() {
             window.URL.revokeObjectURL(url)
         } catch (error) {
             console.error('Error al descargar PDF:', error)
-            alert(`Error al descargar el PDF: ${error?.message || 'Error desconocido'}`)
+            setError(`Error al descargar el PDF: ${error?.message || 'Error desconocido'}`)
         }
-    }
-
-    // Función para manejar la impresión/PDF (mantener para compatibilidad)
-    const handlePrint = async () => {
-        const fileName = result?.file_name || fileMetadata?.name || ''
-        const cleanName = cleanFileName(fileName).split('.')[0].replace(/_/g, ' ').trim()
-        const device = result.band_steering?.device || {}
-        const model = device.device_model || 'Genérico'
-        
-        // El título del documento influye en el nombre del archivo al guardar
-        // Usar el modelo del dispositivo si está disponible, similar al PDF
-        const originalTitle = document.title
-        const pdfTitle = model && model !== 'Genérico' && model !== 'Unknown' 
-            ? `Pipe ${model.toUpperCase()}` 
-            : `Pipe ${cleanName.toUpperCase()}`
-        document.title = pdfTitle
-
-        // Obtener el analysis_id del resultado
-        const analysisId = result?.band_steering?.analysis_id
-        
-        // Si hay un analysis_id, persistir el PDF antes de imprimir
-        if (analysisId) {
-            try {
-                // Generar HTML limpio y completo para el PDF
-                const htmlContent = generatePDFHTML()
-                
-                if (htmlContent) {
-                    // Enviar al backend para persistir el PDF
-                    await networkAnalysisService.savePDF(analysisId, htmlContent)
-                }
-            } catch (error) {
-                // Continuar con la impresión aunque falle la persistencia
-            }
-        }
-
-        window.print()
-        document.title = originalTitle
     }
 
     // Función para cerrar/limpiar el reporte
     const handleCloseReport = () => {
-        setResult(null)
-        setSelectedFile(null)
-        setFileMetadata(null)
-        setSavedSsid('')
-        setError('')
-        localStorage.removeItem('networkAnalysisResult')
-        localStorage.removeItem('networkAnalysisFileMeta')
-        if (fileInputRef.current) {
-            fileInputRef.current.value = ''
-        }
+        resetAnalysis()
     }
 
     return (
@@ -3631,22 +3170,7 @@ export function NetworkAnalysisPage() {
                         </div>
 
                         {/* Panel derecho: Gráfica de Band Steering */}
-                        <Card className="lg:col-span-2 p-6 flex flex-col h-full">
-                            <div className="flex items-center gap-2 mb-4">
-                                <Activity className="w-5 h-5 text-dark-accent-primary" />
-                                <h3 className="text-lg font-semibold text-dark-text-primary">
-                                    Visualización de Cambios de Banda
-                                </h3>
-                            </div>
-                            <div className="flex-1 min-h-[300px]">
-                                <BandSteeringChart
-                                    btmEvents={result.band_steering?.btm_events || []}
-                                    transitions={result.band_steering?.transitions || []}
-                                    signalSamples={result.band_steering?.signal_samples || []}
-                                    rawStats={result.stats || {}}
-                                />
-                            </div>
-                        </Card>
+                        <NetworkAnalysisChartSection result={result} />
 
                     </div>
 
@@ -3685,16 +3209,10 @@ export function NetworkAnalysisPage() {
                         // Cálculo del tiempo en cada banda y en transición
                         let bandTiming = null
                         try {
-                            console.log('🔍 [BAND_TIMING] Iniciando cálculo de bandTiming')
-                            console.log('🔍 [BAND_TIMING] signalSamples recibidos:', signalSamples?.length || 0)
-                            console.log('🔍 [BAND_TIMING] transitions recibidas:', transitions?.length || 0)
                             
                             const sortedTransitions = (transitions || [])
                                 .filter(t => t && t.start_time != null && t.is_successful)
                                 .sort((a, b) => Number(a.start_time) - Number(b.start_time))
-                            
-                            console.log('🔍 [BAND_TIMING] sortedTransitions filtradas:', sortedTransitions.length)
-
                             const validTransitions = []
                             
                             for (let idx = 0; idx < sortedTransitions.length; idx++) {
@@ -3784,11 +3302,7 @@ export function NetworkAnalysisPage() {
                                     .sort((a, b) => a.timestamp - b.timestamp)
                                 : []
                             
-                            console.log('🔍 [BAND_TIMING] validSamples procesados:', validSamples.length)
-                            if (validSamples.length > 0) {
-                                console.log('🔍 [BAND_TIMING] Primer sample:', validSamples[0])
-                                console.log('🔍 [BAND_TIMING] Último sample:', validSamples[validSamples.length - 1])
-                            }
+                            // Cálculo de muestras válidas procesadas
                             
                             const transitionDurations = validTransitions.map(t => {
                                 const transStartTime = normalizeTimestamp(t.start_time) || 0
@@ -3850,15 +3364,14 @@ export function NetworkAnalysisPage() {
                             // FALLBACK: Si no hay suficientes signalSamples, usar transiciones para calcular el rango temporal
                             let minTime, maxTime, totalTime
                             
-                            console.log('🔍 [BAND_TIMING] sampleTimestamps.length:', sampleTimestamps.length)
-                            console.log('🔍 [BAND_TIMING] validTransitions.length:', validTransitions.length)
+                            // Datos básicos de rango temporal
 
                             if (sampleTimestamps.length > 1) {
                                 // Usar solo signalSamples para minTime y maxTime (como la gráfica)
                                 minTime = Math.min(...sampleTimestamps)
                                 maxTime = Math.max(...sampleTimestamps)
                                 totalTime = maxTime - minTime
-                                console.log('🔍 [BAND_TIMING] Usando signalSamples - minTime:', minTime, 'maxTime:', maxTime, 'totalTime:', totalTime)
+                                // Usar solo signalSamples para minTime y maxTime (como la gráfica)
                             } else if (validTransitions.length > 0) {
                                 // FALLBACK: Usar timestamps de transiciones si no hay suficientes samples
                                 const transitionTimestamps = []
@@ -3872,7 +3385,6 @@ export function NetworkAnalysisPage() {
                                         if (normalized != null) transitionTimestamps.push(normalized)
                                     }
                                 })
-                                console.log('🔍 [BAND_TIMING] transitionTimestamps:', transitionTimestamps)
                                 if (transitionTimestamps.length > 0) {
                                     minTime = Math.min(...transitionTimestamps)
                                     maxTime = Math.max(...transitionTimestamps)
@@ -3881,34 +3393,31 @@ export function NetworkAnalysisPage() {
                                         maxTime = minTime + 1.0 // 1 segundo mínimo
                                     }
                                     totalTime = maxTime - minTime
-                                    console.log('🔍 [BAND_TIMING] Usando transiciones - minTime:', minTime, 'maxTime:', maxTime, 'totalTime:', totalTime)
+                                    // Usar transiciones como fallback para el rango temporal
                                 } else {
                                     minTime = 0
                                     maxTime = 1
                                     totalTime = 1
-                                    console.log('🔍 [BAND_TIMING] Sin timestamps válidos en transiciones, usando valores por defecto')
                                 }
                             } else {
                                 // Sin datos suficientes, usar valores por defecto mínimos
                                 minTime = 0
                                 maxTime = 1
                                 totalTime = 1
-                                console.log('🔍 [BAND_TIMING] Sin datos suficientes, usando valores por defecto mínimos')
+                                // Sin datos suficientes, usar valores por defecto mínimos
                             }
 
-                            console.log('🔍 [BAND_TIMING] totalTime calculado:', totalTime)
+                            // totalTime calculado para el análisis
 
                                 if (totalTime > 0) {
                                     let time24 = 0
                                     let time5 = 0
 
                                     const bandTimeline = []
-                                console.log('🔍 [BAND_TIMING] Iniciando cálculo de time24 y time5')
-                                console.log('🔍 [BAND_TIMING] validTransitions.length:', validTransitions.length)
-                                console.log('🔍 [BAND_TIMING] validSamples.length:', validSamples.length)
+                                // Iniciar cálculo de tiempos por banda
                                 
                                     if (validTransitions.length > 0) {
-                                    console.log('🔍 [BAND_TIMING] Usando lógica de validTransitions')
+                                    // Usar transiciones válidas para construir la línea de tiempo de bandas
                                         const firstTrans = validTransitions[0]
                                         let initialBand = normalizeBand(firstTrans.from_band || '')
                                         if (!initialBand && signalSamples.length > 0) {
@@ -3979,8 +3488,7 @@ export function NetworkAnalysisPage() {
                                             })
                                         }
 
-                                    console.log('🔍 [BAND_TIMING] bandTimeline generada:', bandTimeline.length, 'períodos')
-                                    console.log('🔍 [BAND_TIMING] bandTimeline:', bandTimeline)
+                                    // Línea de tiempo de bandas generada
 
                                         for (const period of bandTimeline) {
                                             let periodDuration = period.end - period.start
@@ -4000,9 +3508,8 @@ export function NetworkAnalysisPage() {
                                             }
                                         }
                                     
-                                    console.log('🔍 [BAND_TIMING] Después de procesar bandTimeline - time24:', time24, 'time5:', time5)
                                     } else if (validSamples.length > 0) {
-                                    console.log('🔍 [BAND_TIMING] Usando lógica de validSamples')
+                                    // Usar muestras de señal como fuente principal
                                         let i = 0
                                         while (i < validSamples.length) {
                                             const currentBand = validSamples[i].band
@@ -4054,90 +3561,24 @@ export function NetworkAnalysisPage() {
 
                                             i = j
                                         }
-                                    console.log('🔍 [BAND_TIMING] Después de procesar validSamples - time24:', time24, 'time5:', time5)
-                                } else if (validTransitions.length > 0) {
-                                    // FALLBACK: Calcular tiempo en cada banda basándose solo en transiciones
-                                    // cuando no hay suficientes signalSamples
-                                    console.log('🔍 [BAND_TIMING] Usando FALLBACK: solo transiciones')
-                                    let currentBand = null
-                                    let lastTime = minTime
-                                    
-                                    for (let i = 0; i < validTransitions.length; i++) {
-                                        const t = validTransitions[i]
-                                        const fromBand = normalizeBand(t.from_band || '')
-                                        const toBand = normalizeBand(t.to_band || '')
-                                        const transStart = normalizeTimestamp(t.start_time) || 0
-                                        const transEnd = normalizeTimestamp(t.end_time) || transStart
-                                        
-                                        // Determinar banda inicial si es la primera transición
-                                        if (i === 0 && fromBand) {
-                                            currentBand = fromBand
-                                            // Tiempo antes de la primera transición
-                                            if (transStart > minTime) {
-                                                const periodDuration = transStart - minTime
-                                                if (currentBand === '2.4GHz') {
-                                                    time24 += periodDuration
-                                                } else if (currentBand === '5GHz') {
-                                                    time5 += periodDuration
-                                                }
-                                            }
-                                        }
-                                        
-                                        // Tiempo en la banda destino después de la transición
-                                        if (toBand) {
-                                            const nextTransStart = (i + 1 < validTransitions.length) 
-                                                ? Number(validTransitions[i + 1].start_time || 0) 
-                                                : maxTime
-                                            const periodDuration = nextTransStart - transEnd
-                                            
-                                            if (periodDuration > 0) {
-                                                if (toBand === '2.4GHz') {
-                                                    time24 += periodDuration
-                                                } else if (toBand === '5GHz') {
-                                                    time5 += periodDuration
-                                                }
-                                            }
-                                            currentBand = toBand
-                                        }
-                                    }
-                                    
-                                    // Si no hay transiciones pero hay una banda conocida, asignar todo el tiempo a esa banda
-                                    if (validTransitions.length === 0 && signalSamples.length > 0) {
-                                        const firstSample = signalSamples[0]
-                                        const band = normalizeBand(firstSample.band || '')
-                                        if (band === '2.4GHz') {
-                                            time24 = totalTime
-                                        } else if (band === '5GHz') {
-                                            time5 = totalTime
-                                        }
-                                    }
-                                    }
+                                }
 
                                     const totalTransitionTime = transitionDurations.reduce((a, b) => a + b, 0)
                                     const totalBandTime = time24 + time5
-                                    const expectedTotal = totalTime - totalTransitionTime
-
-                                console.log('🔍 [BAND_TIMING] ANTES de ajuste - time24:', time24, 'time5:', time5)
-                                console.log('🔍 [BAND_TIMING] totalTransitionTime:', totalTransitionTime)
-                                console.log('🔍 [BAND_TIMING] totalBandTime:', totalBandTime)
-                                console.log('🔍 [BAND_TIMING] expectedTotal:', expectedTotal)
-                                console.log('🔍 [BAND_TIMING] totalTime:', totalTime)
+                                const expectedTotal = totalTime - totalTransitionTime
 
                                     // Ajustar tiempos si hay discrepancia, pero mantener la proporción
-                                    if (expectedTotal > 0 && Math.abs(totalBandTime - expectedTotal) > 0.1) {
-                                    console.log('🔍 [BAND_TIMING] Aplicando ajuste de tiempos - discrepancia detectada')
+                            if (expectedTotal > 0 && Math.abs(totalBandTime - expectedTotal) > 0.1) {
                                         if (totalBandTime > expectedTotal * 1.1) {
                                             // Si el tiempo de banda es mucho mayor, escalar hacia abajo
-                                            const scale = expectedTotal / totalBandTime
-                                            time24 *= scale
-                                            time5 *= scale
-                                        console.log('🔍 [BAND_TIMING] Escalando hacia abajo - scale:', scale)
+                                    const scale = expectedTotal / totalBandTime
+                                    time24 *= scale
+                                    time5 *= scale
                                         } else if (totalBandTime < expectedTotal * 0.9) {
                                             // Si el tiempo de banda es menor, ajustar proporcionalmente
-                                            const scale = expectedTotal / totalBandTime
-                                            time24 *= scale
-                                            time5 *= scale
-                                        console.log('🔍 [BAND_TIMING] Escalando hacia arriba - scale:', scale)
+                                    const scale = expectedTotal / totalBandTime
+                                    time24 *= scale
+                                    time5 *= scale
                                         }
                                     }
 
@@ -4153,13 +3594,8 @@ export function NetworkAnalysisPage() {
                                     }).filter(t => !Number.isNaN(t.duration) && t.duration >= 0)
                                     
                                     // Recalcular totalBandTime después del ajuste
-                                    const finalTotalBandTime = time24 + time5
-                                    const finalTotalTime = finalTotalBandTime + totalTransitionTime
-                                
-                                console.log('🔍 [BAND_TIMING] DESPUÉS de ajuste - time24:', time24, 'time5:', time5)
-                                console.log('🔍 [BAND_TIMING] finalTotalBandTime:', finalTotalBandTime)
-                                console.log('🔍 [BAND_TIMING] finalTotalTime:', finalTotalTime)
-                                console.log('🔍 [BAND_TIMING] transitionsWithDuration:', transitionsWithDuration.length)
+                            const finalTotalBandTime = time24 + time5
+                            const finalTotalTime = finalTotalBandTime + totalTransitionTime
                                     
                                     bandTiming = {
                                         time24,
@@ -4171,7 +3607,7 @@ export function NetworkAnalysisPage() {
                                         transitionDurations
                                     }
                                 
-                                console.log('🔍 [BAND_TIMING] bandTiming final:', bandTiming)
+                            // bandTiming final calculado
                             } else {
                                 console.warn('⚠️ [BAND_TIMING] totalTime <= 0, no se puede calcular bandTiming')
                             }
@@ -4317,27 +3753,12 @@ export function NetworkAnalysisPage() {
                         return null
                     })()}
 
-                    {/* 4. Panel de Wireshark Source of Truth */}
-                    {result.stats?.diagnostics?.wireshark_raw && (
-                        <Card className="p-6">
-                            <WiresharkTruthPanel
-                                wiresharkRaw={result.stats.diagnostics.wireshark_raw}
-                                wiresharkCompare={result.stats.diagnostics.wireshark_compare}
-                                ssid={savedSsid || fileMetadata?.ssid || userSsid}
-                            />
-                        </Card>
-                    )}
-
-                    {/* 6. Contenido del Análisis (Markdown) */}
-                    {result.analysis && (
-                        <Card className="p-6">
-                            <div className="max-w-none">
-                                <div className="text-dark-text-primary leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                                    <MarkdownRenderer content={result.analysis || ''} />
-                                </div>
-                            </div>
-                        </Card>
-                    )}
+                    <NetworkAnalysisInsightsSection
+                        result={result}
+                        fileMetadata={fileMetadata}
+                        savedSsid={savedSsid}
+                        userSsid={userSsid}
+                    />
 
                 </div>
             )}

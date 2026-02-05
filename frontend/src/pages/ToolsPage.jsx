@@ -1,34 +1,33 @@
-import { useState } from 'react';
-import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Network, Search, Calculator, Check, AlertCircle } from 'lucide-react';
-import axios from 'axios';
-
-// Utilidad para llamadas API (reemplazar con instancia axios configurada si existe)
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
-});
+import { useState } from 'react'
+import { Card } from '../components/ui/Card'
+import { Button } from '../components/ui/Button'
+import { Network, Search, Calculator, AlertCircle } from 'lucide-react'
+import { toolsService } from '../services/api'
 
 // SUBCOMPONENTES
 const SubnetCalculator = () => {
-    const [cidr, setCidr] = useState('');
-    const [result, setResult] = useState(null);
-    const [error, setError] = useState('');
-    const [loading, setLoading] = useState(false);
+    const [cidr, setCidr] = useState('')
+    const [result, setResult] = useState(null)
+    const [error, setError] = useState('')
+    const [loading, setLoading] = useState(false)
 
     const calculate = async () => {
-        setLoading(true);
-        setError('');
-        setResult(null);
+        setLoading(true)
+        setError('')
+        setResult(null)
         try {
-            const res = await api.get(`/tools/subnet-calc?cidr=${encodeURIComponent(cidr)}`);
-            setResult(res.data);
+            const res = await toolsService.calculateSubnet(cidr)
+            setResult(res)
         } catch (err) {
-            setError(err.response?.data?.detail || 'Error en cálculo');
+            const message =
+                err?.response?.data?.detail ||
+                err?.message ||
+                'Error en cálculo'
+            setError(message)
         } finally {
-            setLoading(false);
+            setLoading(false)
         }
-    };
+    }
 
     return (
         <Card className="p-6">
@@ -37,7 +36,7 @@ const SubnetCalculator = () => {
                 Calculadora de Subredes
             </h3>
             <div className="flex gap-2 mb-4">
-                <input 
+                <input
                     type="text" 
                     placeholder="Ej: 192.168.1.0/24" 
                     value={cidr}
@@ -78,22 +77,25 @@ const SubnetCalculator = () => {
 };
 
 const MacLookup = () => {
-    const [mac, setMac] = useState('');
-    const [result, setResult] = useState(null);
-    const [loading, setLoading] = useState(false);
+    const [mac, setMac] = useState('')
+    const [result, setResult] = useState(null)
+    const [loading, setLoading] = useState(false)
 
     const lookup = async () => {
-        setLoading(true);
-        setResult(null);
+        setLoading(true)
+        setResult(null)
         try {
-            const res = await api.get(`/tools/mac-lookup?mac=${encodeURIComponent(mac)}`);
-            setResult(res.data);
+            const res = await toolsService.lookupMac(mac)
+            setResult(res)
         } catch (err) {
-            setResult({ company: 'Error', error: 'No se pudo consultar' });
+            setResult({
+                company: 'Error',
+                error: err?.response?.data?.detail || 'No se pudo consultar',
+            })
         } finally {
-            setLoading(false);
+            setLoading(false)
         }
-    };
+    }
 
     return (
         <Card className="p-6">
@@ -102,7 +104,7 @@ const MacLookup = () => {
                 Buscador MAC (OUI)
             </h3>
              <div className="flex gap-2 mb-4">
-                <input 
+                <input
                     type="text" 
                     placeholder="Ej: 00:0c:29:4f:8e:35" 
                     value={mac}
@@ -133,22 +135,25 @@ const MacLookup = () => {
 };
 
 const DNSLookup = () => {
-    const [domain, setDomain] = useState('');
-    const [result, setResult] = useState(null);
-    const [loading, setLoading] = useState(false);
+    const [domain, setDomain] = useState('')
+    const [result, setResult] = useState(null)
+    const [loading, setLoading] = useState(false)
 
     const lookup = async () => {
-        setLoading(true);
-        setResult(null);
+        setLoading(true)
+        setResult(null)
         try {
-            const res = await api.get(`/tools/dns-lookup?domain=${encodeURIComponent(domain)}`);
-            setResult(res.data);
+            const res = await toolsService.dnsLookup(domain)
+            setResult(res)
         } catch (err) {
-             setResult({ error: 'Error al consultar DNS' });
+             setResult({
+                error:
+                    err?.response?.data?.detail || 'Error al consultar DNS',
+             })
         } finally {
-            setLoading(false);
+            setLoading(false)
         }
-    };
+    }
 
     return (
         <Card className="p-6">
@@ -157,7 +162,7 @@ const DNSLookup = () => {
                 DNS Records
             </h3>
              <div className="flex gap-2 mb-4">
-                <input 
+                <input
                     type="text" 
                     placeholder="Ej: google.com" 
                     value={domain}

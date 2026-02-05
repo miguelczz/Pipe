@@ -1,8 +1,8 @@
 """
 Servicio especializado para la extracción de fragmentos relevantes de archivos PCAP.
-Permite aislar eventos específicos como cambios de canal, secuencias BTM o fallos.
+Su única responsabilidad es aislar rangos temporales usando tshark para que otros
+componentes puedan consumirlos.
 """
-import logging
 import os
 import subprocess
 import shutil
@@ -10,8 +10,6 @@ from typing import List, Optional
 from pathlib import Path
 
 from ..models.btm_schemas import CaptureFragment
-
-logger = logging.getLogger(__name__)
 
 class FragmentExtractor:
     """

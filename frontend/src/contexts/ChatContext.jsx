@@ -2,6 +2,7 @@ import { createContext, useContext, useState } from 'react'
 
 const ChatContext = createContext(null)
 
+/* eslint-disable react-refresh/only-export-components -- Contexto exporta Provider y hook por diseño */
 export function ChatProvider({ children }) {
   const [clearChatAction, setClearChatAction] = useState(null)
   const [hasMessages, setHasMessages] = useState(false)

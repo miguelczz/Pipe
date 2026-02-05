@@ -1,8 +1,8 @@
 """
-Herramienta RAG - Refactorizado para usar repositorios y utilidades
-OPTIMIZADO: Búsqueda híbrida paralela con asyncio.gather() y pre-compilación de prompts
+Herramienta RAG especializada para consultar la base de conocimiento de Pipe.
+Encapsula la búsqueda híbrida en Qdrant y la generación de respuestas, sin
+incluir responsabilidades de logging de infraestructura.
 """
-import logging
 import re
 import asyncio
 import concurrent.futures
@@ -13,14 +13,13 @@ from ..repositories.qdrant_repository import QdrantRepository, get_qdrant_reposi
 from ..utils.embeddings import embedding_for_text
 from ..core.cache import cache_result
 
-# Cliente OpenAI para generación de respuestas
+# Cliente OpenAI para generación de respuestas.
 # NOTA: Este cliente es síncrono. Todas las llamadas deben envolverse con asyncio.to_thread()
 # para evitar bloquear el event loop. El cliente puede usar time.sleep internamente para retries.
 client = OpenAI(
     api_key=settings.openai_api_key,
     max_retries=2
 )
-logger = logging.getLogger(__name__)
 
 
 class RAGTool:
