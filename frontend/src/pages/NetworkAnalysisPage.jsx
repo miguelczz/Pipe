@@ -202,12 +202,21 @@ export function NetworkAnalysisPage() {
             const savedResult = localStorage.getItem('networkAnalysisResult')
             if (!savedResult) return null
 
+            console.log('🔍 [DATA] Cargando resultado desde localStorage')
+
             const parsed = JSON.parse(savedResult)
             // Validar estructura básica
             if (!parsed?.stats) {
+                console.warn('⚠️ [DATA] Resultado en localStorage no tiene estructura válida')
                 localStorage.removeItem('networkAnalysisResult')
                 return null
             }
+            
+            console.log('🔍 [DATA] Resultado cargado desde localStorage')
+            console.log('🔍 [DATA] band_steering existe:', !!parsed.band_steering)
+            console.log('🔍 [DATA] signal_samples:', parsed.band_steering?.signal_samples?.length || 0)
+            console.log('🔍 [DATA] transitions:', parsed.band_steering?.transitions?.length || 0)
+            
             return parsed
         } catch (e) {
             return null
@@ -425,12 +434,31 @@ export function NetworkAnalysisPage() {
         setResult(null)
 
         try {
+            console.log('🔍 [DATA] Iniciando análisis de captura')
+            console.log('🔍 [DATA] userSsid:', userSsid)
+            console.log('🔍 [DATA] userClientMac:', userClientMac)
+            
             const res = await networkAnalysisService.analyzeCapture(file, {
                 ssid: userSsid || null,
                 client_mac: userClientMac || null,
             })
 
             // Debug: Ver estructura de datos
+            console.log('🔍 [DATA] Resultado recibido del backend')
+            console.log('🔍 [DATA] band_steering existe:', !!res.band_steering)
+            console.log('🔍 [DATA] signal_samples:', res.band_steering?.signal_samples?.length || 0)
+            console.log('🔍 [DATA] transitions:', res.band_steering?.transitions?.length || 0)
+            console.log('🔍 [DATA] btm_events:', res.band_steering?.btm_events?.length || 0)
+            
+            if (res.band_steering?.signal_samples?.length > 0) {
+                console.log('🔍 [DATA] Primer signalSample:', res.band_steering.signal_samples[0])
+                console.log('🔍 [DATA] Último signalSample:', res.band_steering.signal_samples[res.band_steering.signal_samples.length - 1])
+            }
+            
+            if (res.band_steering?.transitions?.length > 0) {
+                console.log('🔍 [DATA] Primer transition:', res.band_steering.transitions[0])
+                console.log('🔍 [DATA] Último transition:', res.band_steering.transitions[res.band_steering.transitions.length - 1])
+            }
 
             // Guardar en persistencia (con sanitización para evitar QuotaExceededError)
             setResult(res)
@@ -862,11 +890,25 @@ export function NetworkAnalysisPage() {
         
         // Calcular tiempo en cada banda y en transición (EXACTAMENTE la misma lógica que en el componente)
         const signalSamples = result.band_steering?.signal_samples || []
+        console.log('🔍 [BAND_TIMING PDF] Iniciando cálculo de bandTiming para PDF')
+        console.log('🔍 [BAND_TIMING PDF] signalSamples recibidos:', signalSamples?.length || 0)
+        console.log('🔍 [BAND_TIMING PDF] transitions recibidas:', transitions?.length || 0)
+        if (signalSamples.length > 0) {
+            console.log('🔍 [BAND_TIMING PDF] Primer signalSample:', signalSamples[0])
+            console.log('🔍 [BAND_TIMING PDF] Último signalSample:', signalSamples[signalSamples.length - 1])
+        }
+        if (transitions.length > 0) {
+            console.log('🔍 [BAND_TIMING PDF] Primer transition:', transitions[0])
+            console.log('🔍 [BAND_TIMING PDF] Último transition:', transitions[transitions.length - 1])
+        }
+        
         let bandTiming = null
         try {
             const sortedTransitions = (transitions || [])
                 .filter(t => t && t.start_time != null && t.is_successful)
                 .sort((a, b) => Number(a.start_time) - Number(b.start_time))
+            
+            console.log('🔍 [BAND_TIMING PDF] sortedTransitions filtradas:', sortedTransitions.length)
 
             const validTransitions = []
             
@@ -931,14 +973,24 @@ export function NetworkAnalysisPage() {
                 }
             }
 
+            // Función auxiliar para normalizar timestamps (pueden estar en segundos o milisegundos)
+            const normalizeTimestamp = (ts) => {
+                if (ts == null) return null
+                const num = Number(ts)
+                if (Number.isNaN(num)) return null
+                // Si el timestamp es muy grande (> 10000000000), está en milisegundos, convertir a segundos
+                // Si es pequeño (< 10000000000), está en segundos
+                return num > 10000000000 ? num / 1000 : num
+            }
+
             const validSamples = (signalSamples && signalSamples.length > 0)
                 ? (signalSamples || [])
                     .map(s => {
                         const band = normalizeBand(s.band || '')
                         const tsRaw = s.timestamp
                         if (!band || tsRaw == null) return null
-                        const ts = Number(tsRaw)
-                        if (Number.isNaN(ts)) return null
+                        const ts = normalizeTimestamp(tsRaw)
+                        if (ts == null || Number.isNaN(ts)) return null
                         if (band === '2.4GHz' || band === '5GHz') {
                             return { timestamp: ts, band }
                         }
@@ -948,44 +1000,44 @@ export function NetworkAnalysisPage() {
                     .sort((a, b) => a.timestamp - b.timestamp)
                 : []
             
+            console.log('🔍 [BAND_TIMING PDF] validSamples procesados:', validSamples.length)
+            if (validSamples.length > 0) {
+                console.log('🔍 [BAND_TIMING PDF] Primer validSample:', validSamples[0])
+                console.log('🔍 [BAND_TIMING PDF] Último validSample:', validSamples[validSamples.length - 1])
+            }
+            
             const transitionDurations = validTransitions.map(t => {
-                const fromBand = normalizeBand(t.from_band || '')
-                const toBand = normalizeBand(t.to_band || '')
-                const transStartTime = Number(t.start_time || 0)
+                const transStartTime = normalizeTimestamp(t.start_time) || 0
+                const transEndTime = normalizeTimestamp(t.end_time) || 0
                 
-                if (validSamples.length > 0 && fromBand && toBand) {
-                    let lastFromBandTime = null
-                    for (let i = validSamples.length - 1; i >= 0; i--) {
-                        const sample = validSamples[i]
-                        if (sample.band === fromBand && sample.timestamp < transStartTime) {
-                            lastFromBandTime = sample.timestamp
-                            break
-                        }
-                    }
-                    
-                    let firstToBandTime = null
-                    const searchStartTime = lastFromBandTime != null ? lastFromBandTime : transStartTime
-                    
+                // Si hay end_time, usar la duración real de la transición
+                if (transEndTime > transStartTime) {
+                    const duration = transEndTime - transStartTime
+                    // Limitar a un máximo razonable (30 segundos) para evitar valores absurdos
+                    return Math.min(duration, 30.0)
+                }
+                
+                // Si no hay end_time, buscar el primer sample después de start_time
+                if (validSamples.length > 0) {
                     for (let i = 0; i < validSamples.length; i++) {
                         const sample = validSamples[i]
-                        if (sample.band === toBand && sample.timestamp > searchStartTime) {
-                            firstToBandTime = sample.timestamp
-                            break
+                        const sampleTime = normalizeTimestamp(sample.timestamp) || 0
+                        if (sampleTime > transStartTime) {
+                            const duration = sampleTime - transStartTime
+                            // Limitar a un máximo razonable (5 segundos) si no hay end_time
+                            return Math.min(duration, 5.0)
                         }
-                    }
-                    
-                    if (lastFromBandTime != null && firstToBandTime != null && firstToBandTime > lastFromBandTime) {
-                        return firstToBandTime - lastFromBandTime
                     }
                 }
                 
-                return 0
+                // Valor por defecto pequeño si no hay información
+                return 0.5
             }).filter(d => !Number.isNaN(d) && d >= 0)
 
             const transitionPeriods = validTransitions
                 .map(t => {
-                    const startTime = Number(t.start_time || 0)
-                    const endTime = Number(t.end_time != null ? t.end_time : startTime)
+                    const startTime = normalizeTimestamp(t.start_time) || 0
+                    const endTime = normalizeTimestamp(t.end_time) || startTime
                     return endTime > startTime ? [startTime, endTime] : null
                 })
                 .filter(p => p !== null)
@@ -993,25 +1045,77 @@ export function NetworkAnalysisPage() {
             // Calcular minTime y maxTime basándose SOLO en signalSamples
             // para que coincida con el rango de tiempo de la gráfica
             const sampleTimestamps = (signalSamples || [])
-                .map(s => s && s.timestamp != null ? Number(s.timestamp) : null)
+                .map(s => s && s.timestamp != null ? normalizeTimestamp(s.timestamp) : null)
                 .filter(ts => ts != null && !isNaN(ts))
             
             // También incluir timestamps de transiciones para el cálculo de períodos,
             // pero el totalTime se basará solo en signalSamples para coincidir con la gráfica
             const allTimestamps = []
             validTransitions.forEach(t => {
-                if (t.start_time != null) allTimestamps.push(Number(t.start_time))
-                if (t.end_time != null) allTimestamps.push(Number(t.end_time))
+                if (t.start_time != null) {
+                    const normalized = normalizeTimestamp(t.start_time)
+                    if (normalized != null) allTimestamps.push(normalized)
+                }
+                if (t.end_time != null) {
+                    const normalized = normalizeTimestamp(t.end_time)
+                    if (normalized != null) allTimestamps.push(normalized)
+                }
             })
             sampleTimestamps.forEach(ts => allTimestamps.push(ts))
 
+            // FALLBACK: Si no hay suficientes signalSamples, usar transiciones para calcular el rango temporal
+            let minTime, maxTime, totalTime
+            
+            console.log('🔍 [BAND_TIMING PDF] sampleTimestamps.length:', sampleTimestamps.length)
+            console.log('🔍 [BAND_TIMING PDF] validTransitions.length:', validTransitions.length)
+
             if (sampleTimestamps.length > 1) {
                 // Usar solo signalSamples para minTime y maxTime (como la gráfica)
-                const minTime = Math.min(...sampleTimestamps)
-                const maxTime = Math.max(...sampleTimestamps)
-                const totalTime = maxTime - minTime
+                minTime = Math.min(...sampleTimestamps)
+                maxTime = Math.max(...sampleTimestamps)
+                totalTime = maxTime - minTime
+                console.log('🔍 [BAND_TIMING PDF] Usando signalSamples - minTime:', minTime, 'maxTime:', maxTime, 'totalTime:', totalTime)
+            } else if (validTransitions.length > 0) {
+                // FALLBACK: Usar timestamps de transiciones si no hay suficientes samples
+                const transitionTimestamps = []
+                validTransitions.forEach(t => {
+                    if (t.start_time != null) {
+                        const normalized = normalizeTimestamp(t.start_time)
+                        if (normalized != null) transitionTimestamps.push(normalized)
+                    }
+                    if (t.end_time != null) {
+                        const normalized = normalizeTimestamp(t.end_time)
+                        if (normalized != null) transitionTimestamps.push(normalized)
+                    }
+                })
+                console.log('🔍 [BAND_TIMING PDF] transitionTimestamps:', transitionTimestamps)
+                if (transitionTimestamps.length > 0) {
+                    minTime = Math.min(...transitionTimestamps)
+                    maxTime = Math.max(...transitionTimestamps)
+                    // Si solo hay una transición, agregar un margen mínimo
+                    if (minTime === maxTime) {
+                        maxTime = minTime + 1.0 // 1 segundo mínimo
+                    }
+                    totalTime = maxTime - minTime
+                    console.log('🔍 [BAND_TIMING PDF] Usando transiciones - minTime:', minTime, 'maxTime:', maxTime, 'totalTime:', totalTime)
+                } else {
+                    minTime = 0
+                    maxTime = 1
+                    totalTime = 1
+                    console.log('🔍 [BAND_TIMING PDF] Sin timestamps válidos en transiciones, usando valores por defecto')
+                }
+            } else {
+                // Sin datos suficientes, usar valores por defecto mínimos
+                minTime = 0
+                maxTime = 1
+                totalTime = 1
+                console.log('🔍 [BAND_TIMING PDF] Sin datos suficientes, usando valores por defecto mínimos')
+            }
+
+            console.log('🔍 [BAND_TIMING PDF] totalTime calculado:', totalTime)
 
                 if (totalTime > 0) {
+                console.log('🔍 [BAND_TIMING PDF] Iniciando cálculo de time24 y time5')
                     let time24 = 0
                     let time5 = 0
 
@@ -1055,7 +1159,9 @@ export function NetworkAnalysisPage() {
                             }
 
                             // Período de la banda destino después de la transición
-                            const nextTransStart = (i + 1 < validTransitions.length) ? Number(validTransitions[i + 1].start_time || 0) : maxTime
+                        const nextTransStart = (i + 1 < validTransitions.length) 
+                            ? (normalizeTimestamp(validTransitions[i + 1].start_time) || 0) 
+                            : maxTime
                             if (toBand && transEnd < nextTransStart) {
                                 bandTimeline.push({
                                     band: toBand,
@@ -1144,29 +1250,93 @@ export function NetworkAnalysisPage() {
 
                             i = j
                         }
+                } else if (validTransitions.length > 0) {
+                    // FALLBACK: Calcular tiempo en cada banda basándose solo en transiciones
+                    // cuando no hay suficientes signalSamples
+                    let currentBand = null
+                    let lastTime = minTime
+                    
+                    for (let i = 0; i < validTransitions.length; i++) {
+                        const t = validTransitions[i]
+                        const fromBand = normalizeBand(t.from_band || '')
+                        const toBand = normalizeBand(t.to_band || '')
+                        const transStart = Number(t.start_time || 0)
+                        const transEnd = Number(t.end_time != null ? t.end_time : transStart)
+                        
+                        // Determinar banda inicial si es la primera transición
+                        if (i === 0 && fromBand) {
+                            currentBand = fromBand
+                            // Tiempo antes de la primera transición
+                            if (transStart > minTime) {
+                                const periodDuration = transStart - minTime
+                                if (currentBand === '2.4GHz') {
+                                    time24 += periodDuration
+                                } else if (currentBand === '5GHz') {
+                                    time5 += periodDuration
+                                }
+                            }
+                        }
+                        
+                        // Tiempo en la banda destino después de la transición
+                        if (toBand) {
+                            const nextTransStart = (i + 1 < validTransitions.length) 
+                                ? Number(validTransitions[i + 1].start_time || 0) 
+                                : maxTime
+                            const periodDuration = nextTransStart - transEnd
+                            
+                            if (periodDuration > 0) {
+                                if (toBand === '2.4GHz') {
+                                    time24 += periodDuration
+                                } else if (toBand === '5GHz') {
+                                    time5 += periodDuration
+                                }
+                            }
+                            currentBand = toBand
+                        }
+                    }
+                    
+                    // Si no hay transiciones pero hay una banda conocida, asignar todo el tiempo a esa banda
+                    if (validTransitions.length === 0 && signalSamples.length > 0) {
+                        const firstSample = signalSamples[0]
+                        const band = normalizeBand(firstSample.band || '')
+                        if (band === '2.4GHz') {
+                            time24 = totalTime
+                        } else if (band === '5GHz') {
+                            time5 = totalTime
+                        }
+                    }
                     }
 
                     const totalTransitionTime = transitionDurations.reduce((a, b) => a + b, 0)
                     const totalBandTime = time24 + time5
                     const expectedTotal = totalTime - totalTransitionTime
 
+                console.log('🔍 [BAND_TIMING PDF] ANTES de ajuste - time24:', time24, 'time5:', time5)
+                console.log('🔍 [BAND_TIMING PDF] totalTransitionTime:', totalTransitionTime)
+                console.log('🔍 [BAND_TIMING PDF] totalBandTime:', totalBandTime)
+                console.log('🔍 [BAND_TIMING PDF] expectedTotal:', expectedTotal)
+                console.log('🔍 [BAND_TIMING PDF] totalTime:', totalTime)
+
                     // Ajustar tiempos si hay discrepancia, pero mantener la proporción
                     if (expectedTotal > 0 && Math.abs(totalBandTime - expectedTotal) > 0.1) {
+                    console.log('🔍 [BAND_TIMING PDF] Aplicando ajuste de tiempos - discrepancia detectada')
                         if (totalBandTime > expectedTotal * 1.1) {
                             // Si el tiempo de banda es mucho mayor, escalar hacia abajo
                             const scale = expectedTotal / totalBandTime
                             time24 *= scale
                             time5 *= scale
+                        console.log('🔍 [BAND_TIMING PDF] Escalando hacia abajo - scale:', scale)
                         } else if (totalBandTime < expectedTotal * 0.9) {
                             // Si el tiempo de banda es menor, ajustar proporcionalmente
                             const scale = expectedTotal / totalBandTime
                             time24 *= scale
                             time5 *= scale
+                        console.log('🔍 [BAND_TIMING PDF] Escalando hacia arriba - scale:', scale)
                         }
                     }
 
                     const transitionsWithDuration = validTransitions.map((t, idx) => {
-                        const startTime = Number(t.start_time || 0)
+                    const startTime = normalizeTimestamp(t.start_time) || 0
                         const duration = idx < transitionDurations.length ? transitionDurations[idx] : 0
                         return {
                             fromBand: normalizeBand(t.from_band || ''),
@@ -1179,6 +1349,11 @@ export function NetworkAnalysisPage() {
                     // Recalcular totalBandTime después del ajuste
                     const finalTotalBandTime = time24 + time5
                     const finalTotalTime = finalTotalBandTime + totalTransitionTime
+                
+                console.log('🔍 [BAND_TIMING PDF] DESPUÉS de ajuste - time24:', time24, 'time5:', time5)
+                console.log('🔍 [BAND_TIMING PDF] finalTotalBandTime:', finalTotalBandTime)
+                console.log('🔍 [BAND_TIMING PDF] finalTotalTime:', finalTotalTime)
+                console.log('🔍 [BAND_TIMING PDF] transitionsWithDuration:', transitionsWithDuration.length)
                     
                     bandTiming = {
                         time24,
@@ -1189,10 +1364,14 @@ export function NetworkAnalysisPage() {
                         transitions: transitionsWithDuration,
                         transitionDurations
                     }
-                }
+                
+                console.log('🔍 [BAND_TIMING PDF] bandTiming final:', bandTiming)
+            } else {
+                console.warn('⚠️ [BAND_TIMING PDF] totalTime <= 0, no se puede calcular bandTiming')
             }
         } catch (e) {
-            console.error('Error calculando bandTiming en PDF:', e)
+            console.error('❌ [BAND_TIMING PDF] Error calculando bandTiming en PDF:', e)
+            console.error('❌ [BAND_TIMING PDF] Stack trace:', e.stack)
             bandTiming = null
         }
         
@@ -2513,6 +2692,39 @@ export function NetworkAnalysisPage() {
         return htmlContent
     }
 
+    // Generar y guardar PDF automáticamente después de que el análisis se complete
+    // Esto asegura que el PDF descargado desde el menú sea siempre el mismo que se genera aquí
+    React.useEffect(() => {
+        let timeoutId = null
+        
+        if (result?.band_steering?.analysis_id) {
+            // Esperar a que el gráfico se renderice completamente antes de generar el PDF
+            timeoutId = setTimeout(async () => {
+                try {
+                    const analysisId = result.band_steering.analysis_id
+                    
+                    // Generar HTML limpio y completo para el PDF
+                    const htmlContent = generatePDFHTML()
+                    
+                    if (htmlContent) {
+                        // Guardar el PDF en el backend
+                        await networkAnalysisService.savePDF(analysisId, htmlContent)
+                        console.log('✅ [PDF] PDF generado y guardado automáticamente')
+                    }
+                } catch (error) {
+                    // No mostrar error al usuario, solo loguear
+                    console.warn('⚠️ [PDF] Error al generar PDF automáticamente:', error)
+                }
+            }, 2000) // Esperar 2 segundos para que el gráfico se renderice
+        }
+        
+        return () => {
+            if (timeoutId) {
+                clearTimeout(timeoutId)
+            }
+        }
+    }, [result]) // Se ejecuta cuando result cambia
+
     // Función para descargar el PDF directamente
     const handleDownloadPDF = async () => {
         if (!result) return
@@ -3451,6 +3663,16 @@ export function NetworkAnalysisPage() {
                             return band
                         }
 
+                        // Función auxiliar para normalizar timestamps (pueden estar en segundos o milisegundos)
+                        const normalizeTimestamp = (ts) => {
+                            if (ts == null) return null
+                            const num = Number(ts)
+                            if (Number.isNaN(num)) return null
+                            // Si el timestamp es muy grande (> 10000000000), está en milisegundos, convertir a segundos
+                            // Si es pequeño (< 10000000000), está en segundos
+                            return num > 10000000000 ? num / 1000 : num
+                        }
+
                         const formatSeconds = (seconds) => {
                             if (seconds == null || Number.isNaN(seconds) || seconds <= 0) return '0 s'
                             if (seconds < 1) return `${(seconds * 1000).toFixed(0)} ms`
@@ -3463,9 +3685,15 @@ export function NetworkAnalysisPage() {
                         // Cálculo del tiempo en cada banda y en transición
                         let bandTiming = null
                         try {
+                            console.log('🔍 [BAND_TIMING] Iniciando cálculo de bandTiming')
+                            console.log('🔍 [BAND_TIMING] signalSamples recibidos:', signalSamples?.length || 0)
+                            console.log('🔍 [BAND_TIMING] transitions recibidas:', transitions?.length || 0)
+                            
                             const sortedTransitions = (transitions || [])
                                 .filter(t => t && t.start_time != null && t.is_successful)
                                 .sort((a, b) => Number(a.start_time) - Number(b.start_time))
+                            
+                            console.log('🔍 [BAND_TIMING] sortedTransitions filtradas:', sortedTransitions.length)
 
                             const validTransitions = []
                             
@@ -3508,8 +3736,17 @@ export function NetworkAnalysisPage() {
                                     }
                                     // Si es la primera transición, buscar en samples anteriores
                                     if (!isBandChange && idx === 0 && signalSamples.length > 0) {
-                                        const samplesBefore = signalSamples.filter(s => Number(s.timestamp) < Number(t.start_time || 0))
-                                            .sort((a, b) => Number(b.timestamp) - Number(a.timestamp))
+                                        const transStart = normalizeTimestamp(t.start_time) || 0
+                                        const samplesBefore = signalSamples
+                                            .filter(s => {
+                                                const sTs = normalizeTimestamp(s.timestamp)
+                                                return sTs != null && sTs < transStart
+                                            })
+                                            .sort((a, b) => {
+                                                const aTs = normalizeTimestamp(a.timestamp) || 0
+                                                const bTs = normalizeTimestamp(b.timestamp) || 0
+                                                return bTs - aTs
+                                            })
                                         if (samplesBefore.length > 0) {
                                             const initialBandFromSamples = normalizeBand(samplesBefore[0].band || '')
                                             if (initialBandFromSamples && toBand && initialBandFromSamples !== toBand) {
@@ -3536,8 +3773,8 @@ export function NetworkAnalysisPage() {
                                         const band = normalizeBand(s.band || '')
                                         const tsRaw = s.timestamp
                                         if (!band || tsRaw == null) return null
-                                        const ts = Number(tsRaw)
-                                        if (Number.isNaN(ts)) return null
+                                        const ts = normalizeTimestamp(tsRaw)
+                                        if (ts == null || Number.isNaN(ts)) return null
                                         if (band === '2.4GHz' || band === '5GHz') {
                                             return { timestamp: ts, band }
                                         }
@@ -3547,44 +3784,44 @@ export function NetworkAnalysisPage() {
                                     .sort((a, b) => a.timestamp - b.timestamp)
                                 : []
                             
+                            console.log('🔍 [BAND_TIMING] validSamples procesados:', validSamples.length)
+                            if (validSamples.length > 0) {
+                                console.log('🔍 [BAND_TIMING] Primer sample:', validSamples[0])
+                                console.log('🔍 [BAND_TIMING] Último sample:', validSamples[validSamples.length - 1])
+                            }
+                            
                             const transitionDurations = validTransitions.map(t => {
-                                const fromBand = normalizeBand(t.from_band || '')
-                                const toBand = normalizeBand(t.to_band || '')
-                                const transStartTime = Number(t.start_time || 0)
+                                const transStartTime = normalizeTimestamp(t.start_time) || 0
+                                const transEndTime = normalizeTimestamp(t.end_time) || 0
                                 
-                                if (validSamples.length > 0 && fromBand && toBand) {
-                                    let lastFromBandTime = null
-                                    for (let i = validSamples.length - 1; i >= 0; i--) {
-                                        const sample = validSamples[i]
-                                        if (sample.band === fromBand && sample.timestamp < transStartTime) {
-                                            lastFromBandTime = sample.timestamp
-                                            break
-                                        }
-                                    }
-                                    
-                                    let firstToBandTime = null
-                                    const searchStartTime = lastFromBandTime != null ? lastFromBandTime : transStartTime
-                                    
+                                // Si hay end_time, usar la duración real de la transición
+                                if (transEndTime > transStartTime) {
+                                    const duration = transEndTime - transStartTime
+                                    // Limitar a un máximo razonable (30 segundos) para evitar valores absurdos
+                                    return Math.min(duration, 30.0)
+                                }
+                                
+                                // Si no hay end_time, buscar el primer sample después de start_time
+                                if (validSamples.length > 0) {
                                     for (let i = 0; i < validSamples.length; i++) {
                                         const sample = validSamples[i]
-                                        if (sample.band === toBand && sample.timestamp > searchStartTime) {
-                                            firstToBandTime = sample.timestamp
-                                            break
+                                        const sampleTime = normalizeTimestamp(sample.timestamp) || 0
+                                        if (sampleTime > transStartTime) {
+                                            const duration = sampleTime - transStartTime
+                                            // Limitar a un máximo razonable (5 segundos) si no hay end_time
+                                            return Math.min(duration, 5.0)
                                         }
-                                    }
-                                    
-                                    if (lastFromBandTime != null && firstToBandTime != null && firstToBandTime > lastFromBandTime) {
-                                        return firstToBandTime - lastFromBandTime
                                     }
                                 }
                                 
-                                return 0
+                                // Valor por defecto pequeño si no hay información
+                                return 0.5
                             }).filter(d => !Number.isNaN(d) && d >= 0)
 
                             const transitionPeriods = validTransitions
                                 .map(t => {
-                                    const startTime = Number(t.start_time || 0)
-                                    const endTime = Number(t.end_time != null ? t.end_time : startTime)
+                                    const startTime = normalizeTimestamp(t.start_time) || 0
+                                    const endTime = normalizeTimestamp(t.end_time) || startTime
                                     return endTime > startTime ? [startTime, endTime] : null
                                 })
                                 .filter(p => p !== null)
@@ -3592,35 +3829,100 @@ export function NetworkAnalysisPage() {
                             // Calcular minTime y maxTime basándose SOLO en signalSamples
                             // para que coincida con el rango de tiempo de la gráfica
                             const sampleTimestamps = (signalSamples || [])
-                                .map(s => s && s.timestamp != null ? Number(s.timestamp) : null)
+                                .map(s => s && s.timestamp != null ? normalizeTimestamp(s.timestamp) : null)
                                 .filter(ts => ts != null && !isNaN(ts))
                             
                             // También incluir timestamps de transiciones para el cálculo de períodos,
                             // pero el totalTime se basará solo en signalSamples para coincidir con la gráfica
                             const allTimestamps = []
                             validTransitions.forEach(t => {
-                                if (t.start_time != null) allTimestamps.push(Number(t.start_time))
-                                if (t.end_time != null) allTimestamps.push(Number(t.end_time))
+                                if (t.start_time != null) {
+                                    const normalized = normalizeTimestamp(t.start_time)
+                                    if (normalized != null) allTimestamps.push(normalized)
+                                }
+                                if (t.end_time != null) {
+                                    const normalized = normalizeTimestamp(t.end_time)
+                                    if (normalized != null) allTimestamps.push(normalized)
+                                }
                             })
                             sampleTimestamps.forEach(ts => allTimestamps.push(ts))
 
+                            // FALLBACK: Si no hay suficientes signalSamples, usar transiciones para calcular el rango temporal
+                            let minTime, maxTime, totalTime
+                            
+                            console.log('🔍 [BAND_TIMING] sampleTimestamps.length:', sampleTimestamps.length)
+                            console.log('🔍 [BAND_TIMING] validTransitions.length:', validTransitions.length)
+
                             if (sampleTimestamps.length > 1) {
                                 // Usar solo signalSamples para minTime y maxTime (como la gráfica)
-                                const minTime = Math.min(...sampleTimestamps)
-                                const maxTime = Math.max(...sampleTimestamps)
-                                const totalTime = maxTime - minTime
+                                minTime = Math.min(...sampleTimestamps)
+                                maxTime = Math.max(...sampleTimestamps)
+                                totalTime = maxTime - minTime
+                                console.log('🔍 [BAND_TIMING] Usando signalSamples - minTime:', minTime, 'maxTime:', maxTime, 'totalTime:', totalTime)
+                            } else if (validTransitions.length > 0) {
+                                // FALLBACK: Usar timestamps de transiciones si no hay suficientes samples
+                                const transitionTimestamps = []
+                                validTransitions.forEach(t => {
+                                    if (t.start_time != null) {
+                                        const normalized = normalizeTimestamp(t.start_time)
+                                        if (normalized != null) transitionTimestamps.push(normalized)
+                                    }
+                                    if (t.end_time != null) {
+                                        const normalized = normalizeTimestamp(t.end_time)
+                                        if (normalized != null) transitionTimestamps.push(normalized)
+                                    }
+                                })
+                                console.log('🔍 [BAND_TIMING] transitionTimestamps:', transitionTimestamps)
+                                if (transitionTimestamps.length > 0) {
+                                    minTime = Math.min(...transitionTimestamps)
+                                    maxTime = Math.max(...transitionTimestamps)
+                                    // Si solo hay una transición, agregar un margen mínimo
+                                    if (minTime === maxTime) {
+                                        maxTime = minTime + 1.0 // 1 segundo mínimo
+                                    }
+                                    totalTime = maxTime - minTime
+                                    console.log('🔍 [BAND_TIMING] Usando transiciones - minTime:', minTime, 'maxTime:', maxTime, 'totalTime:', totalTime)
+                                } else {
+                                    minTime = 0
+                                    maxTime = 1
+                                    totalTime = 1
+                                    console.log('🔍 [BAND_TIMING] Sin timestamps válidos en transiciones, usando valores por defecto')
+                                }
+                            } else {
+                                // Sin datos suficientes, usar valores por defecto mínimos
+                                minTime = 0
+                                maxTime = 1
+                                totalTime = 1
+                                console.log('🔍 [BAND_TIMING] Sin datos suficientes, usando valores por defecto mínimos')
+                            }
+
+                            console.log('🔍 [BAND_TIMING] totalTime calculado:', totalTime)
 
                                 if (totalTime > 0) {
                                     let time24 = 0
                                     let time5 = 0
 
                                     const bandTimeline = []
+                                console.log('🔍 [BAND_TIMING] Iniciando cálculo de time24 y time5')
+                                console.log('🔍 [BAND_TIMING] validTransitions.length:', validTransitions.length)
+                                console.log('🔍 [BAND_TIMING] validSamples.length:', validSamples.length)
+                                
                                     if (validTransitions.length > 0) {
+                                    console.log('🔍 [BAND_TIMING] Usando lógica de validTransitions')
                                         const firstTrans = validTransitions[0]
                                         let initialBand = normalizeBand(firstTrans.from_band || '')
                                         if (!initialBand && signalSamples.length > 0) {
-                                            const samplesBeforeFirstTrans = signalSamples.filter(s => Number(s.timestamp) < Number(firstTrans.start_time || 0))
-                                                .sort((a, b) => Number(b.timestamp) - Number(a.timestamp))
+                                        const firstTransStart = normalizeTimestamp(firstTrans.start_time) || 0
+                                        const samplesBeforeFirstTrans = signalSamples
+                                            .filter(s => {
+                                                const sTs = normalizeTimestamp(s.timestamp)
+                                                return sTs != null && sTs < firstTransStart
+                                            })
+                                            .sort((a, b) => {
+                                                const aTs = normalizeTimestamp(a.timestamp) || 0
+                                                const bTs = normalizeTimestamp(b.timestamp) || 0
+                                                return bTs - aTs
+                                            })
                                             if (samplesBeforeFirstTrans.length > 0) {
                                                 initialBand = normalizeBand(samplesBeforeFirstTrans[0].band || '')
                                             }
@@ -3628,11 +3930,12 @@ export function NetworkAnalysisPage() {
                                         if (!initialBand) initialBand = normalizeBand(firstTrans.to_band || '')
 
                                         // Período inicial antes de la primera transición
-                                        if (initialBand && Number(firstTrans.start_time || 0) > minTime) {
+                                    const firstTransStart = normalizeTimestamp(firstTrans.start_time) || 0
+                                    if (initialBand && firstTransStart > minTime) {
                                             bandTimeline.push({
                                                 band: initialBand,
                                                 start: minTime,
-                                                end: Number(firstTrans.start_time || 0)
+                                            end: firstTransStart
                                             })
                                         }
 
@@ -3641,8 +3944,8 @@ export function NetworkAnalysisPage() {
                                             const t = validTransitions[i]
                                             const fromBand = normalizeBand(t.from_band || '')
                                             const toBand = normalizeBand(t.to_band || '')
-                                            const transStart = Number(t.start_time || 0)
-                                            const transEnd = Number(t.end_time != null ? t.end_time : transStart)
+                                        const transStart = normalizeTimestamp(t.start_time) || 0
+                                        const transEnd = normalizeTimestamp(t.end_time) || transStart
 
                                             // Período de la banda origen antes de la transición
                                             if (fromBand && transStart > (bandTimeline.length > 0 ? bandTimeline[bandTimeline.length - 1].end : minTime)) {
@@ -3654,7 +3957,9 @@ export function NetworkAnalysisPage() {
                                             }
 
                                             // Período de la banda destino después de la transición
-                                            const nextTransStart = (i + 1 < validTransitions.length) ? Number(validTransitions[i + 1].start_time || 0) : maxTime
+                                        const nextTransStart = (i + 1 < validTransitions.length) 
+                                            ? (normalizeTimestamp(validTransitions[i + 1].start_time) || 0) 
+                                            : maxTime
                                             if (toBand && transEnd < nextTransStart) {
                                                 bandTimeline.push({
                                                     band: toBand,
@@ -3674,6 +3979,9 @@ export function NetworkAnalysisPage() {
                                             })
                                         }
 
+                                    console.log('🔍 [BAND_TIMING] bandTimeline generada:', bandTimeline.length, 'períodos')
+                                    console.log('🔍 [BAND_TIMING] bandTimeline:', bandTimeline)
+
                                         for (const period of bandTimeline) {
                                             let periodDuration = period.end - period.start
                                             for (const [transStart, transEnd] of transitionPeriods) {
@@ -3691,7 +3999,10 @@ export function NetworkAnalysisPage() {
                                                 }
                                             }
                                         }
+                                    
+                                    console.log('🔍 [BAND_TIMING] Después de procesar bandTimeline - time24:', time24, 'time5:', time5)
                                     } else if (validSamples.length > 0) {
+                                    console.log('🔍 [BAND_TIMING] Usando lógica de validSamples')
                                         let i = 0
                                         while (i < validSamples.length) {
                                             const currentBand = validSamples[i].band
@@ -3743,29 +4054,95 @@ export function NetworkAnalysisPage() {
 
                                             i = j
                                         }
+                                    console.log('🔍 [BAND_TIMING] Después de procesar validSamples - time24:', time24, 'time5:', time5)
+                                } else if (validTransitions.length > 0) {
+                                    // FALLBACK: Calcular tiempo en cada banda basándose solo en transiciones
+                                    // cuando no hay suficientes signalSamples
+                                    console.log('🔍 [BAND_TIMING] Usando FALLBACK: solo transiciones')
+                                    let currentBand = null
+                                    let lastTime = minTime
+                                    
+                                    for (let i = 0; i < validTransitions.length; i++) {
+                                        const t = validTransitions[i]
+                                        const fromBand = normalizeBand(t.from_band || '')
+                                        const toBand = normalizeBand(t.to_band || '')
+                                        const transStart = normalizeTimestamp(t.start_time) || 0
+                                        const transEnd = normalizeTimestamp(t.end_time) || transStart
+                                        
+                                        // Determinar banda inicial si es la primera transición
+                                        if (i === 0 && fromBand) {
+                                            currentBand = fromBand
+                                            // Tiempo antes de la primera transición
+                                            if (transStart > minTime) {
+                                                const periodDuration = transStart - minTime
+                                                if (currentBand === '2.4GHz') {
+                                                    time24 += periodDuration
+                                                } else if (currentBand === '5GHz') {
+                                                    time5 += periodDuration
+                                                }
+                                            }
+                                        }
+                                        
+                                        // Tiempo en la banda destino después de la transición
+                                        if (toBand) {
+                                            const nextTransStart = (i + 1 < validTransitions.length) 
+                                                ? Number(validTransitions[i + 1].start_time || 0) 
+                                                : maxTime
+                                            const periodDuration = nextTransStart - transEnd
+                                            
+                                            if (periodDuration > 0) {
+                                                if (toBand === '2.4GHz') {
+                                                    time24 += periodDuration
+                                                } else if (toBand === '5GHz') {
+                                                    time5 += periodDuration
+                                                }
+                                            }
+                                            currentBand = toBand
+                                        }
+                                    }
+                                    
+                                    // Si no hay transiciones pero hay una banda conocida, asignar todo el tiempo a esa banda
+                                    if (validTransitions.length === 0 && signalSamples.length > 0) {
+                                        const firstSample = signalSamples[0]
+                                        const band = normalizeBand(firstSample.band || '')
+                                        if (band === '2.4GHz') {
+                                            time24 = totalTime
+                                        } else if (band === '5GHz') {
+                                            time5 = totalTime
+                                        }
+                                    }
                                     }
 
                                     const totalTransitionTime = transitionDurations.reduce((a, b) => a + b, 0)
                                     const totalBandTime = time24 + time5
                                     const expectedTotal = totalTime - totalTransitionTime
 
+                                console.log('🔍 [BAND_TIMING] ANTES de ajuste - time24:', time24, 'time5:', time5)
+                                console.log('🔍 [BAND_TIMING] totalTransitionTime:', totalTransitionTime)
+                                console.log('🔍 [BAND_TIMING] totalBandTime:', totalBandTime)
+                                console.log('🔍 [BAND_TIMING] expectedTotal:', expectedTotal)
+                                console.log('🔍 [BAND_TIMING] totalTime:', totalTime)
+
                                     // Ajustar tiempos si hay discrepancia, pero mantener la proporción
                                     if (expectedTotal > 0 && Math.abs(totalBandTime - expectedTotal) > 0.1) {
+                                    console.log('🔍 [BAND_TIMING] Aplicando ajuste de tiempos - discrepancia detectada')
                                         if (totalBandTime > expectedTotal * 1.1) {
                                             // Si el tiempo de banda es mucho mayor, escalar hacia abajo
                                             const scale = expectedTotal / totalBandTime
                                             time24 *= scale
                                             time5 *= scale
+                                        console.log('🔍 [BAND_TIMING] Escalando hacia abajo - scale:', scale)
                                         } else if (totalBandTime < expectedTotal * 0.9) {
                                             // Si el tiempo de banda es menor, ajustar proporcionalmente
                                             const scale = expectedTotal / totalBandTime
                                             time24 *= scale
                                             time5 *= scale
+                                        console.log('🔍 [BAND_TIMING] Escalando hacia arriba - scale:', scale)
                                         }
                                     }
 
                                     const transitionsWithDuration = validTransitions.map((t, idx) => {
-                                        const startTime = Number(t.start_time || 0)
+                                    const startTime = normalizeTimestamp(t.start_time) || 0
                                         const duration = idx < transitionDurations.length ? transitionDurations[idx] : 0
                                         return {
                                             fromBand: normalizeBand(t.from_band || ''),
@@ -3778,6 +4155,11 @@ export function NetworkAnalysisPage() {
                                     // Recalcular totalBandTime después del ajuste
                                     const finalTotalBandTime = time24 + time5
                                     const finalTotalTime = finalTotalBandTime + totalTransitionTime
+                                
+                                console.log('🔍 [BAND_TIMING] DESPUÉS de ajuste - time24:', time24, 'time5:', time5)
+                                console.log('🔍 [BAND_TIMING] finalTotalBandTime:', finalTotalBandTime)
+                                console.log('🔍 [BAND_TIMING] finalTotalTime:', finalTotalTime)
+                                console.log('🔍 [BAND_TIMING] transitionsWithDuration:', transitionsWithDuration.length)
                                     
                                     bandTiming = {
                                         time24,
@@ -3788,10 +4170,14 @@ export function NetworkAnalysisPage() {
                                         transitions: transitionsWithDuration,
                                         transitionDurations
                                     }
-                                }
+                                
+                                console.log('🔍 [BAND_TIMING] bandTiming final:', bandTiming)
+                            } else {
+                                console.warn('⚠️ [BAND_TIMING] totalTime <= 0, no se puede calcular bandTiming')
                             }
                         } catch (e) {
-                            console.error('Error calculando bandTiming:', e)
+                            console.error('❌ [BAND_TIMING] Error calculando bandTiming:', e)
+                            console.error('❌ [BAND_TIMING] Stack trace:', e.stack)
                             bandTiming = null
                         }
 

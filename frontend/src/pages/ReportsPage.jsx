@@ -106,26 +106,204 @@ export function ReportsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reports.length]) // Solo depender de la longitud para evitar loops infinitos
 
-  const handleDeleteSelected = useCallback(async () => {
-    if (selectedIds.length === 0) return
+  // Mejorar búsqueda para incluir MAC y SSID (movido antes de groupedReports)
+  const enhancedSearch = (report, searchTerm) => {
+    if (!searchTerm) return true
     
-    if (!window.confirm(`¿Estás seguro de que deseas eliminar ${selectedIds.length} reporte${selectedIds.length !== 1 ? 's' : ''} seleccionado${selectedIds.length !== 1 ? 's' : ''}?\n\nEsta acción no se puede deshacer.`)) return
+    const term = searchTerm.toLowerCase()
+    
+    // Búsqueda en campos básicos
+    const basicMatch = (
+      report.filename?.toLowerCase().includes(term) ||
+      report.vendor?.toLowerCase().includes(term) ||
+      report.model?.toLowerCase().includes(term)
+    )
+    
+    // Búsqueda por MAC (formato común: XX:XX:XX:XX:XX:XX o XXXXXXXXXXXX)
+    const macPattern = /^([0-9a-f]{2}[:-]?){5}([0-9a-f]{2})$/i
+    macPattern.test(term.replace(/[:-]/g, ''))
+    
+    // Si parece una búsqueda MAC, buscar en el detalle del reporte
+    // Por ahora solo buscamos en campos básicos, pero esto se puede expandir
+    
+    return basicMatch
+  }
+
+  // Función de ordenamiento (movida antes de groupedReports)
+  const sortReports = (reportsToSort) => {
+    const [field, order] = sortBy.split('_')
+    const sorted = [...reportsToSort]
+    
+    sorted.sort((a, b) => {
+      let comparison = 0
+      
+      switch (field) {
+        case 'date': {
+          const dateA = new Date(a.timestamp || 0).getTime()
+          const dateB = new Date(b.timestamp || 0).getTime()
+          comparison = dateA - dateB
+          break
+        }
+        case 'name': {
+          const nameA = (a.filename || '').toLowerCase()
+          const nameB = (b.filename || '').toLowerCase()
+          comparison = nameA.localeCompare(nameB)
+          break
+        }
+        case 'vendor': {
+          const vendorA = (a.vendor || '').toLowerCase()
+          const vendorB = (b.vendor || '').toLowerCase()
+          comparison = vendorA.localeCompare(vendorB)
+          break
+        }
+        case 'verdict': {
+          const verdictA = (a.verdict || '').toUpperCase()
+          const verdictB = (b.verdict || '').toUpperCase()
+          comparison = verdictA.localeCompare(verdictB)
+          break
+        }
+        default:
+          return 0
+      }
+      
+      return order === 'desc' ? -comparison : comparison
+    })
+    
+    return sorted
+  }
+
+  // Lógica de filtrado, ordenamiento y agrupamiento (movido antes de selectAllVisible)
+  const groupedReports = useMemo(() => {
+    // Asegurar que reports sea un array antes de usar filter
+    if (!Array.isArray(reports)) {
+      return {}
+    }
+    
+    const filtered = reports.filter(report => {
+      const matchSearch = enhancedSearch(report, searchTerm)
+      
+      const matchStatus = (
+        statusFilter === 'ALL' ||
+        (statusFilter === 'SUCCESS' && ['SUCCESS', 'EXCELLENT', 'GOOD'].includes(report.verdict?.toUpperCase())) ||
+        (statusFilter === 'FAILED' && report.verdict?.toUpperCase() === 'FAILED')
+      )
+
+      const matchVendor = selectedVendors.length === 0 || selectedVendors.includes(report.vendor)
+
+      const matchDateRange = (() => {
+        if (!dateRange.start && !dateRange.end) return true
+        const reportDate = new Date(report.timestamp || 0)
+        const startDate = dateRange.start ? new Date(dateRange.start) : null
+        const endDate = dateRange.end ? new Date(dateRange.end + 'T23:59:59') : null
+        
+        if (startDate && reportDate < startDate) return false
+        if (endDate && reportDate > endDate) return false
+        return true
+      })()
+      
+      return matchSearch && matchStatus && matchVendor && matchDateRange
+    })
+
+    // Ordenar reportes
+    const sorted = sortReports(filtered)
+
+    // Agrupar por Vendor
+      return sorted.reduce((groups, report) => {
+      const vendor = report.vendor || 'Desconocido'
+      if (!groups[vendor]) groups[vendor] = []
+      groups[vendor].push(report)
+      return groups
+    }, {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reports, searchTerm, statusFilter, sortBy, selectedVendors, dateRange]) // sortReports es estable y no necesita estar en deps
+
+  // Obtener todos los reportes visibles (filtrados) para selección
+  const visibleReports = useMemo(() => {
+    return Object.values(groupedReports).flat()
+  }, [groupedReports])
+
+  // Limpiar selección de reportes que ya no están visibles cuando cambian los filtros
+  useEffect(() => {
+    if (selectionMode) {
+      const visibleIds = new Set(visibleReports.map(r => r.id).filter(Boolean))
+      const currentSelected = selectedIds.filter(id => visibleIds.has(id))
+      
+      // Si hay IDs seleccionados que ya no están visibles, limpiarlos
+      if (currentSelected.length !== selectedIds.length) {
+        // Deseleccionar los que ya no están visibles
+        selectedIds.forEach(id => {
+          if (!visibleIds.has(id) && isSelected(id)) {
+            toggleSelection(id)
+          }
+        })
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleReports, selectionMode]) // No incluir selectedIds, isSelected, toggleSelection para evitar loops
+
+  // Función para seleccionar solo los reportes visibles (filtrados)
+  const selectAllVisible = useCallback(() => {
+    const visibleIds = visibleReports.map(r => r.id).filter(Boolean)
+    visibleIds.forEach(id => {
+      if (!isSelected(id)) {
+        toggleSelection(id)
+      }
+    })
+  }, [visibleReports, isSelected, toggleSelection])
+
+  const handleDeleteSelected = useCallback(async () => {
+    // Usar selectedCount del hook en lugar de selectedIds.length para asegurar consistencia
+    const actualSelectedCount = selectedCount || selectedIds.length || 0
+    if (actualSelectedCount === 0) return
+    
+    // Verificar que los IDs seleccionados realmente existan en los reportes visibles
+    const visibleReportIds = visibleReports.map(r => r.id).filter(Boolean)
+    const validSelectedIds = selectedIds.filter(id => visibleReportIds.includes(id))
+    
+    if (validSelectedIds.length === 0) {
+      showToast({
+        type: 'warning',
+        message: 'No hay reportes seleccionados para eliminar'
+      })
+      return
+    }
+    
+    // Usar el número real de IDs válidos seleccionados
+    const countToDelete = validSelectedIds.length
+    
+    if (!window.confirm(`¿Estás seguro de que deseas eliminar ${countToDelete} reporte${countToDelete !== 1 ? 's' : ''} seleccionado${countToDelete !== 1 ? 's' : ''}?\n\nEsta acción no se puede deshacer.`)) return
     
     setIsDeletingSelected(true)
     try {
-      const result = await reportsService.deleteMultipleReports(selectedIds)
-      // Actualizar lista local
-      setReports(prev => prev.filter(r => !selectedIds.includes(r.id)))
+      // Usar solo los IDs válidos que están realmente seleccionados
+      const result = await reportsService.deleteMultipleReports(validSelectedIds)
+      
+      // Actualizar lista local solo con los que se eliminaron exitosamente
+      const successfullyDeleted = validSelectedIds.filter(id => 
+        !result.not_found || !result.not_found.includes(id)
+      )
+      setReports(prev => prev.filter(r => !successfullyDeleted.includes(r.id)))
       await fetchStats() // Actualizar estadísticas
-      showToast({ 
-        type: 'success', 
-        message: `Se eliminaron ${result.deleted || 0} reportes correctamente` 
-      })
+      
+      // Mostrar mensaje apropiado
+      if (result.not_found && result.not_found.length > 0) {
+        showToast({ 
+          type: 'warning', 
+          message: result.message || `Se eliminaron ${result.deleted || 0} reportes, pero ${result.not_found.length} no se encontraron` 
+        })
+      } else {
+        showToast({ 
+          type: 'success', 
+          message: result.message || `Se eliminaron ${result.deleted || 0} reportes correctamente` 
+        })
+      }
       deselectAll()
     } catch (err) {
+      // Extraer mensaje de error del backend si está disponible
+      const errorMessage = err?.response?.data?.detail || err?.response?.data?.message || err?.message || 'Error al intentar eliminar los reportes seleccionados'
       showToast({ 
         type: 'error', 
-        message: err?.message || 'Error al intentar eliminar los reportes seleccionados' 
+        message: errorMessage
       })
     } finally {
       setIsDeletingSelected(false)
@@ -245,10 +423,10 @@ export function ReportsPage() {
       }
       // Solo procesar otros atajos si estamos en modo selección
       else if (selectionMode) {
-        // Ctrl+A o Cmd+A: Seleccionar todos
+        // Ctrl+A o Cmd+A: Seleccionar todos los visibles
         if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
           e.preventDefault()
-          selectAll()
+          selectAllVisible()
         }
         // Delete: Eliminar seleccionados
         else if (e.key === 'Delete' && selectedCount > 0) {
@@ -265,7 +443,7 @@ export function ReportsPage() {
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [selectionMode, selectedCount, selectAll, toggleSelectionMode, handleDeleteSelected])
+  }, [selectionMode, selectedCount, selectAllVisible, toggleSelectionMode, handleDeleteSelected])
 
   const fetchReports = async () => {
     setLoading(true)
@@ -698,116 +876,6 @@ export function ReportsPage() {
     localStorage.setItem('reports_view_mode', viewMode)
   }, [viewMode])
 
-  // Mejorar búsqueda para incluir MAC y SSID
-  const enhancedSearch = (report, searchTerm) => {
-    if (!searchTerm) return true
-    
-    const term = searchTerm.toLowerCase()
-    
-    // Búsqueda en campos básicos
-    const basicMatch = (
-      report.filename?.toLowerCase().includes(term) ||
-      report.vendor?.toLowerCase().includes(term) ||
-      report.model?.toLowerCase().includes(term)
-    )
-    
-    // Búsqueda por MAC (formato común: XX:XX:XX:XX:XX:XX o XXXXXXXXXXXX)
-    const macPattern = /^([0-9a-f]{2}[:-]?){5}([0-9a-f]{2})$/i
-    macPattern.test(term.replace(/[:-]/g, ''))
-    
-    // Si parece una búsqueda MAC, buscar en el detalle del reporte
-    // Por ahora solo buscamos en campos básicos, pero esto se puede expandir
-    
-    return basicMatch
-  }
-
-  // Función de ordenamiento
-  const sortReports = (reportsToSort) => {
-    const [field, order] = sortBy.split('_')
-    const sorted = [...reportsToSort]
-    
-    sorted.sort((a, b) => {
-      let comparison = 0
-      
-      switch (field) {
-        case 'date': {
-          const dateA = new Date(a.timestamp || 0).getTime()
-          const dateB = new Date(b.timestamp || 0).getTime()
-          comparison = dateA - dateB
-          break
-        }
-        case 'name': {
-          const nameA = (a.filename || '').toLowerCase()
-          const nameB = (b.filename || '').toLowerCase()
-          comparison = nameA.localeCompare(nameB)
-          break
-        }
-        case 'vendor': {
-          const vendorA = (a.vendor || '').toLowerCase()
-          const vendorB = (b.vendor || '').toLowerCase()
-          comparison = vendorA.localeCompare(vendorB)
-          break
-        }
-        case 'verdict': {
-          const verdictA = (a.verdict || '').toUpperCase()
-          const verdictB = (b.verdict || '').toUpperCase()
-          comparison = verdictA.localeCompare(verdictB)
-          break
-        }
-        default:
-          return 0
-      }
-      
-      return order === 'desc' ? -comparison : comparison
-    })
-    
-    return sorted
-  }
-
-  // Lógica de filtrado, ordenamiento y agrupamiento
-  const groupedReports = useMemo(() => {
-    // Asegurar que reports sea un array antes de usar filter
-    if (!Array.isArray(reports)) {
-      return {}
-    }
-    
-    const filtered = reports.filter(report => {
-      const matchSearch = enhancedSearch(report, searchTerm)
-      
-      const matchStatus = (
-        statusFilter === 'ALL' ||
-        (statusFilter === 'SUCCESS' && ['SUCCESS', 'EXCELLENT', 'GOOD'].includes(report.verdict?.toUpperCase())) ||
-        (statusFilter === 'FAILED' && report.verdict?.toUpperCase() === 'FAILED')
-      )
-
-      const matchVendor = selectedVendors.length === 0 || selectedVendors.includes(report.vendor)
-
-      const matchDateRange = (() => {
-        if (!dateRange.start && !dateRange.end) return true
-        const reportDate = new Date(report.timestamp || 0)
-        const startDate = dateRange.start ? new Date(dateRange.start) : null
-        const endDate = dateRange.end ? new Date(dateRange.end + 'T23:59:59') : null
-        
-        if (startDate && reportDate < startDate) return false
-        if (endDate && reportDate > endDate) return false
-        return true
-      })()
-      
-      return matchSearch && matchStatus && matchVendor && matchDateRange
-    })
-
-    // Ordenar reportes
-    const sorted = sortReports(filtered)
-
-    // Agrupar por Vendor
-      return sorted.reduce((groups, report) => {
-      const vendor = report.vendor || 'Desconocido'
-      if (!groups[vendor]) groups[vendor] = []
-      groups[vendor].push(report)
-      return groups
-    }, {})
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reports, searchTerm, statusFilter, sortBy, selectedVendors, dateRange]) // sortReports es estable y no necesita estar en deps
 
   // Obtener lista única de vendors para el filtro
   const availableVendors = useMemo(() => {
@@ -959,13 +1027,13 @@ export function ReportsPage() {
                   <button
                     onClick={() => {
                       toggleSelectionMode()
-                      selectAll()
+                      selectAllVisible()
                       setOpenSelectionMenu(false)
                     }}
                     className="w-full px-4 py-2.5 text-left text-sm text-dark-text-primary hover:bg-dark-bg-secondary transition-colors flex items-center gap-2 border-t border-dark-border-primary/20"
                   >
                     <CheckSquare className="w-4 h-4 text-green-400" />
-                    <span>Seleccionar Todos</span>
+                    <span>Seleccionar Todos Visibles</span>
                   </button>
                 </div>
               )}
@@ -1253,10 +1321,10 @@ export function ReportsPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={selectAll}
+                        onClick={selectAllVisible}
                         className="text-xs text-dark-text-muted hover:text-dark-text-primary transition-colors"
                       >
-                        Seleccionar todos
+                        Seleccionar todos visibles
                       </button>
                       <span className="text-dark-text-muted">•</span>
                       <button
@@ -1535,7 +1603,11 @@ export function ReportsPage() {
                                     ? 'bg-green-500/15 text-green-400' 
                                     : 'bg-red-500/15 text-red-400'
                                 }`}>
-                                  {report.verdict === 'SUCCESS' ? 'ÉXITO' : report.verdict === 'FAILED' ? 'FALLÓ' : report.verdict}
+                                  {['SUCCESS', 'EXCELLENT', 'GOOD'].includes(report.verdict?.toUpperCase()) 
+                                    ? 'ÉXITO' 
+                                    : report.verdict?.toUpperCase() === 'FAILED' 
+                                      ? 'FALLÓ' 
+                                      : report.verdict || 'N/A'}
                                 </div>
                               </div>
                             </div>

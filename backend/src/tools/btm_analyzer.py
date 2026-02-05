@@ -714,31 +714,27 @@ class BTMAnalyzer:
         sorted_transitions = sorted([t for t in transitions if t.is_successful], key=lambda x: x.start_time)
         band_change_transitions = 0
         
-        for idx, t in enumerate(sorted_transitions):
+        # LÓGICA SIMPLIFICADA Y CORRECTA:
+        # Una transición es un cambio de banda si:
+        # 1. Tiene from_band y to_band diferentes (cambio explícito), O
+        # 2. Está marcada como is_band_change=True (detectado por el analizador mediante historial)
+        
+        for t in sorted_transitions:
             from_band = normalize_band(t.from_band)
             to_band = normalize_band(t.to_band)
-            is_band_change = t.is_band_change
             
-            # Comparar con la transición anterior para detectar cambios de banda reales
-            if idx > 0:
-                prev_transition = sorted_transitions[idx - 1]
-                if prev_transition.to_band:
-                    prev_band = normalize_band(prev_transition.to_band)
-                    current_band = to_band or from_band
-                    
-                    if prev_band and current_band and prev_band != current_band:
-                        # Hay un cambio de banda real comparando con la transición anterior
-                        is_band_change = True
-                    elif is_band_change and from_band == to_band:
-                        if prev_band == to_band:
-                            is_band_change = False
-                        elif prev_band and prev_band != to_band:
-                            is_band_change = True
-            elif not is_band_change and from_band and to_band and from_band != to_band:
-                is_band_change = True
+            # Verificar si hay cambio de banda real
+            has_band_change = False
             
-            # Contar solo si realmente hay un cambio de banda válido
-            if is_band_change and from_band and to_band and from_band != to_band:
+            # Caso 1: Cambio explícito de banda en los paquetes (from_band != to_band)
+            if from_band and to_band and from_band != to_band:
+                has_band_change = True
+            # Caso 2: Marcado explícitamente como cambio de banda (basado en historial del cliente)
+            # Confiamos en el flag is_band_change incluso si from/to parecen iguales en este evento aislado
+            elif t.is_band_change:
+                has_band_change = True
+            
+            if has_band_change:
                 band_change_transitions += 1
         
         # Contar transiciones exitosas entre BSSIDs distintos (roaming dentro de la misma banda, vista reconstruida)
@@ -760,30 +756,44 @@ class BTMAnalyzer:
         # Contar transiciones exitosas totales (para información general / dashboards)
         successful_transitions_count = success_count_override if success_count_override > 0 else sum(1 for t in transitions if t.is_successful)
         
-        # Steering efectivo SOLO si hay:
-        # Al menos 2 cambios de banda físicos exitosos (2.4 <-> 5 GHz)
-        # NOTA: BTM Accept solo cuenta si también hay cambios de banda físicos.
-        # Un BTM Accept sin cambio físico NO se considera steering efectivo.
-        # Roaming entre BSSIDs (misma banda) NO cuenta para este criterio.
+        # CRITERIO DE STEERING EFECTIVO (AJUSTADO Y REALISTA):
+        # El steering se considera exitoso si se cumple AL MENOS UNA de estas condiciones:
+        # 
+        # Opción 1: Al menos 1 cambio de banda físico (2.4 <-> 5 GHz) Y cooperación del cliente (BTM Accept)
+        #           Esto demuestra que el AP solicitó steering, el cliente cooperó, y se ejecutó el cambio.
+        # 
+        # Opción 2: Al menos 2 cambios de banda físicos (2.4 <-> 5 GHz)
+        #           Esto demuestra steering activo y repetido, incluso sin BTM explícito.
+        # 
+        # NOTA: BTM Accept sin cambio de banda físico NO se considera steering efectivo.
+        #       Roaming entre BSSIDs (misma banda) NO cuenta para este criterio.
         
-        # Si hay BTM Accept PERO no hay suficientes cambios de banda físicos, no es steering efectivo
-        if btm_successful_responses > 0 and band_change_transitions < 2:
-            # BTM Accept sin suficientes cambios de banda físicos: no es steering efectivo
-            steering_passed = False
-        else:
-            # Requiere al menos 2 cambios de banda físicos para ser exitoso
-            steering_passed = band_change_transitions >= 2
+        # Evaluar criterios
+        has_btm_cooperation = btm_successful_responses > 0
+        has_band_changes = band_change_transitions > 0
+        has_multiple_band_changes = band_change_transitions >= 2
         
-        # Recomendación solo si no hubo steering efectivo
-        if not steering_passed:
-            if band_change_transitions == 0:
-                rec_steering = "No se detectaron cambios de banda físicos. Se requieren al menos 2 cambios de banda (2.4 <-> 5 GHz) para considerar steering efectivo. Verificar que la captura contenga el flujo completo de steering."
-            elif band_change_transitions == 1:
-                rec_steering = "Solo se detectó 1 cambio de banda físico. Se requieren al menos 2 cambios de banda (2.4 <-> 5 GHz) para considerar steering efectivo."
-            else:
-                rec_steering = "No se cumplió el criterio de steering efectivo. Se requieren al menos 2 cambios de banda físicos."
-        else:
+        # Determinar si pasó el check
+        if has_multiple_band_changes:
+            # Opción 2: 2+ cambios de banda = SUCCESS automático
+            steering_passed = True
             rec_steering = None
+        elif has_band_changes and has_btm_cooperation:
+            # Opción 1: 1 cambio de banda + BTM Accept = SUCCESS
+            steering_passed = True
+            rec_steering = None
+        else:
+            # No cumple ningún criterio = FAILED
+            steering_passed = False
+            if band_change_transitions == 0:
+                if btm_successful_responses > 0:
+                    rec_steering = "El cliente cooperó (BTM Accept) pero no se detectaron cambios de banda físicos. Verificar que la captura contenga el flujo completo de steering."
+                else:
+                    rec_steering = "No se detectaron cambios de banda físicos ni cooperación BTM. Se requiere al menos 1 cambio de banda (2.4 <-> 5 GHz) con BTM Accept, o 2+ cambios de banda para considerar steering efectivo."
+            elif band_change_transitions == 1 and not has_btm_cooperation:
+                rec_steering = "Se detectó 1 cambio de banda pero sin cooperación BTM (Accept). Se requiere BTM Accept para validar el steering, o al menos 2 cambios de banda."
+            else:
+                rec_steering = "No se cumplió el criterio de steering efectivo."
 
         # Detalle tipo Wireshark: expresar explícitamente qué se contó.
         # Formato: TRANSICIONES CON CAMBIO DE BANDA | TRANSICIONES TOTALES | BTM ACCEPT
@@ -795,7 +805,7 @@ class BTMAnalyzer:
         
         checks.append(ComplianceCheck(
             check_name="Steering Efectivo",
-            description="Se deben realizar al menos 2 cambios de banda físicos exitosos (2.4 <-> 5 GHz) para considerar steering efectivo",
+            description="El steering es exitoso si hay al menos 1 cambio de banda (2.4 <-> 5 GHz) con cooperación BTM, o 2+ cambios de banda",
             category="performance",
             passed=steering_passed,
             severity="high",

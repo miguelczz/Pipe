@@ -96,13 +96,22 @@ async def list_reports():
                                 transitions, signal_samples
                             )
                             
+                            verdict = data.get("verdict")
+                            analysis_id = data.get("analysis_id")
+                            
+                            # Log para debugging
+                            if not verdict:
+                                logger.warning(f"⚠️ [REPORTS] Análisis {analysis_id} no tiene veredicto en el JSON")
+                            else:
+                                logger.info(f"✅ [REPORTS] Análisis {analysis_id} tiene veredicto: {verdict}")
+                            
                             reports.append({
-                                "id": data.get("analysis_id"),
+                                "id": analysis_id,
                                 "filename": data.get("filename"), # Nombre original del pcap
                                 "timestamp": data.get("analysis_timestamp"),
                                 "vendor": device.get("vendor", "Unknown"),
                                 "model": device.get("device_model", "Unknown"),
-                                "verdict": data.get("verdict"),
+                                "verdict": verdict,
                                 "time_2_4ghz": time_2_4ghz,
                                 "time_5ghz": time_5ghz,
                                 "transition_times": transition_times_list
@@ -174,6 +183,143 @@ async def download_capture(analysis_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al descargar el archivo: {str(e)}")
+
+# IMPORTANTE: Las rutas específicas deben ir ANTES de las rutas genéricas con parámetros
+# FastAPI evalúa las rutas en orden, así que /batch debe ir antes de /{analysis_id}
+
+@router.delete("/batch")
+async def delete_batch_reports(request: Dict[str, List[str]]):
+    """
+    Elimina múltiples reportes por sus IDs.
+    Body: {"ids": ["id1", "id2", "id3"]}
+    """
+    base_dir = service.base_dir
+    ids = request.get("ids", [])
+    
+    if not ids:
+        raise HTTPException(status_code=400, detail="Se requiere al menos un ID en el array 'ids'")
+    
+    deleted_count = 0
+    not_found = []
+    
+    try:
+        # Si el directorio base no existe, todos los reportes están "no encontrados"
+        if not base_dir.exists():
+            return {
+                "status": "success",
+                "message": f"No se encontraron reportes para eliminar. El directorio base no existe.",
+                "deleted": 0,
+                "not_found": ids
+            }
+        
+        for analysis_id in ids:
+            found = False
+            for analysis_file in base_dir.glob(f"**/{analysis_id}.json"):
+                try:
+                    analysis_file.unlink()
+                    deleted_count += 1
+                    found = True
+                    break
+                except Exception:
+                    pass
+            
+            if not found:
+                not_found.append(analysis_id)
+        
+        # Limpiar directorios vacíos
+        for vendor_dir in base_dir.iterdir():
+            if vendor_dir.is_dir():
+                for device_dir in vendor_dir.iterdir():
+                    if device_dir.is_dir() and not any(device_dir.iterdir()):
+                        device_dir.rmdir()
+                if not any(vendor_dir.iterdir()):
+                    vendor_dir.rmdir()
+        
+        message = f"Se eliminaron {deleted_count} reportes"
+        if not_found:
+            message += f". No se encontraron {len(not_found)} reportes: {', '.join(not_found)}"
+        
+        return {
+            "status": "success",
+            "message": message,
+            "deleted": deleted_count,
+            "not_found": not_found
+        }
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"Error al eliminar reportes: {str(e)}")
+
+@router.delete("/all")
+async def delete_all_reports():
+    """
+    Elimina todos los reportes del sistema.
+    """
+    base_dir = service.base_dir
+    deleted_count = 0
+    
+    try:
+        if not base_dir.exists():
+            return {"status": "success", "message": "No hay reportes para eliminar", "deleted": 0}
+        
+        # Buscar todos los archivos JSON de análisis
+        for analysis_file in base_dir.glob("**/*.json"):
+            try:
+                analysis_file.unlink()
+                deleted_count += 1
+            except Exception:
+                pass
+        
+        # Limpiar directorios vacíos
+        for vendor_dir in base_dir.iterdir():
+            if vendor_dir.is_dir():
+                for device_dir in vendor_dir.iterdir():
+                    if device_dir.is_dir() and not any(device_dir.iterdir()):
+                        device_dir.rmdir()
+                if not any(vendor_dir.iterdir()):
+                    vendor_dir.rmdir()
+        
+        return {"status": "success", "message": f"Se eliminaron {deleted_count} reportes", "deleted": deleted_count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al eliminar todos los reportes: {str(e)}")
+
+@router.delete("/vendor/{vendor}")
+async def delete_reports_by_vendor(vendor: str):
+    """
+    Elimina todos los reportes de una marca específica.
+    """
+    base_dir = service.base_dir
+    deleted_count = 0
+    
+    try:
+        if not base_dir.exists():
+            raise HTTPException(status_code=404, detail="No se encontraron reportes")
+        
+        vendor_dir = base_dir / vendor
+        if not vendor_dir.exists() or not vendor_dir.is_dir():
+            return {"status": "success", "message": f"No se encontraron reportes para la marca {vendor}", "deleted": 0}
+        
+        # Buscar todos los archivos JSON en el directorio de la marca
+        for analysis_file in vendor_dir.glob("**/*.json"):
+            try:
+                analysis_file.unlink()
+                deleted_count += 1
+            except Exception:
+                pass
+        
+        # Limpiar directorios vacíos
+        for device_dir in vendor_dir.iterdir():
+            if device_dir.is_dir() and not any(device_dir.iterdir()):
+                device_dir.rmdir()
+        
+        if not any(vendor_dir.iterdir()):
+            vendor_dir.rmdir()
+        
+        return {"status": "success", "message": f"Se eliminaron {deleted_count} reportes de {vendor}", "deleted": deleted_count}
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"Error al eliminar reportes de {vendor}: {str(e)}")
 
 @router.delete("/{analysis_id}")
 async def delete_report(analysis_id: str):
@@ -2215,132 +2361,5 @@ async def get_report(analysis_id: str):
             raise e
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.delete("/all")
-async def delete_all_reports():
-    """
-    Elimina todos los reportes del sistema.
-    """
-    base_dir = service.base_dir
-    deleted_count = 0
-    
-    try:
-        if not base_dir.exists():
-            return {"status": "success", "message": "No hay reportes para eliminar", "deleted": 0}
-        
-        # Buscar todos los archivos JSON de análisis
-        for analysis_file in base_dir.glob("**/*.json"):
-            try:
-                analysis_file.unlink()
-                deleted_count += 1
-            except Exception:
-                pass
-        
-        # Limpiar directorios vacíos
-        for vendor_dir in base_dir.iterdir():
-            if vendor_dir.is_dir():
-                for device_dir in vendor_dir.iterdir():
-                    if device_dir.is_dir() and not any(device_dir.iterdir()):
-                        device_dir.rmdir()
-                if not any(vendor_dir.iterdir()):
-                    vendor_dir.rmdir()
-        
-        return {"status": "success", "message": f"Se eliminaron {deleted_count} reportes", "deleted": deleted_count}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al eliminar todos los reportes: {str(e)}")
-
-@router.delete("/vendor/{vendor}")
-async def delete_reports_by_vendor(vendor: str):
-    """
-    Elimina todos los reportes de una marca específica.
-    """
-    base_dir = service.base_dir
-    deleted_count = 0
-    
-    try:
-        if not base_dir.exists():
-            raise HTTPException(status_code=404, detail="No se encontraron reportes")
-        
-        vendor_dir = base_dir / vendor
-        if not vendor_dir.exists() or not vendor_dir.is_dir():
-            return {"status": "success", "message": f"No se encontraron reportes para la marca {vendor}", "deleted": 0}
-        
-        # Buscar todos los archivos JSON en el directorio de la marca
-        for analysis_file in vendor_dir.glob("**/*.json"):
-            try:
-                analysis_file.unlink()
-                deleted_count += 1
-            except Exception:
-                pass
-        
-        # Limpiar directorios vacíos
-        for device_dir in vendor_dir.iterdir():
-            if device_dir.is_dir() and not any(device_dir.iterdir()):
-                device_dir.rmdir()
-        
-        if not any(vendor_dir.iterdir()):
-            vendor_dir.rmdir()
-        
-        return {"status": "success", "message": f"Se eliminaron {deleted_count} reportes de {vendor}", "deleted": deleted_count}
-    except Exception as e:
-        if isinstance(e, HTTPException):
-            raise e
-        raise HTTPException(status_code=500, detail=f"Error al eliminar reportes de {vendor}: {str(e)}")
-
-@router.delete("/batch")
-async def delete_batch_reports(request: Dict[str, List[str]]):
-    """
-    Elimina múltiples reportes por sus IDs.
-    Body: {"ids": ["id1", "id2", "id3"]}
-    """
-    base_dir = service.base_dir
-    ids = request.get("ids", [])
-    
-    if not ids:
-        raise HTTPException(status_code=400, detail="Se requiere al menos un ID en el array 'ids'")
-    
-    deleted_count = 0
-    not_found = []
-    
-    try:
-        if not base_dir.exists():
-            raise HTTPException(status_code=404, detail="No se encontraron reportes")
-        
-        for analysis_id in ids:
-            found = False
-            for analysis_file in base_dir.glob(f"**/{analysis_id}.json"):
-                try:
-                    analysis_file.unlink()
-                    deleted_count += 1
-                    found = True
-                    break
-                except Exception:
-                    pass
-            
-            if not found:
-                not_found.append(analysis_id)
-        
-        # Limpiar directorios vacíos
-        for vendor_dir in base_dir.iterdir():
-            if vendor_dir.is_dir():
-                for device_dir in vendor_dir.iterdir():
-                    if device_dir.is_dir() and not any(device_dir.iterdir()):
-                        device_dir.rmdir()
-                if not any(vendor_dir.iterdir()):
-                    vendor_dir.rmdir()
-        
-        message = f"Se eliminaron {deleted_count} reportes"
-        if not_found:
-            message += f". No se encontraron {len(not_found)} reportes: {', '.join(not_found)}"
-        
-        return {
-            "status": "success",
-            "message": message,
-            "deleted": deleted_count,
-            "not_found": not_found
-        }
-    except Exception as e:
-        if isinstance(e, HTTPException):
-            raise e
-        raise HTTPException(status_code=500, detail=f"Error al eliminar reportes: {str(e)}")
 
 # Esta función ya está definida arriba (línea 400), eliminando duplicado

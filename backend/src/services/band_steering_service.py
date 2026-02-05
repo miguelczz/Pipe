@@ -685,9 +685,32 @@ class BandSteeringService:
             final_user_meta = analysis_dict.get('raw_stats', {}).get('diagnostics', {}).get('user_metadata', {})
             logger.info(f"🔍 [SAVE] user_metadata en analysis_dict final: {final_user_meta}")
             
+            # Verificar que el veredicto esté en el dict final antes de guardar
+            final_verdict = analysis_dict.get('verdict')
+            logger.info(f"🔍 [SAVE] verdict en analysis_dict final: {final_verdict}")
+            logger.info(f"🔍 [SAVE] analysis.verdict (directo): {analysis.verdict}")
+            if not final_verdict:
+                logger.error(f"❌ [SAVE] VEREDICTO NO ENCONTRADO en analysis_dict! analysis.verdict = {analysis.verdict}")
+                # Forzar el veredicto si no está en el dict
+                if analysis.verdict:
+                    analysis_dict['verdict'] = analysis.verdict
+                    logger.info(f"✅ [SAVE] Veredicto forzado en analysis_dict: {analysis.verdict}")
+            
             # Guardar el JSON
             json.dump(analysis_dict, f, indent=4, ensure_ascii=False)
             logger.info(f"✅ [SAVE] Análisis guardado en: {json_path}")
+            
+            # Verificación final: leer el archivo guardado para confirmar que el veredicto está ahí
+            try:
+                with open(json_path, "r", encoding="utf-8") as verify_f:
+                    verify_data = json.load(verify_f)
+                    verify_verdict = verify_data.get('verdict')
+                    if verify_verdict:
+                        logger.info(f"✅ [SAVE] VERIFICACIÓN: veredicto confirmado en archivo guardado: {verify_verdict}")
+                    else:
+                        logger.error(f"❌ [SAVE] VERIFICACIÓN FALLIDA: veredicto NO está en el archivo guardado!")
+            except Exception as e:
+                logger.error(f"❌ [SAVE] Error al verificar veredicto en archivo guardado: {e}")
             
             # Verificación final: leer el archivo guardado para confirmar que user_metadata está ahí
             try:
