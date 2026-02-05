@@ -66,7 +66,6 @@ export function ReportsPage() {
   const [isDeleting, setIsDeleting] = useState(null)
   const [isDownloading, setIsDownloading] = useState(null)
   const [openDownloadMenu, setOpenDownloadMenu] = useState(null) // ID del reporte con menú abierto
-  const [isDeletingVendor, setIsDeletingVendor] = useState(null) // Vendor que se está eliminando
   const [isDeletingSelected, setIsDeletingSelected] = useState(false)
   const navigate = useNavigate()
   const { showToast } = useToast()
@@ -497,39 +496,6 @@ export function ReportsPage() {
       showToast({ type: 'error', message: 'Error al intentar eliminar el reporte' })
     } finally {
       setIsDeleting(null)
-    }
-  }
-
-  const handleDeleteVendor = async (e, vendor) => {
-    e.stopPropagation()
-    const vendorReports = groupedReports[vendor] || []
-    const count = vendorReports.length
-    
-    if (!window.confirm(`¿Estás seguro de que deseas eliminar todos los reportes de ${vendor}?\n\nSe eliminarán ${count} reporte${count !== 1 ? 's' : ''}. Esta acción no se puede deshacer.`)) return
-    
-    setIsDeletingVendor(vendor)
-    try {
-      const result = await reportsService.deleteReportsByVendor(vendor)
-      // Actualizar lista local eliminando los reportes de esa marca
-      setReports(prev => prev.filter(r => r.vendor !== vendor))
-      await fetchStats() // Actualizar estadísticas
-      showToast({ 
-        type: 'success', 
-        message: `Se eliminaron ${result.deleted || 0} reportes de ${vendor}` 
-      })
-      // Cerrar el vendor si estaba expandido
-      setExpandedVendors(prev => {
-        const newState = { ...prev }
-        delete newState[vendor]
-        return newState
-      })
-    } catch (err) {
-      showToast({ 
-        type: 'error', 
-        message: err?.message || `Error al intentar eliminar los reportes de ${vendor}` 
-      })
-    } finally {
-      setIsDeletingVendor(null)
     }
   }
 
@@ -1010,7 +976,7 @@ export function ReportsPage() {
                   )}
                 </Button>
               {!selectionMode && openSelectionMenu && (
-                <div className="absolute right-0 top-full mt-1.5 bg-dark-surface-primary border border-dark-border-primary/40 rounded-lg shadow-gemini z-[100] min-w-[200px] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="absolute right-0 top-full mt-1.5 bg-dark-surface-primary border border-dark-border-primary/40 rounded-lg shadow-gemini z-[100] min-w-[200px] overflow-hidden transition-panel-enter">
                   <button
                     onClick={() => {
                       toggleSelectionMode()
@@ -1054,7 +1020,7 @@ export function ReportsPage() {
                   Ordenar
                 </Button>
               {openSortMenu && (
-                <div className="absolute right-0 top-full mt-1.5 bg-dark-surface-primary border border-dark-border-primary/40 rounded-lg shadow-gemini z-[100] min-w-[180px] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="absolute right-0 top-full mt-1.5 bg-dark-surface-primary border border-dark-border-primary/40 rounded-lg shadow-gemini z-[100] min-w-[180px] overflow-hidden transition-panel-enter">
                   <button
                     onClick={() => {
                       setSortBy('date_desc')
@@ -1169,7 +1135,7 @@ export function ReportsPage() {
                 Estadísticas
               </Button>
               {openStatsMenu && (
-                <div className="absolute right-0 top-full mt-1.5 bg-dark-surface-primary border border-dark-border-primary/40 rounded-lg shadow-gemini z-[100] min-w-[450px] sm:min-w-[500px] md:min-w-[600px] max-w-[700px] overflow-hidden">
+                <div className="absolute right-0 top-full mt-1.5 bg-dark-surface-primary border border-dark-border-primary/40 rounded-lg shadow-gemini z-[100] min-w-[450px] sm:min-w-[500px] md:min-w-[600px] max-w-[700px] overflow-hidden transition-panel-enter">
                   <StatsPanel stats={stats} loading={loadingStats} compact={true} />
                 </div>
               )}
@@ -1247,27 +1213,27 @@ export function ReportsPage() {
 
       {/* Contenido Principal con mismo ancho que navbar */}
       <div className=" w-full min-w-0 space-y-6 mt-12">
-        {/* Panel de Filtros Avanzados */}
-        {showFilterPanel && (
-          <div className="animate-in fade-in slide-in-from-top-2 duration-300 ease-out">
-            <FilterPanel
-              isOpen={showFilterPanel}
-              onClose={() => setShowFilterPanel(false)}
-              vendors={availableVendors}
-              selectedVendors={selectedVendors}
-              onVendorsChange={setSelectedVendors}
-              dateRange={dateRange}
-              onDateRangeChange={setDateRange}
-              statusFilter={statusFilter}
-              onStatusFilterChange={setStatusFilter}
-              onClearFilters={() => {
-                setSelectedVendors([])
-                setDateRange({ start: null, end: null })
-                setStatusFilter('ALL')
-              }}
-            />
-          </div>
-        )}
+        {/* Panel de Filtros Avanzados: transición suave abrir/cerrar */}
+        <div
+          className={`transition-panel overflow-hidden ${showFilterPanel ? 'max-h-[600px] opacity-100 translate-y-0' : 'max-h-0 opacity-0 -translate-y-2 pointer-events-none'}`}
+        >
+          <FilterPanel
+            isOpen={showFilterPanel}
+            onClose={() => setShowFilterPanel(false)}
+            vendors={availableVendors}
+            selectedVendors={selectedVendors}
+            onVendorsChange={setSelectedVendors}
+            dateRange={dateRange}
+            onDateRangeChange={setDateRange}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            onClearFilters={() => {
+              setSelectedVendors([])
+              setDateRange({ start: null, end: null })
+              setStatusFilter('ALL')
+            }}
+          />
+        </div>
 
         <div className="space-y-4">
           {loading ? (
@@ -1459,19 +1425,6 @@ export function ReportsPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {/* Botón Eliminar Marca */}
-                      <button
-                        onClick={(e) => handleDeleteVendor(e, vendor)}
-                        disabled={isDeletingVendor === vendor}
-                        className="p-2 rounded-lg text-dark-text-muted hover:bg-red-500/20 hover:text-red-400 transition-all disabled:opacity-50"
-                        title={`Eliminar todos los reportes de ${vendor}`}
-                      >
-                        {isDeletingVendor === vendor ? (
-                          <Loading size="xs" />
-                        ) : (
-                          <Trash2 className="w-4 h-4" />
-                        )}
-                      </button>
                       <button
                         onClick={() => toggleVendor(vendor)}
                         className="p-1 text-dark-text-muted hover:text-dark-text-primary transition-all duration-200 ease-out hover:scale-110 active:scale-95"
@@ -1481,9 +1434,11 @@ export function ReportsPage() {
                     </div>
                   </div>
 
-                  {/* Folder Content (Files) */}
-                  {isOpen && (
-                    <div className={`w-full min-w-0 transition-all duration-300 ease-out ${openDownloadMenu ? 'overflow-visible' : 'overflow-hidden'}`}>
+                  {/* Folder Content (Files): transición suave al desplegar/contraer */}
+                  <div
+                    className={`transition-panel overflow-hidden w-full min-w-0 ${isOpen ? 'max-h-[5000px] opacity-100' : 'max-h-0 opacity-0 pointer-events-none'}`}
+                  >
+                    <div className={`w-full min-w-0 ${openDownloadMenu ? 'overflow-visible' : 'overflow-hidden'}`}>
                       {viewMode === 'grid' ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3 pl-0 md:pl-2 w-full min-w-0">
                           {vendorReports.map((report, index) => (
@@ -1561,7 +1516,7 @@ export function ReportsPage() {
                                   
                                   {/* Menú desplegable */}
                                   {openDownloadMenu === report.id && (
-                                    <div className="absolute right-0 top-full mt-1.5 bg-dark-surface-primary border border-dark-border-primary/40 rounded-lg shadow-gemini z-[9999] min-w-[180px] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <div className="absolute right-0 top-full mt-1.5 bg-dark-surface-primary border border-dark-border-primary/40 rounded-lg shadow-gemini z-[9999] min-w-[180px] overflow-hidden transition-panel-enter">
                                       <button
                                         onClick={(e) => handleDownloadCapture(e, report.id, report.filename)}
                                         className="w-full px-3.5 py-2 text-left text-xs text-dark-text-primary hover:bg-dark-bg-secondary transition-all duration-150 ease-out flex items-center gap-2 active:scale-[0.98]"
@@ -1655,7 +1610,7 @@ export function ReportsPage() {
                         </div>
                       )}
                     </div>
-                  )}
+                  </div>
                 </div>
               )
             })}

@@ -58,6 +58,9 @@ class GraphState(BaseModel):
     
     # Mensaje de rechazo (cuando una pregunta está fuera de tema)
     rejection_message: Annotated[Optional[str], LastValue(str)] = None
+
+    # ID del reporte actual (cuando el chat está en contexto de un reporte)
+    report_id: Annotated[Optional[str], LastValue(str)] = None
     
     def get_state_snapshot(self) -> Dict[str, Any]:
         """

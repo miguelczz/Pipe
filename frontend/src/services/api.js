@@ -105,23 +105,30 @@ export const agentService = {
    * @param {Function} onError - Callback para errores
    * @returns {Function} - Función para cancelar el streaming
    */
-  sendQueryStream({ session_id, user_id = null, messages }, onToken, onComplete, onError) {
+  sendQueryStream(
+    { session_id, user_id = null, messages, report_id = null, selected_text = null },
+    onToken,
+    onComplete,
+    onError
+  ) {
     const controller = new AbortController()
-    
-    // Usar fetch con streaming en lugar de EventSource para poder enviar POST
+    const body = {
+      session_id,
+      user_id,
+      messages: messages.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      })),
+    }
+    if (report_id) body.report_id = report_id
+    if (selected_text) body.selected_text = selected_text
+
     fetch(`${API_URL}${API_ENDPOINTS.AGENT_QUERY}/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        session_id,
-        user_id,
-        messages: messages.map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-        })),
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal,
     })
       .then(async (response) => {
@@ -206,16 +213,34 @@ export const filesService = {
     const formData = new FormData()
     formData.append('file', file)
 
-    // Crear un cliente temporal sin el header Content-Type para que axios lo configure automáticamente
     const uploadClient = axios.create({
       baseURL: API_URL,
-      timeout: 60000, // 60 segundos para archivos grandes
+      timeout: 60000,
     })
 
     const response = await uploadClient.post(API_ENDPOINTS.FILES_UPLOAD, formData, {
-      headers: {
-        // No establecer Content-Type, axios lo hará automáticamente con el boundary correcto
-      },
+      headers: {},
+    })
+    return response.data
+  },
+
+  /**
+   * Sube múltiples archivos PDF al servidor
+   * @param {File[]} fileList - Lista de archivos a subir
+   * @returns {Promise<Array>} - Lista de respuestas (document_id, filename, status) por archivo
+   */
+  async uploadFiles(fileList) {
+    if (!fileList?.length) return []
+    const formData = new FormData()
+    for (const file of fileList) {
+      formData.append('files', file)
+    }
+    const uploadClient = axios.create({
+      baseURL: API_URL,
+      timeout: 120000,
+    })
+    const response = await uploadClient.post(API_ENDPOINTS.FILES_UPLOAD_MULTIPLE, formData, {
+      headers: {},
     })
     return response.data
   },
@@ -320,47 +345,6 @@ export const networkAnalysisService = {
 }
 
 /**
- * Servicio para herramientas de red (subnet, MAC/OUI, DNS)
- */
-export const toolsService = {
-  /**
-   * Calcula información de una subred a partir de un CIDR
-   * @param {string} cidr - Ej: "192.168.1.0/24"
-   * @returns {Promise} - Resultado del cálculo
-   */
-  async calculateSubnet(cidr) {
-    const response = await apiClient.get(
-      `/tools/subnet-calc?cidr=${encodeURIComponent(cidr)}`
-    )
-    return response.data
-  },
-
-  /**
-   * Consulta fabricante (OUI) de una MAC
-   * @param {string} mac - Ej: "00:0c:29:4f:8e:35"
-   * @returns {Promise} - Información de fabricante
-   */
-  async lookupMac(mac) {
-    const response = await apiClient.get(
-      `/tools/mac-lookup?mac=${encodeURIComponent(mac)}`
-    )
-    return response.data
-  },
-
-  /**
-   * Consulta registros DNS de un dominio
-   * @param {string} domain - Ej: "google.com"
-   * @returns {Promise} - Registros DNS
-   */
-  async dnsLookup(domain) {
-    const response = await apiClient.get(
-      `/tools/dns-lookup?domain=${encodeURIComponent(domain)}`
-    )
-    return response.data
-  },
-}
-
-/**
  * Servicio para navegar el historial de reportes AIDLC
  */
 export const reportsService = {
@@ -438,16 +422,6 @@ export const reportsService = {
    */
   async deleteAllReports() {
     const response = await apiClient.delete('/reports/all')
-    return response.data
-  },
-
-  /**
-   * Elimina todos los reportes de una marca específica
-   * @param {string} vendor - Nombre de la marca
-   * @returns {Promise} - Respuesta con cantidad de reportes eliminados
-   */
-  async deleteReportsByVendor(vendor) {
-    const response = await apiClient.delete(`/reports/vendor/${encodeURIComponent(vendor)}`)
     return response.data
   },
 

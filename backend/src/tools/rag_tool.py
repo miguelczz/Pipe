@@ -68,8 +68,8 @@ Importante: Cualquier dato ambiguo debe interpretarse bajo el espectro de redes 
 
 INSTRUCCIONES DE RESPUESTA:
     pass
-1. **FUENTE DE VERDAD ABSOLUTA**: Usa EXCLUSIVAMENTE la información contenida en el "CONTEXTO DE DOCUMENTOS". Tienes acceso a los manuales técnicos de Band Steering basados en Wireshark. Si el dato no está en el documento, NO lo inventes ni uses conocimiento general de redes.
-2. **CONTEXTO WIRESHARK**: Todo análisis de Band Steering aquí se basa en Wireshark. Si el usuario pregunta por "la prueba" o "guiarse", refiérete a los criterios técnicos del documento.
+1. **FUENTE DE VERDAD ABSOLUTA**: Usa EXCLUSIVAMENTE la información contenida en el "CONTEXTO DE DOCUMENTOS". La documentación indexada es la **guía para entender capturas de Wireshark y sus resultados** (Band Steering, criterios técnicos). Si el dato no está en el documento, NO lo inventes ni uses conocimiento general de redes.
+2. **CONTEXTO WIRESHARK**: Todo análisis de Band Steering aquí se basa en Wireshark. Si el usuario pregunta por "la prueba" o "guiarse", refiérete a la guía para comprender capturas y resultados.
 3. **ESTILO EXPLICATIVO**: Explica de manera técnica pero accesible. Prioriza códigos de estado BTM y eventos de transición mencionados en el texto.
    - **Valores simples**: Usa `código en línea` (un backtick) para IPs, dominios, comandos cortos, códigos BTM y rutas. Ej: `Status Code 0`, `BTM Request`.
    - **NO USES BLOQUES DE CÓDIGO** (```) para una sola línea o un solo valor. Los bloques son solo para scripts largos o configuraciones extensas.
@@ -82,7 +82,7 @@ INSTRUCCIONES DE RESPUESTA:
 5. **MANEJO DE VACÍOS**: Si la información sobre Band Steering no está en los documentos, indícalo suavemente indicando que no se encuentra en la documentación técnica actual.
 
 {context_section}
-CONTEXTO DE DOCUMENTOS (Documentación Band Steering):
+CONTEXTO DE DOCUMENTOS (guía para entender capturas de Wireshark y sus resultados):
     pass
 {context}
 
@@ -93,15 +93,14 @@ Respuesta:
     pass
 """
     
-    SYSTEM_MESSAGE = """Eres un experto en análisis de capturas Wireshark de Pipe, especializado EXCLUSIVAMENTE en el análisis de Band Steering y protocolos de red. 
+    SYSTEM_MESSAGE = """Eres un experto en análisis de capturas Wireshark de Pipe, especializado en Band Steering y protocolos de red.
 
 TU MISIÓN:
-    pass
-1. Responder ÚNICAMENTE basándote en los documentos técnicos proporcionados.
-2. Todo concepto debe interpretarse desde la perspectiva de análisis de capturas Wireshark y el proyecto Pipe.
-3. Si la información no está en los documentos, indica: "No encontré esta información específica en los manuales técnicos de Band Steering, pero basándome en el contexto de la prueba...".
+1. Responder ÚNICAMENTE basándote en la documentación proporcionada: la **guía para entender capturas de Wireshark y sus resultados**.
+2. Todo concepto debe interpretarse desde la perspectiva de análisis de capturas y el proyecto Pipe.
+3. Si la información no está en la documentación, indica: "No encontré esta información específica en la guía para entender capturas y resultados, pero basándome en el contexto de la prueba...".
 4. PROHIBIDO: Dar explicaciones generales de redes que no aporten al análisis de Band Steering.
-5. MEMORIA: Mantén el hilo de la conversación para entender a qué se refiere el usuario (ej: si pregunta por "la diferencia", se refiere a la diferencia entre los conceptos de red explicados anteriormente en el contexto de Band Steering).
+5. MEMORIA: Mantén el hilo de la conversación para entender a qué se refiere el usuario (ej: si pregunta por "la diferencia", se refiere a la diferencia entre los conceptos explicados anteriormente en el contexto de la guía de capturas).
 """
     
     RELEVANCE_SYSTEM_MESSAGE = "Eres un analizador técnico de Pipe. 'La prueba', 'el análisis', 'la guía' o 'guiarse' se refieren SIEMPRE al análisis de capturas Wireshark y Band Steering y deben marcarse como RELEVANTES de forma obligatoria."
@@ -428,7 +427,7 @@ Consulta técnica refinada:
                     points_count = collection_info.get('points_count', 0) if isinstance(collection_info, dict) else 0
                     if points_count == 0:
                         return {
-                            "answer": "No hay documentos disponibles en la base de datos. Por favor, sube documentos PDF relacionados con redes y telecomunicaciones para que pueda responder tus preguntas.",
+                            "answer": "No hay documentos disponibles en la base de datos. Por favor, sube archivos PDF que sirvan como guía para entender capturas de Wireshark y sus resultados (por ejemplo manuales de Band Steering) para que pueda responder tus preguntas.",
                             "hits": 0,
                             "contexts": [],
                             "source": "no_documents"
@@ -448,7 +447,7 @@ Consulta técnica refinada:
                 # Si después de la búsqueda alternativa aún no hay hits, retornar mensaje
                 if not hits:
                     return {
-                        "answer": "No encontré información específica sobre tu pregunta en los documentos disponibles. Por favor, asegúrate de que tu pregunta esté relacionada con redes, telecomunicaciones o protocolos de red.",
+                        "answer": "No encontré información específica sobre tu pregunta en la guía para entender capturas y resultados disponible. Por favor, asegúrate de que tu pregunta esté relacionada con análisis de capturas Wireshark, Band Steering o protocolos de red.",
                         "hits": 0,
                         "contexts": [],
                         "source": "no_hits"
@@ -559,7 +558,7 @@ Responde SOLO con una palabra: "relevante" o "no_relevante".
         # Si no es relevante, retornar mensaje indicando que no puede responder
         if not is_relevant:
             return {
-                "answer": "Lo siento, mi conocimiento está limitado a la documentación técnica de Pipe y análisis de capturas Wireshark y Band Steering. Tu pregunta parece estar fuera de este ámbito especializado.",
+                "answer": "Lo siento, mi conocimiento está limitado a la guía para entender capturas de Wireshark y sus resultados (Band Steering, Pipe). Tu pregunta parece estar fuera de este ámbito especializado.",
                 "hits": 0,
                 "contexts": [],
                 "source": "out_of_topic"
@@ -592,7 +591,7 @@ Responde SOLO con una palabra: "relevante" o "no_relevante".
         # Si el contexto está vacío después del filtrado, retornar error
         if not context or not context.strip():
             return {
-                "answer": "No encontré información específica sobre tu pregunta en los documentos disponibles. Por favor, asegúrate de que tu pregunta esté relacionada con redes, telecomunicaciones o protocolos de red.",
+                "answer": "No encontré información específica sobre tu pregunta en la guía para entender capturas y resultados disponible. Por favor, asegúrate de que tu pregunta esté relacionada con análisis de capturas Wireshark, Band Steering o protocolos de red.",
                 "hits": len(hits),
                 "contexts": [],
                 "source": "empty_context"

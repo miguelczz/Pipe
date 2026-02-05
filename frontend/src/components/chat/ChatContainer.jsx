@@ -32,9 +32,9 @@ export function ChatContainer({ messages, isLoading }) {
     <div
       ref={containerRef}
       className={cn(
-        'flex-1 overflow-x-hidden',
+        'flex-1 min-h-0 overflow-x-hidden flex flex-col',
         messages.length === 0 
-          ? 'overflow-hidden flex items-center justify-center' 
+          ? 'overflow-hidden items-center justify-center' 
           : 'overflow-y-auto scrollbar-thin scrollbar-thumb-dark-border-primary scrollbar-track-dark-bg-primary'
       )}
     >

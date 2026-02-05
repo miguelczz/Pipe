@@ -119,7 +119,7 @@ export function ReportsListView({
                   </button>
                   
                   {openDownloadMenu === report.id && (
-                    <div className="absolute right-0 top-full mt-1.5 bg-dark-surface-primary border border-dark-border-primary/40 rounded-lg shadow-gemini z-[9999] min-w-[180px] overflow-hidden">
+                    <div className="absolute right-0 top-full mt-1.5 bg-dark-surface-primary border border-dark-border-primary/40 rounded-lg shadow-gemini z-[9999] min-w-[180px] overflow-hidden transition-panel-enter">
                       <button
                         onClick={(e) => {
                           e.stopPropagation()

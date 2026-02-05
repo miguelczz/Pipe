@@ -3,8 +3,6 @@ import json
 from openai import OpenAI
 from ..settings import settings
 from ..tools.rag_tool import RAGTool
-from ..tools.ip_tool import IPTool
-from ..tools.dns_tool import DNSTool
 from ..models.schemas import AgentState
 from ..core.cache import cache_result
 
@@ -15,22 +13,17 @@ client = OpenAI(api_key=settings.openai_api_key)
 class PipeAgent:
     def __init__(self):
         self.rag = RAGTool()
-        self.iptool = IPTool()
-        self.dnstool = DNSTool()
         self.llm_model = settings.llm_model
-        self.client = client  # Cliente de OpenAI para validaciones
+        self.client = client
 
     def decide(self, user_input: str, state: AgentState) -> dict:
         """
         Decide qué herramienta usar según la intención del usuario.
-        Primero valida que la pregunta esté relacionada con redes y telecomunicaciones.
-        OPTIMIZACIÓN: Resultados cacheados por 5 minutos para consultas similares.
+        Solo RAG está disponible (get_report se añadirá en Fase 4).
         """
-        # Extraer contexto relevante para el caché (solo últimos 5 mensajes como string serializable)
         context_for_cache = ""
         context_messages_str = ""
         if state.context_window and len(state.context_window) > 0:
-            # Últimos 3 mensajes para contexto corto
             context_messages = state.context_window[:-1][-3:] if len(state.context_window) > 1 else state.context_window[-3:]
             if context_messages:
                 context_parts = []
@@ -39,118 +32,54 @@ class PipeAgent:
                     content = msg.content if hasattr(msg, 'content') else str(msg)
                     context_parts.append(f"{role}: {content[:150]}")
                 context_for_cache = "\n".join(context_parts)
-            
-            # Últimos 10 mensajes para el prompt completo
+
             last_10_messages = state.context_window[-10:]
             context_messages_str = "\n".join([f"{m.role if hasattr(m, 'role') else 'user'}: {m.content if hasattr(m, 'content') else str(m)}" for m in last_10_messages])
-        
-        # Usar función interna con caché (solo strings serializables)
-        return self._decide_cached(user_input, context_for_cache, context_messages_str)
-    
-    @cache_result("router_decision", ttl=300)  # Cache por 5 minutos
-    def _decide_cached(self, user_input: str, context_text: str, context_messages_str: str) -> dict:
-        """
-        Función interna con caché. Solo recibe strings serializables para evitar errores de serialización.
-        """
-        # Obtener contexto de conversación previa para entender referencias
+
+        report_id = getattr(state, "report_id", None)
+        return self._decide_cached(user_input, context_for_cache, context_messages_str, report_id=report_id)
+
+    @cache_result("router_decision", ttl=300)
+    def _decide_cached(self, user_input: str, context_text: str, context_messages_str: str, report_id: str = None) -> dict:
         if context_text:
             context_text = "\n\nContexto de conversación previa:\n" + context_text
-        
-        # OPTIMIZACIÓN: Combinar validación de relevancia y decisión de herramienta en una sola llamada
-        # Esto reduce de 2 llamadas a 1, ahorrando ~2-4 segundos
+
+        report_instruction = ""
+        if report_id:
+            report_instruction = """
+CURRENT REPORT CONTEXT: The user has a report open (report_id is set). If the user is asking about THIS report, this analysis, this capture, the verdict, what happened, "explain this", "why did it fail/pass", "what does this mean", then use tool "get_report" and plan_steps like ["get report for current analysis"]. Otherwise use RAG for general concepts and documentation.
+"""
+
         combined_prompt = f"""
 You are Pipe, a smart agent specialized in Wireshark capture analysis that decides which internal tool to use for a user's request.
 
-STEP 1: First, determine if the question is relevant to networks, telecommunications, network protocols, or network technologies.
-STEP 2: If relevant, decide which tool to use and create a plan.
+STEP 1: Determine if the question is relevant to Wireshark capture analysis, Band Steering, network protocols, or the documentation/guide for understanding captures and results.
+STEP 2: If relevant, choose the right tool and create a short plan step.
+{report_instruction}
 
 {context_text}
 
 User request: \"\"\"{user_input}\"\"\"
-Context (last 5 messages):
-    pass
+Context (last messages):
 {context_messages_str}
 
 RELEVANCE RULES (STEP 1):
-    pass
-- CORE DOMAIN UNDERSTANDING: You are a specialized agent for Pipe. Your absolute focus is Wireshark capture analysis, Band Steering, and network protocol interpretation.
-- MANDATORY RELEVANCE: "La prueba", "el análisis", "la guía", "el procedimiento", or asking "con qué me guío" ALWAYS refer to the Band Steering project documentation. Mark them as RELEVANT immediately.
-- CONTEXTUAL INFERENCE: Any request about network behavior, WiFi standards (BTM, KVR), or "how to interpret results" is RELEVANT.
-- ELASTIC RELEVANCE: Be extremely flexible. If the user seeks technical guidance or explanation of network outcomes, it is RELEVANT.
-- FOLLOW-UP TOLERANCE: Ambiguous questions like "what are the states?", "and the difference?", "how does it work?" MUST be marked RELEVANT if the previous conversation context is technical (Wireshark, BTM, WiFi). Do NOT reject them as "too general".
+- CORE DOMAIN: Wireshark capture analysis, Band Steering, 802.11k/v/r, and interpretation of capture results.
+- MANDATORY RELEVANCE: "La prueba", "el análisis", "la guía", "el procedimiento", or "con qué me guío" ALWAYS refer to the Band Steering / capture documentation. Mark RELEVANT.
+- Any request about network behavior, WiFi standards (BTM, KVR), or "how to interpret results" is RELEVANT.
+- FOLLOW-UP: Ambiguous questions like "what are the states?", "and the difference?" MUST be marked RELEVANT if the previous context is technical (Wireshark, BTM, WiFi).
 
-TOOL DECISION RULES (STEP 2 - only if relevant):
-    pass
-1. ANALYZE THE USER REQUEST CAREFULLY: Break down the request into separate parts if it contains multiple questions or tasks.
-2. IMPORTANT: If the user is asking for a follow-up, conclusion, or continuation of a previous conversation (e.g., "conclusión", "resumen", "entonces", "en resumen", "dame más detalles sobre lo anterior"), use RAG tool but be aware it should use conversation context.
-3. UNDERSTAND USER INTENTION FROM CONTEXT: When the user makes a request like "haz uno", "hazlo", "ejecuta uno", "realiza uno", "haz un", "ejecuta un", you must understand what they want to do by analyzing:
-   - The conversation context: What TOPIC or CONCEPT was discussed in previous messages? (DNS, ping, traceroute, etc.)
-   - The user's intent: What specific action are they asking to perform?
-   - The relationship between context and request: Analyze the MAIN TOPIC of the conversation to determine the operation.
-   
-   CRITICAL RULE: Analyze the MAIN TOPIC/CONCEPT being discussed, not just isolated keywords:
-       pass
-   - DOMAIN ASSUMPTION: If the user's focus is on technical guidance, procedural steps, or explaining network outcomes, even without keywords, assume it's about the Band Steering core project (Route to RAG tool).
-   - If the context discusses "DNS", "registro DNS", "registros DNS", "consulta DNS", "DNS records", etc. → the user wants a DNS operation
-   - If the context discusses "ping", "latencia", "tiempo de respuesta", etc. → the user wants a ping operation
-   - If the context discusses "traceroute", "ruta", "saltos", "hops", etc. → the user wants a traceroute operation
-   
-   You must intelligently infer the user's intention from the MAIN TOPIC of the conversation, not from isolated keywords.
-   
-   Examples of intelligent context understanding:
-       pass
-   - Context: "user: ¿Qué es DNS?" → User: "Realiza uno a google" → tool: "dns", plan_step: "query all DNS records for google.com"
-   - Context: "user: ¿Qué es un registro DNS?" → User: "Realiza uno a gmail" → tool: "dns", plan_step: "query all DNS records for gmail.com"
-   - Context: "assistant: Un registro DNS es..." → User: "Haz uno a facebook" → tool: "dns", plan_step: "query all DNS records for facebook.com"
-   - Context: "user: ¿Qué es un ping?" → User: "Haz uno a facebook" → tool: "ip", plan_step: "ping to facebook.com"
-   - Context: "user: Explica cómo funciona traceroute" → User: "Hazlo a google" → tool: "ip", plan_step: "traceroute to google.com"
-   - Context: "user: ¿Qué son los registros MX?" → User: "Consulta los de gmail" → tool: "dns", plan_step: "query MX records for gmail.com"
-   
-   The key is understanding the MAIN TOPIC from the conversation flow, not matching isolated keywords.
-
-
-4. For each part, determine which tool is needed by understanding the user's intent:
-   - RAG tool: for questions about concepts, definitions, explanations, educational content, asking "what is", "que es", "explain", "define", follow-up questions, conclusions, summaries
-   - IP tool: for network operations like ping, traceroute, IP comparison, IP validation, comparing domains/IPs, network analysis
-   - DNS tool: for DNS queries, domain records (A, AAAA, MX, TXT, NS, CNAME), reverse DNS lookup, DNS comparison, SPF/DMARC verification, domain information
-   
-   IMPORTANT DNS DECISION LOGIC:
-       pass
-   - If user asks for DNS records WITHOUT explicitly mentioning a specific type (A, MX, NS, TXT, etc.), the plan step should indicate "query all DNS records" or "get all DNS records"
-   - Only use a specific DNS record type query when the user EXPLICITLY mentions that type (e.g., "MX de", "registros NS", "TXT records")
-   - For DNS comparison: if user asks to "comparar DNS", "compare DNS", use plan step: "compare DNS records between [domain1] and [domain2]"
-   - For SPF verification: if user asks "verificar SPF", "check SPF", use plan step: "check SPF for [domain]"
-   - For DMARC verification: if user asks "verificar DMARC", "check DMARC", use plan step: "check DMARC for [domain]"
-   - For complete domain info: if user asks "información del dominio", "info del dominio", use plan step: "get domain info for [domain]"
-
-5. Generate plan_steps that are SPECIFIC and CLEAR. Each step should:
-   - Be a single, executable action
-   - Clearly indicate what information or operation is needed
-   - Include relevant details (domains, IPs, concepts) mentioned in the user request
-   - Be self-contained so the agent can determine which tool to use
-
-6. IMPORTANT: If the user asks multiple things requiring different tools, create MULTIPLE steps:
-   - Example: "Que es un ping? y compara IPs de facebook y google" 
-     → plan_steps: ["retrieve information about what ping is", "compare IP addresses of facebook.com and google.com"]
-
-7. For single questions, use ONE step:
-   - "Que es un ping?" → ["retrieve information about what ping is"]
-   - "Compara IPs de facebook y google" → ["compare IP addresses of facebook.com and google.com"]
-
-8. NEVER use vague steps like "ensure clarity", "elaborate explanation", "improve response" - these are not executable actions
-
-9. Each step should be specific enough that the agent can automatically determine which tool (RAG, IP, or DNS) to use
-
-10. The "tool" field should be the PRIMARY tool if multiple are needed, or the only tool if one is needed.
+TOOL DECISION (STEP 2 - only if relevant):
+- Use get_report when: the user has a report open and is asking about THIS report/capture/analysis (veredicto, qué pasó, explica esto, por qué falló/pasó).
+- Use RAG for: concepts, definitions, explanations, "what is", "explain", "define", follow-ups, conclusions, summaries, and any question about the documentation or how to understand captures/results in general.
+- Generate ONE plan_step that is specific (e.g. "get report for current analysis" or "retrieve information about BTM status codes").
 
 OUTPUT FORMAT:
-    pass
-Respond with a valid JSON containing these keys:
-    pass
-- is_relevant: true if the question is relevant to networks/telecommunications, false otherwise
-- tool: one of ["rag", "ip", "dns", "none"] (use "none" if not relevant)
-- reason: short explanation why you chose this tool (or why it's not relevant)
-- plan_steps: list of short, concrete, actionable steps (empty if not relevant)
+Respond with a valid JSON containing:
+- is_relevant: true if the question is relevant, false otherwise
+- tool: one of ["rag", "get_report", "none"] (use "none" if not relevant)
+- reason: short explanation
+- plan_steps: list of short, concrete steps (empty if not relevant)
 - rejection_message: (only if not relevant) a friendly message explaining why the question is out of scope
 
 Respond ONLY in JSON format. No extra text or markdown.
@@ -160,23 +89,18 @@ Respond ONLY in JSON format. No extra text or markdown.
             response = client.chat.completions.create(
                 model=self.llm_model,
                 messages=[
-                    {"role": "system", "content": "You are the Pipe Router. Your domain is Wireshark Capture Analysis (Band Steering/Network Protocols). 'La prueba' or 'la guía' are ALWAYS relevant to your project. Always respond with valid JSON."},
+                    {"role": "system", "content": "You are the Pipe Router. Your domain is Wireshark Capture Analysis (Band Steering/Network Protocols). Always respond with valid JSON."},
                     {"role": "user", "content": combined_prompt}
                 ],
                 max_tokens=500,
             )
 
             text = response.choices[0].message.content.strip()
-
-            # Limpieza de delimitadores Markdown
             if text.startswith("```"):
                 text = text.replace("```json", "").replace("```", "").strip()
-
-            # Extraer JSON del texto
             match = re.search(r"\{.*\}", text, re.DOTALL)
             if match:
                 text = match.group(0)
-
 
             try:
                 data = json.loads(text)
@@ -184,267 +108,61 @@ Respond ONLY in JSON format. No extra text or markdown.
                 data = {"is_relevant": False, "tool": "none", "reason": "parse_fail", "plan_steps": [], "rejection_message": "Error al procesar la solicitud."}
 
         except Exception as e:
-            data = {"is_relevant": False, "tool": "none",
-                    "reason": f"llm_error: {str(e)}", "plan_steps": [], "rejection_message": "Error al procesar la solicitud."}
+            data = {"is_relevant": False, "tool": "none", "reason": f"llm_error: {str(e)}", "plan_steps": [], "rejection_message": "Error al procesar la solicitud."}
 
-        # Verificar relevancia
-        is_relevant = data.get("is_relevant", True)  # Por defecto, asumir relevante si no se especifica
-        
-        # Si NO es relevante, retornar inmediatamente
+        is_relevant = data.get("is_relevant", True)
         if not is_relevant:
             rejection_msg = data.get("rejection_message", "Lo siento, como asistente de Pipe mi especialidad es el análisis de capturas Wireshark, Band Steering y protocolos de red. Tu pregunta parece estar fuera de este ámbito técnico.")
-            return {
-                "tool": "none",
-                "reason": "out_of_topic",
-                "plan_steps": [],
-                "rejection_message": rejection_msg
-            }
+            return {"tool": "none", "reason": "out_of_topic", "plan_steps": [], "rejection_message": rejection_msg}
 
         tool = data.get("tool", "").lower().strip()
-        reason = data.get("reason", "").lower()
         plan = data.get("plan_steps", [])
-        
-        # Validar y normalizar plan_steps
-        if not plan or len(plan) == 0:
-            # Si no hay plan_steps pero hay una herramienta seleccionada, generar uno por defecto
+
+        if not plan:
             if tool == "rag":
                 plan = [f"retrieve information about {user_input[:50]}"]
-            elif tool == "ip":
-                if "compare" in user_input.lower():
-                    plan = ["compare IPs"]
-                elif any(k in user_input.lower() for k in ["trace", "traceroute", "route"]):
-                    plan = ["traceroute to host"]
-                else:
-                    plan = ["execute ip tool"]
-            else:
-                plan = []
-        
-        # Filtrar solo pasos vagos o no ejecutables que el LLM pueda haber generado
-        # Estos pasos causan iteraciones innecesarias, pero NO forzamos decisiones
+            elif tool == "get_report":
+                plan = ["get report for current analysis"]
+
         vague_keywords = ["ensure", "elaborate", "clarify", "improve", "enhance", "refine", "polish"]
         plan = [step for step in plan if not any(keyword in step.lower() for keyword in vague_keywords)]
-        
-        # Solo generar pasos por defecto si el LLM no generó ninguno (caso edge)
-        if not plan and tool in ["rag", "ip"]:
+        if not plan:
             if tool == "rag":
                 plan = [f"retrieve information about {user_input[:50]}"]
-            elif tool == "ip":
-                plan = ["execute ip tool"]
-        
-        # Solo validar que el tool sea válido, no forzar su valor basándonos en palabras clave
-        # Confiamos en la decisión del LLM
-        if tool not in ["ip", "rag", "dns", "none"]:
-            # Solo corregir si el tool es completamente inválido, usar "none" como fallback
-            data["tool"] = "none"
-        
-        # Asegurar que plan_steps esté en el resultado final
-        data["plan_steps"] = plan
+            elif tool == "get_report":
+                plan = ["get report for current analysis"]
 
+        if tool not in ["rag", "get_report", "none"]:
+            tool = "rag"
+
+        data["tool"] = tool
+        data["plan_steps"] = plan
         return data
 
     def handle(self, user_input: str, state: AgentState) -> dict:
-        """
-        Ejecuta la herramienta correspondiente según la decisión del modelo.
-        Usa el estado de sesión proporcionado (AgentState) para mantener el contexto.
-        """
+        """Ejecuta la herramienta correspondiente. Solo RAG."""
         decision = self.decide(user_input, state)
         tool = decision.get("tool")
         plan_steps = decision.get("plan_steps", [])
 
-        # Validación: si se selecciona una herramienta pero plan_steps está vacío
-        if tool in ["rag", "ip", "dns"] and not plan_steps:
-            # Intentar inferir plan_steps desde el input si es posible
-            if tool == "ip":
-                if any(self.iptool.validate_ip_or_domain(part) for part in user_input.split()):
-                    plan_steps = ["execute ip tool"]
-                elif "compare" in user_input.lower():
-                    plan_steps = ["compare ips"]
-                elif any(k in user_input.lower() for k in ["trace", "traceroute", "route"]):
-                    plan_steps = ["traceroute to host"]
-            elif tool == "rag":
-                plan_steps = ["query documents"]
-            elif tool == "dns":
-                plan_steps = ["query DNS records"]
+        if tool == "rag" and not plan_steps:
+            plan_steps = ["query documents"]
 
         if tool == "rag":
-            # Extraer contexto de conversación de los últimos mensajes (excluyendo el actual)
             conversation_context = None
             if state.context_window and len(state.context_window) > 1:
-                # Obtener los últimos 5 mensajes anteriores al actual (para contexto)
-                context_messages = state.context_window[:-1][-5:]  # Excluir el último (que es el actual)
+                context_messages = state.context_window[:-1][-5:]
                 if context_messages:
-                    # Formatear contexto como string
                     context_parts = []
                     for msg in context_messages:
                         role = msg.role if hasattr(msg, 'role') else 'user'
                         content = msg.content if hasattr(msg, 'content') else str(msg)
                         context_parts.append(f"{role}: {content}")
                     conversation_context = "\n".join(context_parts)
-            
-            # Pasar el contexto al RAG tool (si hay contexto, NO usará cache)
+
             out = self.rag.query(user_input, conversation_context=conversation_context)
-            # Actualizar el estado de sesión en lugar del global
             state.add_message("system", f"User: {user_input}\nRAG: {out.get('answer', 'No answer')}")
             return {"tool": "rag", "result": out, "decision": decision}
 
-        elif tool == "ip":
-            # --- TRACEROUTE ---
-            if any("trace" in s.lower() for s in plan_steps):
-                # Extraer IP o dominio válido del texto
-                hosts = [part for part in user_input.split(
-                ) if self.iptool.validate_ip_or_domain(part)]
-                if hosts:
-                    host = hosts[0]
-                    out = self.iptool.tracert(host)
-                else:
-                    # Intentar extraer un dominio de forma más flexible
-                    domain_match = re.search(
-                        r"\b(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}\b", user_input)
-                    if domain_match:
-                        host = domain_match.group(0)
-                        out = self.iptool.tracert(host)
-                    else:
-                        out = {"error": "no_valid_host_found"}
-
-            # --- COMPARACIÓN DE IPs ---
-            elif any("compare" in s.lower() for s in plan_steps):
-                parts = [p for p in re.split(
-                    r"[\s,]+", user_input) if self.iptool.validate_ip(p)]
-                if len(parts) >= 2:
-                    out = self.iptool.compare(parts[0], parts[1])
-                else:
-                    out = {"error": "no_two_ips_found"}
-
-            else:
-                out = {
-                    "note": "ip tool called, but no clear plan step matched", "plan": plan_steps}
-
-            # Actualizar el estado de sesión en lugar del global
-            state.add_message("system", f"User: {user_input}\nIPTool: {out}")
-            return {"tool": "ip", "result": out, "decision": decision}
-
-        elif tool == "dns":
-            # Detectar tipo de consulta DNS basándose en plan_steps (más inteligente)
-            user_lower = user_input.lower()
-            plan_lower = " ".join(plan_steps).lower() if plan_steps else ""
-            
-            # Verificar si el plan indica "all records" o "todos los registros"
-            is_all_records_request = (
-                "all dns records" in plan_lower or
-                "all records" in plan_lower or
-                "todos los registros" in plan_lower or
-                "query all" in plan_lower or
-                "get all" in plan_lower
-            )
-            
-            # Detectar comparación DNS
-            is_comparison = (
-                "compare" in plan_lower or
-                "comparar" in plan_lower or
-                "comparison" in plan_lower or
-                "comparar dns" in user_lower or
-                "comparar registros" in user_lower
-            )
-            
-            # Detectar verificaciones específicas
-            is_spf_check = "spf" in user_lower and ("verificar" in user_lower or "check" in user_lower or "tiene" in user_lower)
-            is_dmarc_check = "dmarc" in user_lower and ("verificar" in user_lower or "check" in user_lower or "tiene" in user_lower)
-            is_domain_info = any(keyword in user_lower for keyword in [
-                "información del dominio", "info del dominio", "domain info",
-                "información completa", "resumen del dominio"
-            ])
-            
-            # Búsqueda inversa (PTR)
-            if "reverse" in user_lower or "ptr" in user_lower or "inversa" in user_lower:
-                # Extraer IP del texto
-                ip_pattern = r"\b(?:\d{1,3}\.){3}\d{1,3}\b"
-                ip_match = re.search(ip_pattern, user_input)
-                if ip_match:
-                    ip = ip_match.group(0)
-                    out = self.dnstool.reverse_lookup(ip)
-                else:
-                    out = {"error": "no_valid_ip_found_for_reverse_lookup"}
-            
-            # Comparación DNS
-            elif is_comparison:
-                # Extraer dos dominios
-                domains = re.findall(r"\b(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}\b", user_input)
-                if len(domains) >= 2:
-                    out = self.dnstool.compare_dns(domains[0], domains[1])
-                else:
-                    out = {"error": "Se necesitan al menos 2 dominios para comparar. Ejemplo: 'compara DNS de google.com con facebook.com'"}
-            
-            # Verificación SPF
-            elif is_spf_check:
-                domain_match = re.search(r"\b(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}\b", user_input)
-                if domain_match:
-                    domain = domain_match.group(0)
-                    out = self.dnstool.check_spf(domain)
-                else:
-                    out = {"error": "No se encontró un dominio válido para verificar SPF"}
-            
-            # Verificación DMARC
-            elif is_dmarc_check:
-                domain_match = re.search(r"\b(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}\b", user_input)
-                if domain_match:
-                    domain = domain_match.group(0)
-                    out = self.dnstool.check_dmarc(domain)
-                else:
-                    out = {"error": "No se encontró un dominio válido para verificar DMARC"}
-            
-            # Información completa del dominio
-            elif is_domain_info:
-                domain_match = re.search(r"\b(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}\b", user_input)
-                if domain_match:
-                    domain = domain_match.group(0)
-                    out = self.dnstool.get_domain_info(domain)
-                else:
-                    out = {"error": "No se encontró un dominio válido"}
-            
-            # Consulta de todos los registros
-            # Confiar completamente en la decisión del LLM a través de plan_steps
-            elif is_all_records_request:
-                # Extraer dominio
-                domain_match = re.search(r"\b(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}\b", user_input)
-                if domain_match:
-                    domain = domain_match.group(0)
-                    out = self.dnstool.get_all_records(domain)
-                else:
-                    out = {"error": "no_valid_domain_found"}
-            
-            # Consulta específica de tipo de registro
-            # El LLM debe indicar en plan_steps qué tipo de registro consultar
-            else:
-                # Intentar extraer el tipo de registro del plan_steps
-                record_type = "A"  # Por defecto
-                
-                # Buscar en plan_steps primero (decisión del LLM)
-                if plan_steps:
-                    plan_text = " ".join(plan_steps).lower()
-                    if re.search(r'\bmx\b', plan_text):
-                        record_type = "MX"
-                    elif re.search(r'\btxt\b', plan_text):
-                        record_type = "TXT"
-                    elif re.search(r'\bns\b', plan_text) or "nameserver" in plan_text:
-                        record_type = "NS"
-                    elif re.search(r'\bcname\b', plan_text):
-                        record_type = "CNAME"
-                    elif re.search(r'\baaaa\b', plan_text) or "ipv6" in plan_text:
-                        record_type = "AAAA"
-                
-                # Extraer dominio
-                domain_match = re.search(r"\b(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}\b", user_input)
-                if domain_match:
-                    domain = domain_match.group(0)
-                    out = self.dnstool.query(domain, record_type)
-                else:
-                    out = {"error": "no_valid_domain_found"}
-            
-            # Actualizar el estado de sesión
-            state.add_message("system", f"User: {user_input}\nDNSTool: {out}")
-            return {"tool": "dns", "result": out, "decision": decision}
-
-        else:
-            # Actualizar el estado de sesión en lugar del global
-            state.add_message("system", f"User: {user_input}\nSystem: no action taken.")
-            return {"tool": "none", "result": None, "decision": decision}
+        state.add_message("system", f"User: {user_input}\nSystem: no action taken.")
+        return {"tool": "none", "result": None, "decision": decision}

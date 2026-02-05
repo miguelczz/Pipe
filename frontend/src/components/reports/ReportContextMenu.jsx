@@ -53,7 +53,7 @@ export function ReportContextMenu({
   return (
     <div
       ref={menuRef}
-      className="bg-dark-surface-primary border border-dark-border-primary/40 rounded-lg shadow-gemini min-w-[200px] overflow-hidden"
+      className="bg-dark-surface-primary border border-dark-border-primary/40 rounded-lg shadow-gemini min-w-[200px] overflow-hidden transition-panel-enter"
       style={style}
     >
       <button

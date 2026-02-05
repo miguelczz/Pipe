@@ -3,7 +3,6 @@ API endpoints para gestión de archivos - Refactorizado para usar repositorios.
 Expone operaciones de subida, listado y borrado sin lógica de logging.
 """
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
-from fastapi.responses import JSONResponse
 from typing import List
 from sqlalchemy.orm import Session as SQLSession
 from ..models.schemas import FileUploadResponse, FileListResponse
@@ -78,6 +77,67 @@ async def upload_pdf(
         status="processed",
         uploaded_at=datetime.utcnow()
     )
+
+
+@router.post("/upload-multiple", status_code=201, response_model=List[FileUploadResponse])
+async def upload_pdfs(
+    files: List[UploadFile] = File(...),
+    db: SQLSession = Depends(get_db)
+):
+    """
+    Sube y procesa múltiples archivos PDF.
+    Cada archivo se guarda, se divide en chunks, se generan embeddings y se almacenan en Qdrant.
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No se proporcionaron archivos.")
+    results = []
+    for file in files:
+        if not file.filename or not file.filename.lower().endswith(".pdf"):
+            results.append(FileUploadResponse(
+                document_id="",
+                filename=file.filename or "unknown",
+                status="skipped",
+                uploaded_at=datetime.utcnow()
+            ))
+            continue
+        content = await file.read()
+        document_id, file_path = document_repo.save_file(content, file.filename)
+        chunk_count = 0
+        try:
+            collection_info_before = qdrant_repo.get_collection_info()
+            points_before = collection_info_before.get('points_count', 0) if isinstance(collection_info_before, dict) else 0
+            await process_and_store_pdf(file_path, document_id=document_id)
+            collection_info_after = qdrant_repo.get_collection_info()
+            if "error" in collection_info_after:
+                raise ValueError(collection_info_after.get('error', 'Error en Qdrant'))
+            points_after = collection_info_after.get('points_count', 0)
+            chunk_count = points_after - points_before
+            if chunk_count == 0:
+                raise ValueError("No se insertaron chunks en Qdrant.")
+        except Exception as e:
+            document_repo.delete_file(document_id)
+            results.append(FileUploadResponse(
+                document_id=document_id,
+                filename=file.filename,
+                status=f"error: {str(e)}",
+                uploaded_at=datetime.utcnow()
+            ))
+            continue
+        document_repo.create_document_metadata(
+            db=db,
+            document_id=document_id,
+            filename=file.filename,
+            file_path=file_path,
+            chunk_count=chunk_count,
+            source=file.filename
+        )
+        results.append(FileUploadResponse(
+            document_id=document_id,
+            filename=file.filename,
+            status="processed",
+            uploaded_at=datetime.utcnow()
+        ))
+    return results
 
 
 @router.get("/", response_model=List[FileListResponse])

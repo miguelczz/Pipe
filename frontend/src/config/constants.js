@@ -21,6 +21,7 @@ export const API_ENDPOINTS = {
     AGENT_QUERY: "/agent/query",
     AGENT_SESSION: "/agent/session",
     FILES_UPLOAD: "/files/upload",
+    FILES_UPLOAD_MULTIPLE: "/files/upload-multiple",
     FILES_LIST: "/files/",
     FILES_DELETE: "/files",
 };

@@ -31,33 +31,42 @@ export function FilesPage() {
   }
 
   const handleFileUpload = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const selectedFiles = e.target.files ? Array.from(e.target.files) : []
+    if (!selectedFiles.length) return
 
-    if (file.type !== 'application/pdf') {
+    const pdfs = selectedFiles.filter((f) => f.type === 'application/pdf')
+    const skipped = selectedFiles.length - pdfs.length
+    if (skipped > 0) {
       showToast({
         type: 'warning',
-        message: 'Solo se permiten archivos PDF',
+        message: `${skipped} archivo(s) omitido(s): solo se permiten PDF`,
       })
-      e.target.value = '' // Reset input
+    }
+    if (!pdfs.length) {
+      e.target.value = ''
       return
     }
 
     setUploading(true)
     try {
-      await filesService.uploadFile(file)
+      const results = await filesService.uploadFiles(pdfs)
       await refetch()
-      showToast({
-        type: 'success',
-        message: 'Archivo subido correctamente',
-      })
-      e.target.value = '' // Reset input
+      const ok = results.filter((r) => r.status === 'processed').length
+      const err = results.filter((r) => r.status?.startsWith('error') || r.status === 'skipped').length
+      if (err === 0) {
+        showToast({ type: 'success', message: ok === 1 ? 'Archivo subido correctamente' : `${ok} archivos subidos correctamente` })
+      } else if (ok > 0) {
+        showToast({ type: 'warning', message: `${ok} subido(s), ${err} con error u omitidos` })
+      } else {
+        showToast({ type: 'error', message: results[0]?.status || 'Error al subir archivos' })
+      }
+      e.target.value = ''
     } catch (error) {
       showToast({
         type: 'error',
-        message: `Error al subir archivo: ${error.message || 'Error desconocido'}`,
+        message: `Error al subir archivos: ${error.message || 'Error desconocido'}`,
       })
-      e.target.value = '' // Reset input
+      e.target.value = ''
     } finally {
       setUploading(false)
     }
@@ -98,7 +107,7 @@ export function FilesPage() {
               Gestión de Archivos
             </h1>
             <p className="text-dark-text-secondary text-sm sm:text-[15px] leading-relaxed break-words text-wrap">
-              Sube y gestiona los documentos PDF que el agente utilizará para responder consultas
+              Sube uno o varios PDF como guía para entender capturas de Wireshark y sus resultados. El agente los usará para responder consultas.
             </p>
           </div>
 
@@ -107,6 +116,7 @@ export function FilesPage() {
               ref={fileInputRef}
               type="file"
               accept=".pdf"
+              multiple
               onChange={handleFileUpload}
               disabled={uploading}
               className="hidden"
@@ -126,8 +136,8 @@ export function FilesPage() {
               ) : (
                 <>
                   <Upload className="w-4 h-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Subir PDF</span>
-                  <span className="sm:hidden">Subir PDF</span>
+                  <span className="hidden sm:inline">Subir PDF(s)</span>
+                  <span className="sm:hidden">Subir PDF(s)</span>
                 </>
               )}
             </Button>

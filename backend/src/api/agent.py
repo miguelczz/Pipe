@@ -121,9 +121,10 @@ async def agent_query(
                 graph_messages.append(AIMessage(content=msg.content))
             # Ignorar mensajes "system" para el grafo
 
-        # Crear estado inicial del grafo
+        # Crear estado inicial del grafo (incluir report_id si el chat es sobre un reporte)
         initial_state = GraphState(
-            messages=graph_messages
+            messages=graph_messages,
+            report_id=query.report_id if getattr(query, "report_id", None) else None
         )
 
         # Ejecutar el grafo completo de forma asíncrona

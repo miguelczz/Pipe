@@ -199,9 +199,10 @@ async def agent_query_stream(
             elif msg.role == "assistant":
                 graph_messages.append(AIMessage(content=msg.content))
 
-        # Crear estado inicial del grafo
+        # Crear estado inicial del grafo (incluir report_id si el chat es sobre un reporte)
         initial_state = GraphState(
-            messages=graph_messages
+            messages=graph_messages,
+            report_id=query.report_id if getattr(query, "report_id", None) else None
         )
 
         # Wrapper para capturar la respuesta final y guardarla en el contexto

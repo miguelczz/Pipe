@@ -1,547 +1,73 @@
 """
 Ejecutores de herramientas para el agente.
-Cada función ejecuta una herramienta específica y retorna el resultado,
-sin realizar logging ni mezclar responsabilidades de orquestación.
+Solo RAG (get_report se añadirá en Fase 4).
 """
-import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from ..tools.rag_tool import RAGTool
-from ..tools.ip_tool import IPTool
-from ..tools.dns_tool import DNSTool
+from ..tools.report_tool import get_report as get_report_tool
 from ..agent.llm_client import LLMClient
-from ..agent.helpers import (
-    detect_operation_type,
-    extract_domain_from_text,
-    extract_domain_using_llm,
-    extract_hosts_from_text,
-    detect_dns_operation_type,
-    extract_domains_from_text,
-    extract_ip_from_text
-)
 from langchain_core.messages import AnyMessage
 
 rag_tool = RAGTool()
-ip_tool = IPTool()
-dns_tool = DNSTool()
 llm = LLMClient()
+
+
+def execute_get_report(report_id: str, user_question: str = "") -> dict:
+    """
+    Ejecuta la herramienta get_report y devuelve un resultado con la misma
+    estructura que RAG (answer) para que el sintetizador lo trate como contenido.
+    """
+    if not report_id or not str(report_id).strip():
+        return {"answer": "No se proporcionó ID de reporte.", "source": "report_tool"}
+    text = get_report_tool(str(report_id).strip(), user_question or None)
+    return {"answer": text, "source": "report_tool"}
 
 
 def get_conversation_context(messages: List[AnyMessage], max_messages: int = 20, exclude_last: bool = False) -> str:
     """
     Extrae el contexto de conversación de los mensajes.
-    OPTIMIZACIÓN: Limita el tamaño total del contexto para evitar problemas de memoria.
-    
-    Args:
-        messages: Lista de mensajes
-        max_messages: Número máximo de mensajes a incluir
-        exclude_last: Si es True, excluye el último mensaje (útil cuando el último mensaje es la pregunta actual)
-    
-    Returns:
-        Contexto formateado como string (limitado a 5000 caracteres)
+    Limita el tamaño total del contexto para evitar problemas de memoria.
     """
     if not messages:
         return ""
-    
+
     conversation_context = []
     total_length = 0
     MAX_CONTEXT_LENGTH = 5000
-    
-    # Mensajes a procesar
+
     msg_list = messages
     if exclude_last and len(msg_list) > 0:
         msg_list = msg_list[:-1]
-    
-    # Iterar desde los mensajes más recientes hacia atrás
+
     for msg in reversed(msg_list[-max_messages:]):
         role = getattr(msg, "role", None) or getattr(msg, "type", "user")
         content = getattr(msg, "content", str(msg))
-        
+
         if role in ["user", "human", "assistant", "agent"]:
             if role in ["human", "user"]:
                 role = "user"
             elif role in ["assistant", "agent"]:
                 role = "assistant"
-            
-            # Truncar contenido individual si es muy largo
+
             if len(content) > 1000:
                 content = content[:1000] + "..."
-            
+
             msg_text = f"{role}: {content}"
-            
             if total_length + len(msg_text) + 1 > MAX_CONTEXT_LENGTH:
                 break
-            
             conversation_context.insert(0, msg_text)
             total_length += len(msg_text) + 1
-    
+
     result = "\n".join(conversation_context)
     if len(result) > MAX_CONTEXT_LENGTH:
         result = result[:MAX_CONTEXT_LENGTH] + "..."
-    
     return result
-
-
-def execute_ip_tool(step: str, prompt: str, messages: List[AnyMessage], stream_callback=None) -> Dict[str, Any]:
-    """
-    Ejecuta la herramienta IP según el tipo de operación detectada.
-    
-    Args:
-        step: Paso del plan actual
-        prompt: Prompt del usuario
-        messages: Mensajes de la conversación
-        stream_callback: Callback opcional para streaming de resultados
-    
-    Returns:
-        Resultado de la ejecución
-    """
-    search_text = f"{prompt} {step or ''}"
-    
-    # Obtener contexto de conversación para mejorar detección
-    conversation_context = None
-    if messages:
-        conversation_context = get_conversation_context(messages, max_messages=5)
-    
-    operation_type = detect_operation_type(step, prompt, conversation_context)
-    
-    # Extraer hosts del texto
-    hosts = extract_hosts_from_text(search_text, ip_tool.validate_ip_or_domain)
-    
-    # Si no se encontraron hosts y hay contexto de conversación, intentar extraer del contexto
-    if not hosts and messages:
-        conversation_context = get_conversation_context(messages, max_messages=5)
-        if conversation_context:
-            # Buscar en el contexto si hay aclaraciones sobre hosts (ej: "x es twitter")
-            # Combinar el prompt actual con el contexto para búsqueda
-            combined_text = f"{search_text} {conversation_context}"
-            hosts_from_context = extract_hosts_from_text(combined_text, ip_tool.validate_ip_or_domain)
-            
-            # Si encontramos hosts en el contexto, usarlos
-            if hosts_from_context:
-                hosts = hosts_from_context
-    
-    if operation_type == "ping":
-        return _execute_ping(hosts, search_text, messages)
-    elif operation_type == "traceroute":
-        return _execute_traceroute(hosts, search_text)
-    elif operation_type == "compare":
-        return _execute_compare(hosts, search_text, messages)
-    else:
-        # Por defecto: si hay un dominio o host, intentar ping (operación más común)
-        # Pero solo si realmente no se pudo determinar el tipo de operación
-        domain = extract_domain_from_text(search_text)
-        if domain:
-            return ip_tool.ping(domain)
-        elif hosts:
-            return ip_tool.ping(hosts[0])
-        else:
-            return {"error": "no_valid_ip_or_host_found"}
-
-
-def _execute_ping(hosts: List[str], search_text: str, messages: List[AnyMessage] = None) -> Dict[str, Any]:
-    """Ejecuta operación de ping."""
-    if hosts:
-        # Si hay múltiples hosts, verificar si el usuario quiere una comparación
-        if len(hosts) >= 2:
-            # Detectar palabras clave de comparación
-            search_lower = search_text.lower()
-            comparison_keywords = [
-                "compara", "comparar", "comparando", "vs", "versus", 
-                "diferencia", "diferencias", "frente a", "con el", "con google",
-                "con facebook", "con"
-            ]
-            
-            # Si hay palabras de comparación, redirigir a la función de comparación
-            if any(keyword in search_lower for keyword in comparison_keywords):
-                return _execute_compare(hosts, search_text, messages)
-        
-        # Si no es comparación, ejecutar pings individuales
-        ping_results = [ip_tool.ping(host, count=4) for host in hosts]
-        if len(ping_results) > 1:
-            return {
-                "type": "multiple_ping",
-                "results": ping_results,
-                "summary": f"Ping ejecutado a {len(ping_results)} hosts"
-            }
-        return ping_results[0] if ping_results else {"error": "no_valid_ip_or_host_found"}
-    
-    # Intentar extraer dominios (incluyendo nombres de servicios)
-    domains = extract_domains_from_text(search_text)
-    if domains:
-        # Si hay múltiples dominios, verificar si el usuario quiere una comparación
-        if len(domains) >= 2:
-            # Detectar palabras clave de comparación
-            search_lower = search_text.lower()
-            comparison_keywords = [
-                "compara", "comparar", "comparando", "vs", "versus", 
-                "diferencia", "diferencias", "frente a", "con el", "con"
-            ]
-            
-            # Si hay palabras de comparación, redirigir a la función de comparación
-            if any(keyword in search_lower for keyword in comparison_keywords):
-                return _execute_compare(domains, search_text, messages)
-        
-        # Si no es comparación, ejecutar pings individuales
-        ping_results = [ip_tool.ping(domain, count=4) for domain in domains]
-        if len(ping_results) > 1:
-            return {
-                "type": "multiple_ping",
-                "results": ping_results,
-                "summary": f"Ping ejecutado a {len(ping_results)} hosts"
-            }
-        return ping_results[0] if ping_results else {"error": "no_valid_ip_or_host_found"}
-    
-    # Intentar extraer un solo dominio
-    domain = extract_domain_from_text(search_text)
-    if domain:
-        return ip_tool.ping(domain)
-    
-    # Si hay contexto de conversación, intentar extraer del contexto
-    if messages:
-        conversation_context = get_conversation_context(messages, max_messages=5)
-        if conversation_context:
-            # Buscar aclaraciones en el contexto (ej: "x es twitter" → "twitter.com")
-            combined_text = f"{search_text} {conversation_context}"
-            
-            # Intentar extraer dominio del contexto combinado
-            domain_from_context = extract_domain_from_text(combined_text)
-            if domain_from_context:
-                return ip_tool.ping(domain_from_context)
-            
-            # Usar LLM para entender aclaraciones (ej: "x es twitter")
-            domain_from_llm = extract_domain_using_llm(combined_text)
-            if domain_from_llm:
-                return ip_tool.ping(domain_from_llm)
-    
-    # Usar LLM como último recurso
-    domain = extract_domain_using_llm(search_text)
-    if domain:
-        return ip_tool.ping(domain)
-    
-    return {"error": "no_valid_ip_or_host_found"}
-
-
-def _execute_traceroute(hosts: List[str], search_text: str) -> Dict[str, Any]:
-    """Ejecuta operación de traceroute."""
-    if hosts:
-        return ip_tool.tracert(hosts[0])
-    
-    # Intentar extraer dominios (incluyendo nombres de servicios)
-    domains = extract_domains_from_text(search_text)
-    if domains:
-        return ip_tool.tracert(domains[0])
-    
-    domain = extract_domain_from_text(search_text)
-    if domain:
-        return ip_tool.tracert(domain)
-    
-    domain = extract_domain_using_llm(search_text)
-    if domain:
-        return ip_tool.tracert(domain)
-    
-    return {"error": "no_valid_ip_or_host_found"}
-
-
-def _extract_previous_result_host(messages: List[AnyMessage], search_text: str) -> Optional[str]:
-    """
-    Usa el LLM para entender el contexto y extraer el dominio de un resultado anterior
-    mencionado en la solicitud del usuario. No depende de palabras clave, sino que analiza
-    la intención y el contexto de la conversación.
-    
-    Returns:
-        Dominio del resultado anterior mencionado o None si no hay referencia
-    """
-    if not messages:
-        return None
-    
-    try:
-        # Obtener contexto de conversación
-        conversation_context = get_conversation_context(messages, max_messages=10)
-        if not conversation_context:
-            return None
-        
-        # Usar LLM para entender si el usuario se refiere a un resultado anterior
-        # y cuál dominio usar para la comparación
-        llm_prompt = f"""
-Analiza la siguiente solicitud del usuario y el contexto de conversación previa.
-
-Solicitud actual del usuario: "{search_text}"
-
-Contexto de conversación previa:
-    pass
-{conversation_context}
-
-INSTRUCCIONES:
-    pass
-1. Determina si el usuario se refiere a un resultado anterior de ping o traceroute en la conversación
-2. Si se refiere a un resultado anterior, identifica el dominio o host de ESE resultado específico
-3. El usuario puede referirse al último resultado, al penúltimo, o a cualquier resultado anterior mencionado
-4. Analiza el contexto para entender a qué resultado específico se refiere el usuario
-5. Responde SOLO con el dominio completo del resultado anterior (ej: instagram.com), sin explicaciones
-6. Si el usuario NO se refiere a un resultado anterior, responde "ninguno"
-7. Si no encuentras un dominio claro, responde "ninguno"
-
-Ejemplos:
-    pass
-- Si el usuario dice "comparalo con facebook" y antes se hizo ping a instagram.com → responde "instagram.com"
-- Si el usuario dice "comparalo con el ping anterior" y el último ping fue a google.com → responde "google.com"
-- Si el usuario dice "comparalo con el ping que hiciste antes del último" y hubo ping a instagram.com y luego a google.com → responde "instagram.com"
-- Si el usuario dice "compara facebook con google" sin referirse a resultados anteriores → responde "ninguno"
-
-Dominio del resultado anterior (o "ninguno"):
-    pass
-"""
-        llm_response = llm.generate(llm_prompt, max_tokens=100).strip().lower()
-        
-        # Limpiar la respuesta del LLM
-        llm_response = re.sub(r'[^\w\.-]', '', llm_response)
-        if llm_response and llm_response != "ninguno" and '.' in llm_response:
-            if ip_tool.validate_ip_or_domain(llm_response):
-                return llm_response
-        
-    except Exception as e:
-        pass
-    
-    return None
-
-
-def _execute_compare(hosts: List[str], search_text: str, messages: List[AnyMessage] = None) -> Dict[str, Any]:
-    """Ejecuta operación de comparación de IPs."""
-    # Detectar número de dominios solicitados
-    num_domains_match = re.search(r'(\d+)\s*(?:dominios?|ips?|hosts?)', search_text.lower())
-    requested_count = 2
-    if num_domains_match:
-        requested_count = max(2, min(5, int(num_domains_match.group(1))))
-    
-    # Usar LLM para entender si el usuario se refiere a un resultado anterior
-    # y extraer los dominios correctos para la comparación
-    previous_host = None
-    if messages:
-        previous_host = _extract_previous_result_host(messages, search_text)
-        if previous_host:
-            
-            # CORRECCIÓN CRÍTICA: Extraer el NUEVO dominio mencionado usando un prompt específico
-            # que excluya explícitamente el dominio anterior para evitar duplicados
-            try:
-                new_domain_prompt = f"""
-Analiza el siguiente texto e identifica el NUEVO dominio o servicio que el usuario quiere comparar.
-
-Texto: "{search_text}"
-
-INSTRUCCIONES CRÍTICAS:
-    pass
-1. Identifica el NUEVO servicio o dominio mencionado en el texto (ej: "tesla", "facebook", "google")
-2. El dominio anterior ya identificado es: {previous_host} - NO lo incluyas en tu respuesta
-3. Busca SOLO el nuevo servicio/dominio mencionado en el texto actual
-4. Convierte el nombre del servicio al dominio completo (ej: "tesla" → "tesla.com", "facebook" → "facebook.com")
-5. Si el texto menciona un dominio completo (ej: "tesla.com"), úsalo tal cual
-6. Responde SOLO con el dominio completo del NUEVO servicio (ej: tesla.com), sin explicaciones
-7. Si no encuentras un nuevo dominio/servicio, responde "ninguno"
-
-Ejemplos:
-    pass
-- "comparalo con tesla" → tesla.com
-- "comparalo con facebook" → facebook.com
-- "compara con google.com" → google.com
-- "comparalo con el anterior" → ninguno (no hay nuevo dominio)
-
-Nuevo dominio (o "ninguno"):
-    pass
-"""
-                llm_response = llm.generate(new_domain_prompt, max_tokens=100).strip().lower()
-                
-                # Limpiar la respuesta del LLM
-                llm_response = re.sub(r'[^\w\.-]', '', llm_response)
-                
-                if llm_response and llm_response != "ninguno" and '.' in llm_response:
-                    if ip_tool.validate_ip_or_domain(llm_response) and llm_response != previous_host:
-                        hosts = [previous_host, llm_response]
-                    else:
-                        # Fallback: intentar con extract_domains_from_text pero filtrar el anterior
-                        new_hosts = extract_domains_from_text(search_text)
-                        new_hosts = [h for h in new_hosts if h != previous_host]  # Filtrar el anterior
-                        if new_hosts:
-                            hosts = [previous_host, new_hosts[0]]
-                        else:
-                            hosts = [previous_host]
-                else:
-                    # Fallback: intentar con extract_domains_from_text pero filtrar el anterior
-                    new_hosts = extract_domains_from_text(search_text)
-                    new_hosts = [h for h in new_hosts if h != previous_host]  # Filtrar el anterior
-                    if new_hosts:
-                        hosts = [previous_host, new_hosts[0]]
-                    else:
-                        hosts = [previous_host]
-            except Exception as e:
-                # Fallback: intentar con extract_domains_from_text pero filtrar el anterior
-                new_hosts = extract_domains_from_text(search_text)
-                new_hosts = [h for h in new_hosts if h != previous_host]  # Filtrar el anterior
-                if new_hosts:
-                    hosts = [previous_host, new_hosts[0]]
-                else:
-                    hosts = [previous_host]
-    
-    # Si NO hay referencia a resultado anterior, usar la lógica normal
-    if not previous_host:
-        # Si no hay suficientes hosts, intentar extraer dominios del texto actual (incluyendo nombres de servicios)
-        if len(hosts) < requested_count:
-            domains = extract_domains_from_text(search_text)
-            for domain in domains:
-                if domain not in hosts:
-                    hosts.append(domain)
-        
-        # Si aún no hay suficientes y hay contexto de conversación, usar LLM para determinar
-        # qué dominios son relevantes para esta comparación específica
-        if len(hosts) < requested_count and messages:
-            conversation_context = get_conversation_context(messages, max_messages=5)
-            if conversation_context:
-                # Usar LLM para identificar qué dominios del contexto son relevantes para esta comparación
-                # Esto evita extraer dominios de comparaciones anteriores no relacionadas
-                llm_prompt = f"""
-Analiza la siguiente solicitud del usuario y el contexto de conversación.
-
-Solicitud actual: "{search_text}"
-
-Contexto de conversación:
-    pass
-{conversation_context}
-
-Dominios ya identificados: {', '.join(hosts) if hosts else 'ninguno'}
-
-INSTRUCCIONES:
-    pass
-1. Identifica qué dominios o hosts el usuario quiere comparar en esta solicitud específica
-2. NO incluyas dominios de comparaciones anteriores que no están relacionados con esta solicitud
-3. Si el usuario menciona explícitamente dominios en su solicitud, úsalos
-4. Si el usuario hace referencia a un resultado anterior, identifica ese dominio específico
-5. Responde SOLO con los dominios completos relevantes para esta comparación (ej: instagram.com, facebook.com), uno por línea
-6. Si no hay dominios relevantes adicionales en el contexto, responde "ninguno"
-
-Dominios relevantes para esta comparación (uno por línea):
-    pass
-"""
-                llm_response = llm.generate(llm_prompt, max_tokens=150).strip()
-                
-                # Extraer dominios de la respuesta del LLM
-                if llm_response and llm_response.lower() != "ninguno":
-                    for line in llm_response.split('\n'):
-                        line = line.strip()
-                        # Limpiar la línea
-                        line = re.sub(r'[^\w\.-]', '', line)
-                        if line and '.' in line and len(line) > 3:
-                            if ip_tool.validate_ip_or_domain(line):
-                                if line not in hosts:
-                                    hosts.append(line)
-                                    if len(hosts) >= requested_count:
-                                        break
-        
-        # Si aún no hay suficientes, intentar obtener más usando LLM
-        if len(hosts) < requested_count:
-            hosts = _get_additional_hosts(hosts, search_text, requested_count)
-    
-    if len(hosts) >= 2:
-        if len(hosts) > 2:
-            # Comparar el primero con los demás
-            base_host = hosts[0]
-            comparison_results = []
-            for other_host in hosts[1:]:
-                comparison = ip_tool.compare(base_host, other_host)
-                comparison_results.append({
-                    "host1": base_host,
-                    "host2": other_host,
-                    "comparison": comparison
-                })
-            return {
-                "type": "multiple_comparison",
-                "base_host": base_host,
-                "comparisons": comparison_results,
-                "summary": f"Comparación de {base_host} con {len(hosts) - 1} otros hosts"
-            }
-        else:
-            return ip_tool.compare(hosts[0], hosts[1])
-    
-    return {"error": f"no_two_hosts_found_for_comparison. Se encontraron {len(hosts)} hosts, se necesitan al menos 2."}
-
-
-def _get_additional_hosts(existing_hosts: List[str], text: str, requested_count: int) -> List[str]:
-    """Obtiene hosts adicionales usando LLM si es necesario."""
-    hosts = list(existing_hosts)
-    
-    try:
-        if len(hosts) == 0:
-            prompt = f"""
-El usuario quiere comparar {requested_count} dominios o servicios, pero no especificó cuáles.
-Sugiere {requested_count} dominios o servicios populares y relevantes para comparar (como Google, Facebook, Amazon, Microsoft, Netflix, etc.).
-Responde SOLO con los nombres de los servicios, uno por línea, sin explicaciones ni puntos.
-
-Responde con {requested_count} nombres:
-    pass
-"""
-        else:
-            prompt = f"""
-Del siguiente texto, identifica los nombres de dominio o servicios mencionados (como Instagram, Facebook, Google, etc.).
-El usuario quiere comparar {requested_count} dominios en total, y ya tenemos: {', '.join(hosts)}.
-Responde SOLO con los nombres de dominio encontrados, uno por línea, sin explicaciones.
-Si no encuentras nombres de dominio, sugiere dominios populares para completar la comparación.
-
-Texto: "{text}"
-
-Responde con los nombres (uno por línea):
-    pass
-"""
-        
-        llm_response = llm.generate(prompt).strip().lower()
-        extracted_names = []
-        
-        for line in llm_response.split('\n'):
-            line = line.strip()
-            if line and line != "ninguno" and len(line) > 2:
-                words = re.findall(r'\b[a-zA-Z][a-zA-Z0-9-]*\b', line)
-                for word in words:
-                    if len(word) > 2 and word not in ['com', 'net', 'org', 'www']:
-                        extracted_names.append(word)
-        
-        # Agregar dominios sugeridos
-        for name in extracted_names:
-            if len(hosts) >= requested_count:
-                break
-            potential_domain = f"{name}.com"
-            if potential_domain not in hosts:
-                hosts.append(potential_domain)
-        
-        # Si aún no tenemos suficientes, agregar dominios comunes
-        default_domains = ["google.com", "facebook.com", "amazon.com", "microsoft.com", "netflix.com"]
-        for default_domain in default_domains:
-            if len(hosts) >= requested_count:
-                break
-            if default_domain not in hosts:
-                hosts.append(default_domain)
-    
-    except Exception as e:
-        # Fallback: usar dominios comunes
-        if len(hosts) < 2:
-            default_domains = ["google.com", "facebook.com", "amazon.com", "microsoft.com", "netflix.com"]
-            for default_domain in default_domains[:requested_count]:
-                if default_domain not in hosts:
-                    hosts.append(default_domain)
-    
-    return hosts
 
 
 def execute_rag_tool(step: str, prompt: str, messages: List[AnyMessage], stream_callback=None) -> Dict[str, Any]:
     """
     Ejecuta la herramienta RAG.
-    
-    Args:
-        step: Paso del plan actual
-        prompt: Prompt del usuario
-        messages: Mensajes de la conversación
-        stream_callback: Callback opcional para streaming de resultados (no usado aquí, el streaming se hace en synthesizer)
-    
-    Returns:
-        Resultado de la ejecución
     """
-    # Detectar si es un seguimiento de conversación
-    # PRIORIDAD: RAG es más importante. Solo usar contexto de conversación si es CLARAMENTE un seguimiento directo
     is_followup = False
     if messages:
         try:
@@ -553,99 +79,40 @@ Eres un analizador ESTRICTO que decide si una pregunta requiere buscar informaci
 REGLA CRÍTICA: Por defecto, usa "nueva" (RAG). Solo marca como "seguimiento" si la pregunta hace referencia EXPLÍCITA y DIRECTA a acciones, resultados o eventos específicos de la conversación previa.
 
 Conversación previa (últimos mensajes):
-    pass
 {context_text}
 
 Pregunta del usuario: "{prompt}"
 
-INSTRUCCIONES CRÍTICAS (SÉ MUY ESTRICTO):
-    pass
-1. Marca como "seguimiento" SOLO si la pregunta hace referencia EXPLÍCITA a:
-   - Acciones realizadas en la conversación ("el ping que hiciste", "antes del ping", "el ping anterior", "el ping hacia X")
-   - Resultados de operaciones previas ("compara con el ping anterior", "diferencias con el resultado previo")
-   - Eventos o hechos específicos mencionados ("a qué dominio fue", "qué IP tenía", "qué resultado dio")
-   - Comparaciones directas con resultados previos ("compáralo con", "diferencias con", "comparar con el anterior")
-   - Preguntas sobre acciones específicas ("qué hiciste antes", "recuerdas que hiciste ping a X")
-
-2. Marca como "nueva" (RAG) si la pregunta:
-   - Busca información general, definiciones, conceptos técnicos
-   - Pide explicaciones educativas sobre protocolos o tecnologías
-   - Es una pregunta nueva sobre un tema (aunque el tema haya sido mencionado antes)
-   - No hace referencia EXPLÍCITA a acciones/resultados específicos de la conversación
-   - Usa palabras como "explica", "qué es", "cuales son", "dime sobre", "podrías explicar" sin referirse a acciones previas
-
-3. REGLA DE ORO: Si la pregunta es sobre un CONCEPTO o TEMA (aunque haya sido mencionado antes), es "nueva" (RAG). Solo es "seguimiento" si pregunta sobre ACCIONES o RESULTADOS específicos.
-
-Ejemplos de "seguimiento" (usar contexto):
-    pass
-- "Antes del ping hacia openai, habías realizado otro ping, ¿a qué dominio fue?" → seguimiento (pregunta sobre acción específica)
-- "Con el ping que hiciste hace poco, ¿podrías compararlo con un ping hacia openai?" → seguimiento (pregunta sobre resultado específico)
-- "¿Qué diferencias encuentras entre este resultado y el anterior?" → seguimiento (comparación de resultados)
-- "A qué dominio fue el ping anterior?" → seguimiento (pregunta sobre acción específica)
-
-Ejemplos de "nueva" (usar RAG):
-    pass
-- "Qué es TCP?" → nueva (RAG) - pregunta sobre concepto
-- "Cuales son los protocolos relevantes?" → nueva (RAG) - pregunta sobre conceptos
-- "Explica qué es un ping" → nueva (RAG) - pregunta sobre concepto
-- "Que me podrias explicar sobre el monitoreo y analitica de red?" → nueva (RAG) - pregunta sobre tema/concepto
-- "Cuales son los tipos de firewalls?" → nueva (RAG) - pregunta sobre concepto, aunque firewalls haya sido mencionado antes
-- "Dime más sobre DNS" → nueva (RAG) - pregunta sobre tema, no sobre acción específica
+INSTRUCCIONES: Marca "seguimiento" solo si pregunta sobre acciones/resultados específicos de la conversación. Marca "nueva" (RAG) para conceptos, definiciones, explicaciones.
 
 Responde SOLO con una palabra: "seguimiento" o "nueva".
 """
                 llm_response = llm.generate(followup_detection_prompt).strip().lower()
-                
-                # Solo considerar seguimiento si el LLM es MUY claro y específico
-                # Si hay cualquier ambigüedad, usar RAG (prioridad a RAG)
-                # Ser más estricto: solo seguir si es claramente un seguimiento de acciones/resultados
-                is_followup = (llm_response.strip().startswith("seguimiento") and \
-                              len(llm_response.strip()) < 15 and \
-                              "nueva" not in llm_response.lower() and \
-                              "rag" not in llm_response.lower() and \
-                              "documento" not in llm_response.lower())
-                
-                # Validación adicional: si la pregunta contiene palabras que indican búsqueda de información/conceptos, forzar RAG
+                is_followup = (
+                    llm_response.strip().startswith("seguimiento")
+                    and len(llm_response.strip()) < 15
+                    and "nueva" not in llm_response.lower()
+                    and "rag" not in llm_response.lower()
+                    and "documento" not in llm_response.lower()
+                )
                 info_seeking_keywords = ["explica", "qué es", "cuales son", "dime sobre", "podrías explicar", "hablame de", "información sobre", "y las", "y los", "y el", "y la"]
                 if any(keyword in prompt.lower() for keyword in info_seeking_keywords):
-                    # Si es una pregunta de información/concepto, forzar RAG incluso si el LLM dice "seguimiento"
-                    # Solo permitir seguimiento si hay referencia EXPLÍCITA a acciones previas
-                    ref_words = ["que hiciste", "que realizaste", "anterior", "previo", "antes", "resultado", "el ping", "la consulta", "lo que", "que ejecutaste"]
+                    ref_words = ["que hiciste", "que realizaste", "anterior", "previo", "antes", "resultado", "la consulta", "lo que", "que ejecutaste"]
                     if not any(ref_word in prompt.lower() for ref_word in ref_words):
                         is_followup = False
-                
-                
-                # Si NO es seguimiento, forzar búsqueda en documentos (no usar contexto de conversación)
-                if not is_followup:
-                    pass
-        except Exception as e:
-            pass
-            is_followup = False  # En caso de error, usar RAG
-    
-    # PRIORIDAD DOCUMENTACIÓN: Siempre usamos RAG con contexto de conversación para asegurar fidelidad técnica
-    # El refinamiento de consulta en RAGTool se encargará de manejar los seguimientos
-    
-    # Ejecutar RAG normal (búsqueda en documentos)
-    # El contexto de conversación se usa como complemento para mejorar la respuesta
-    
-    # Obtener contexto de conversación para complementar (si existe)
-    # Esto es CRÍTICO para que el RAG pueda referenciar acciones, resultados y eventos previos
+        except Exception:
+            is_followup = False
+
     conversation_context_for_rag = None
     if messages:
         try:
-            # Aumentar a 10 mensajes para tener más contexto histórico
-            # EXCLUIMOS el último mensaje porque es la pregunta actual que vamos a refinar
             conversation_context_for_rag = get_conversation_context(messages, max_messages=10, exclude_last=True)
-            if conversation_context_for_rag:
-                pass
-        except Exception as e:
+        except Exception:
             pass
-    
-    # SIEMPRE buscar en documentos - el contexto de conversación es solo complementario
+
     try:
         result = rag_tool.query(prompt, conversation_context=conversation_context_for_rag)
     except Exception as e:
-        # Retornar un resultado con error pero con estructura válida para RAGAS
         result = {
             "answer": f"Error al buscar información en los documentos: {str(e)}",
             "hits": 0,
@@ -653,69 +120,33 @@ Responde SOLO con una palabra: "seguimiento" o "nueva".
             "contexts": [],
             "source": "error"
         }
-    
-    # Log para debugging: verificar si el resultado tiene contextos
-    if isinstance(result, dict):
-        contexts_count = len(result.get("contexts", []))
-        hits_count = result.get("hits", 0)
-        source = result.get("source", "rag_tool")
-        
-        # Verificar que los contextos estén presentes y sean válidos
-        if "contexts" in result:
-            contexts_list = result["contexts"]
-            if isinstance(contexts_list, list):
-                valid_contexts = [c for c in contexts_list if c and isinstance(c, str) and c.strip()]
-                if len(valid_contexts) != len(contexts_list):
-                    # Limpiar contextos inválidos
-                    result["contexts"] = valid_contexts
-                    contexts_count = len(valid_contexts)
-            else:
-                result["contexts"] = []
-                contexts_count = 0
-        
-        # Si hay hits pero no contextos, hay un problema
-        if hits_count > 0 and contexts_count == 0:
-            pass
-        elif hits_count == 0 and contexts_count == 0:
-            pass
-        elif contexts_count > 0:
-            pass
-    
-    # Si hay error (cualquier tipo), intentar usar contexto como fallback si es posible
+
     if result.get("error") and messages:
         error_type = result.get("error", "")
-        
-        # Si es error de conexión a Qdrant, usar contexto como fallback
         if error_type == "qdrant_connection_error":
             try:
                 context_text = get_conversation_context(messages, max_messages=10)
                 if context_text:
-                    # Similar al código anterior pero sin cache para fallback
                     followup_prompt = f"""
-Basándote en la siguiente conversación previa, responde la pregunta del usuario de forma DIRECTA, COMPACTA y enfocada en lo que realmente le interesa.
+Basándote en la siguiente conversación previa, responde la pregunta del usuario de forma DIRECTA y COMPACTA.
 
 Conversación previa:
-    pass
 {context_text}
 
 Pregunta del usuario: {prompt}
 
 Respuesta (directa y compacta):
-    pass
 """
                     answer = llm.generate(followup_prompt).strip()
-                    # Para RAGAS: usar el contexto de conversación como contexto si no hay documentos
-                    conversation_contexts = [context_text] if context_text else []
                     return {
                         "answer": answer,
                         "hits": 0,
                         "source": "conversation_context_fallback",
-                        "contexts": conversation_contexts  # Usar contexto de conversación para RAGAS
+                        "contexts": [context_text] if context_text else []
                     }
-            except Exception as e:
+            except Exception:
                 pass
-    
-    # Asegurar que el resultado siempre tenga la estructura correcta
+
     if not isinstance(result, dict):
         result = {
             "answer": "Error inesperado al procesar la consulta.",
@@ -724,276 +155,13 @@ Respuesta (directa y compacta):
             "contexts": []
         }
     elif "error" in result and "answer" not in result:
-        # Si solo hay error sin answer, agregar un mensaje de error como answer
         result["answer"] = result.get("answer", f"Error al procesar la consulta: {result.get('error', 'error desconocido')}")
         if "contexts" not in result:
             result["contexts"] = []
-    
+
     return result
 
 
-def execute_dns_tool(step: str, prompt: str, messages: List[AnyMessage], stream_callback=None) -> Dict[str, Any]:
-    """
-    Ejecuta la herramienta DNS según el tipo de operación detectada.
-    
-    Args:
-        step: Paso del plan actual
-        prompt: Prompt del usuario
-        messages: Mensajes de la conversación
-        stream_callback: Callback opcional para streaming de resultados
-    
-    Returns:
-        Resultado de la ejecución
-    """
-    search_text = f"{prompt} {step or ''}"
-    operation_type, is_all_records = detect_dns_operation_type(step, prompt)
-    
-    # Extraer dominio o IP del mensaje actual
-    domain = extract_domain_from_text(search_text)
-    ip = extract_ip_from_text(search_text)
-    
-    # Si no se encuentra dominio en el mensaje actual, buscar en el contexto de conversación
-    if not domain and messages:
-        conversation_context = get_conversation_context(messages, max_messages=5)
-        domain = extract_domain_from_text(conversation_context)
-        if not domain:
-            # Intentar con LLM usando el contexto completo
-            domain = extract_domain_using_llm(conversation_context)
-    
-    if operation_type == "reverse":
-        if ip:
-            return dns_tool.reverse_lookup(ip)
-        return {"error": "no_valid_ip_found_for_reverse_lookup"}
-    
-    elif operation_type == "compare":
-        domains = extract_domains_from_text(search_text)
-        
-        # Si no encontramos suficientes dominios, intentar con LLM
-        if len(domains) < 2:
-            from ..agent.helpers import extract_domains_using_llm
-            llm_domains = extract_domains_using_llm(search_text)
-            domains.extend(llm_domains)
-            # Eliminar duplicados
-            domains = list(dict.fromkeys(domains))
-        
-        if len(domains) >= 2:
-            # Si hay más de 2, comparar el primero con los demás
-            if len(domains) > 2:
-                comparison_results = []
-                base_domain = domains[0]
-                for other_domain in domains[1:]:
-                    comparison = dns_tool.compare_dns(base_domain, other_domain)
-                    comparison_results.append({
-                        "domain1": base_domain,
-                        "domain2": other_domain,
-                        "comparison": comparison
-                    })
-                return {
-                    "type": "multiple_dns_comparison",
-                    "base_domain": base_domain,
-                    "comparisons": comparison_results,
-                    "summary": f"Comparación DNS de {base_domain} con {len(domains) - 1} otros dominios"
-                }
-            else:
-                return dns_tool.compare_dns(domains[0], domains[1])
-        return {"error": f"Se necesitan al menos 2 dominios para comparar. Se encontraron: {domains}"}
-    
-    elif operation_type == "spf":
-        # Intentar extraer múltiples dominios si están mencionados
-        domains = extract_domains_from_text(search_text)
-        if not domains and domain:
-            domains = [domain]
-        
-        # Si no encontramos dominios, intentar con LLM
-        if not domains:
-            from ..agent.helpers import extract_domains_using_llm
-            llm_domains = extract_domains_using_llm(search_text)
-            domains.extend(llm_domains)
-            domains = list(dict.fromkeys(domains))
-        
-        if not domains:
-            llm_domain = extract_domain_using_llm(search_text)
-            if llm_domain:
-                domains = [llm_domain]
-        
-        if domains:
-            # Si hay múltiples dominios, verificar todos
-            if len(domains) > 1:
-                spf_results = []
-                for dom in domains:
-                    result = dns_tool.check_spf(dom)
-                    spf_results.append({
-                        "domain": dom,
-                        "spf": result
-                    })
-                return {
-                    "type": "multiple_spf_check",
-                    "results": spf_results,
-                    "summary": f"Verificación SPF para {len(domains)} dominios"
-                }
-            else:
-                return dns_tool.check_spf(domains[0])
-        return {"error": "No se encontró un dominio válido para verificar SPF"}
-    
-    elif operation_type == "dmarc":
-        # Intentar extraer múltiples dominios si están mencionados
-        domains = extract_domains_from_text(search_text)
-        if not domains and domain:
-            domains = [domain]
-        
-        # Si no encontramos dominios, intentar con LLM
-        if not domains:
-            from ..agent.helpers import extract_domains_using_llm
-            llm_domains = extract_domains_using_llm(search_text)
-            domains.extend(llm_domains)
-            domains = list(dict.fromkeys(domains))
-        
-        if not domains:
-            llm_domain = extract_domain_using_llm(search_text)
-            if llm_domain:
-                domains = [llm_domain]
-        
-        if domains:
-            # Si hay múltiples dominios, verificar todos
-            if len(domains) > 1:
-                dmarc_results = []
-                for dom in domains:
-                    result = dns_tool.check_dmarc(dom)
-                    dmarc_results.append({
-                        "domain": dom,
-                        "dmarc": result
-                    })
-                return {
-                    "type": "multiple_dmarc_check",
-                    "results": dmarc_results,
-                    "summary": f"Verificación DMARC para {len(domains)} dominios"
-                }
-            else:
-                return dns_tool.check_dmarc(domains[0])
-        return {"error": "No se encontró un dominio válido para verificar DMARC"}
-    
-    elif operation_type == "domain_info":
-        if domain:
-            return dns_tool.get_domain_info(domain)
-        # Intentar con LLM si no se encontró dominio
-        llm_domain = extract_domain_using_llm(search_text)
-        if llm_domain:
-            return dns_tool.get_domain_info(llm_domain)
-        return {"error": "No se encontró un dominio válido"}
-    
-    elif is_all_records:
-        # Intentar extraer múltiples dominios si están mencionados
-        domains = extract_domains_from_text(search_text)
-        if not domains and domain:
-            domains = [domain]
-        
-        # Si no encontramos dominios en el mensaje actual, buscar en el contexto
-        if not domains and messages:
-            conversation_context = get_conversation_context(messages, max_messages=5)
-            context_domains = extract_domains_from_text(conversation_context)
-            if context_domains:
-                domains.extend(context_domains)
-                domains = list(dict.fromkeys(domains))
-        
-        # Si aún no encontramos dominios, intentar con LLM usando contexto completo
-        if not domains:
-            from ..agent.helpers import extract_domains_using_llm
-            llm_search_text = search_text
-            if messages:
-                conversation_context = get_conversation_context(messages, max_messages=5)
-                llm_search_text = f"{conversation_context}\n\nMensaje actual: {search_text}"
-            llm_domains = extract_domains_using_llm(llm_search_text)
-            if llm_domains:
-                domains.extend(llm_domains)
-                domains = list(dict.fromkeys(domains))
-        
-        if not domains:
-            llm_search_text = search_text
-            if messages:
-                conversation_context = get_conversation_context(messages, max_messages=5)
-                llm_search_text = f"{conversation_context}\n\nMensaje actual: {search_text}"
-            llm_domain = extract_domain_using_llm(llm_search_text)
-            if llm_domain:
-                domains = [llm_domain]
-        
-        if domains:
-            # Si hay múltiples dominios, obtener registros para todos
-            if len(domains) > 1:
-                all_records_results = []
-                for dom in domains:
-                    result = dns_tool.get_all_records(dom)
-                    all_records_results.append({
-                        "domain": dom,
-                        "records": result
-                    })
-                return {
-                    "type": "multiple_all_records",
-                    "results": all_records_results,
-                    "summary": f"Registros DNS completos para {len(domains)} dominios"
-                }
-            else:
-                return dns_tool.get_all_records(domains[0])
-        return {"error": "no_valid_domain_found", "message": "No se encontró un dominio válido. Por favor, especifica el dominio en tu consulta, por ejemplo: 'Haz un registro DNS completo de whatsapp.com'"}
-    
-    else:
-        # Consulta específica de tipo de registro
-        if domain:
-            return dns_tool.query(domain, operation_type)
-        # Intentar con LLM si no se encontró dominio
-        llm_domain = extract_domain_using_llm(search_text)
-        if llm_domain:
-            return dns_tool.query(llm_domain, operation_type)
-        return {"error": "no_valid_domain_found"}
-
-
 def determine_tool_from_step(step: str, prompt: str) -> str:
-    """
-    Determina qué herramienta usar basándose en el paso y el prompt.
-    
-    Args:
-        step: Paso del plan
-        prompt: Prompt del usuario
-    
-    Returns:
-        Nombre de la herramienta: "rag", "ip", o "dns"
-    """
-    tool_determination_prompt = f"""
-    Analiza el siguiente paso del plan y determina qué herramienta debe usarse.
-    
-    Paso del plan: "{step}"
-    Pregunta original del usuario: "{prompt}"
-    
-    Herramientas disponibles:
-        pass
-    - RAG: Para consultas sobre conceptos, definiciones, explicaciones, información educativa, preguntas tipo "qué es", "explain", "define"
-    - IP: Para operaciones de red como comparar IPs, traceroute, análisis de direcciones IP, comparaciones de direcciones de red
-    - DNS: Para consultas DNS, registros de dominio (A, AAAA, MX, TXT, NS, CNAME), búsquedas inversas (PTR)
-    
-    Responde SOLO con una de estas palabras: "rag", "ip" o "dns"
-    No incluyas explicaciones ni texto adicional.
-    """
-    
-    try:
-        tool_response = llm.generate(tool_determination_prompt).strip().lower()
-        
-        if "dns" in tool_response:
-            return "dns"
-        elif "rag" in tool_response and "ip" not in tool_response and "dns" not in tool_response:
-            return "rag"
-        elif "ip" in tool_response:
-            return "ip"
-        else:
-            words = tool_response.split()
-            if words and words[0] in ["rag", "ip", "dns"]:
-                return words[0]
-            raise ValueError("LLM response not valid")
-    except Exception:
-        # Fallback: análisis heurístico
-        step_lower = step.lower()
-        if any(kw in step_lower for kw in ["dns", "domain", "mx", "nameserver", "registro dns", "whois"]):
-            return "dns"
-        elif any(kw in step_lower for kw in ["ping", "trace", "traceroute", "compare", "ip", "network"]):
-            return "ip"
-        else:
-            return "rag"  # Por defecto
-
+    """Determina qué herramienta usar. Solo RAG está disponible."""
+    return "rag"

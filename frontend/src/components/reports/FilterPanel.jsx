@@ -37,10 +37,8 @@ export function FilterPanel({
 
   const activeFiltersCount = localSelectedVendors.length + (dateRange.start ? 1 : 0) + (dateRange.end ? 1 : 0) + (statusFilter !== 'ALL' ? 1 : 0)
 
-  if (!isOpen) return null
-
   return (
-    <div className="bg-dark-surface-primary border border-dark-border-primary/30 rounded-xl p-5 space-y-5 shadow-gemini-sm transition-all duration-300 ease-out">
+    <div className="bg-dark-surface-primary border border-dark-border-primary/30 rounded-xl p-5 space-y-5 shadow-gemini-sm">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Filter className="w-5 h-5 text-dark-accent-primary" />

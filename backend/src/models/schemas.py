@@ -23,6 +23,7 @@ class AgentState(BaseModel):
     context_window: List[Message] = Field(default_factory=list)
     variables: Dict[str, Any] = Field(default_factory=dict)
     results: Dict[str, Any] = Field(default_factory=dict)
+    report_id: Optional[str] = None
 
     def add_message(self, role: str, content: str):
         """Agrega un mensaje al contexto, limitando a 20 mensajes"""
@@ -59,6 +60,8 @@ class AgentQuery(BaseModel):
         default=None,
         description="Incluir cadena de pensamiento en la respuesta (por defecto: según configuración)"
     )
+    report_id: Optional[str] = Field(default=None, description="ID del reporte cuando el chat es sobre un análisis concreto")
+    selected_text: Optional[str] = Field(default=None, description="Texto seleccionado por el usuario en el reporte")
 
 
 class SimpleQuery(BaseModel):

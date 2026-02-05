@@ -58,7 +58,7 @@ async def process_and_store_pdf(path: str, document_id: str = None) -> str:
     except Exception as e:
         raise
     
-    # Preparar puntos para Qdrant
+    # Preparar puntos para Qdrant (document_type identifica la guía para entender capturas y resultados)
     try:
         points = []
         for i, (chunk, emb) in enumerate(zip(chunks, embeddings)):
@@ -67,6 +67,7 @@ async def process_and_store_pdf(path: str, document_id: str = None) -> str:
                 "payload": {
                     "text": chunk,
                     "source": os.path.basename(path),
+                    "document_type": "guia_para_entender_capturas_y_resultados",
                     "chunk_index": i,
                     "document_id": document_id
                 }

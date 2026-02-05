@@ -274,44 +274,6 @@ async def delete_all_reports():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al eliminar todos los reportes: {str(e)}")
 
-@router.delete("/vendor/{vendor}")
-async def delete_reports_by_vendor(vendor: str):
-    """
-    Elimina todos los reportes de una marca específica.
-    """
-    base_dir = service.base_dir
-    deleted_count = 0
-    
-    try:
-        if not base_dir.exists():
-            raise HTTPException(status_code=404, detail="No se encontraron reportes")
-        
-        vendor_dir = base_dir / vendor
-        if not vendor_dir.exists() or not vendor_dir.is_dir():
-            return {"status": "success", "message": f"No se encontraron reportes para la marca {vendor}", "deleted": 0}
-        
-        # Buscar todos los archivos JSON en el directorio de la marca
-        for analysis_file in vendor_dir.glob("**/*.json"):
-            try:
-                analysis_file.unlink()
-                deleted_count += 1
-            except Exception:
-                pass
-        
-        # Limpiar directorios vacíos
-        for device_dir in vendor_dir.iterdir():
-            if device_dir.is_dir() and not any(device_dir.iterdir()):
-                device_dir.rmdir()
-        
-        if not any(vendor_dir.iterdir()):
-            vendor_dir.rmdir()
-        
-        return {"status": "success", "message": f"Se eliminaron {deleted_count} reportes de {vendor}", "deleted": deleted_count}
-    except Exception as e:
-        if isinstance(e, HTTPException):
-            raise e
-        raise HTTPException(status_code=500, detail=f"Error al eliminar reportes de {vendor}: {str(e)}")
-
 @router.delete("/{analysis_id}")
 async def delete_report(analysis_id: str):
     """

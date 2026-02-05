@@ -4,15 +4,9 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.channels import LastValue
 from ..models.schemas import AgentState, Message
 from ..core.graph_state import GraphState
-from ..agent.tool_executors import (
-    execute_ip_tool,
-    execute_rag_tool,
-    execute_dns_tool
-)
+from ..agent.tool_executors import execute_rag_tool, execute_get_report
 from typing import Annotated, List, Dict, Any, Optional
 from ..tools.rag_tool import RAGTool
-from ..tools.ip_tool import IPTool
-from ..tools.dns_tool import DNSTool
 from ..agent.router import PipeAgent
 from ..agent.llm_client import LLMClient
 from ..core.cache import cache_result
@@ -25,8 +19,6 @@ import time
 # ---------------------------------------------------------
 
 rag_tool = RAGTool()
-ip_tool = IPTool()
-dns_tool = DNSTool()
 llm = LLMClient()
 
 
@@ -34,26 +26,25 @@ llm = LLMClient()
 # Helpers para conversión de estado
 # ---------------------------------------------------------
 
-def messages_to_agent_state(messages: List[AnyMessage]) -> AgentState:
+def messages_to_agent_state(messages: List[AnyMessage], report_id: Optional[str] = None) -> AgentState:
     """
     Convierte los mensajes del State del grafo a un AgentState para el router.
-    Solo extrae los últimos mensajes relevantes para el contexto.
+    Incluye report_id cuando el chat está en contexto de un reporte.
     """
     context_window = []
-    for msg in messages[-20:]:  # Aumentado a 20 mensajes para mejor contexto
+    for msg in messages[-20:]:
         role = getattr(msg, "role", None) or getattr(msg, "type", "user")
         content = getattr(msg, "content", str(msg))
         if role in ["user", "human", "assistant", "agent", "system"]:
-            # Normalizar roles
             if role in ["human", "user"]:
                 role = "user"
             elif role in ["assistant", "agent"]:
                 role = "assistant"
             context_window.append(Message(role=role, content=content))
-    
     return AgentState(
         session_id="graph-session",
-        context_window=context_window
+        context_window=context_window,
+        report_id=report_id
     )
 
 
@@ -91,38 +82,15 @@ def get_conversation_context(messages: List[AnyMessage], max_messages: int = 10)
     return "\n".join(conversation_context)
 
 
-def _extract_tool_from_step(step: str) -> str:
+def _extract_tool_from_step(step: str, report_id: Optional[str] = None) -> str:
     """
-    Extrae la herramienta del plan_step sin usar LLM (optimización de rendimiento).
-    El router ya determinó la herramienta, solo necesitamos extraerla del plan_step.
-    
-    Args:
-        step: Paso del plan (ej: "query all DNS records for google.com", "ping to facebook.com")
-    
-    Returns:
-        Nombre de la herramienta: "rag", "ip", o "dns"
+    Extrae la herramienta del plan_step. RAG o get_report si hay report_id y el paso lo sugiere.
     """
-    if not step:
-        return "rag"  # Por defecto
-    
-    step_lower = step.lower()
-    
-    # Detectar DNS: busca palabras clave relacionadas con DNS
-    if any(keyword in step_lower for keyword in [
-        "dns", "domain name", "registro dns", "registros dns", "mx", "nameserver", 
-        "ns record", "txt record", "cname", "aaaa record", "spf", "dmarc",
-        "query dns", "dns query", "dns records", "domain records"
-    ]):
-        return "dns"
-    
-    # Detectar IP: busca palabras clave relacionadas con operaciones de red
-    if any(keyword in step_lower for keyword in [
-        "ping", "traceroute", "trace route", "compare ip", "ip comparison",
-        "network analysis", "ip address", "compare ips", "compare addresses"
-    ]):
-        return "ip"
-    
-    # Por defecto: RAG (búsqueda de información)
+    if not report_id:
+        return "rag"
+    step_lower = (step or "").lower()
+    if any(kw in step_lower for kw in ["reporte", "report", "captura", "análisis", "analisis", "veredicto", "este resultado", "esta captura"]):
+        return "get_report"
     return "rag"
 
 
@@ -222,10 +190,9 @@ def planner_node(state: GraphState) -> Dict[str, Any]:
         # Si no hay prompt, crear un plan vacío
         return {"plan_steps": []}
     
-    # Convertir messages a AgentState para el router (solo contexto necesario)
-    context = messages_to_agent_state(state.messages)
-    
-    # Usar el router para generar el plan
+    # Convertir messages a AgentState para el router (incluir report_id si existe)
+    report_id = getattr(state, "report_id", None)
+    context = messages_to_agent_state(state.messages, report_id=report_id)
     router = PipeAgent()
     decision = router.decide(user_prompt, context)
     
@@ -365,7 +332,7 @@ def orchestrator_node(state: GraphState) -> Dict[str, Any]:
 
 def ejecutor_agent_node(state: GraphState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
     """
-    Agente Ejecutor: Ejecuta las herramientas (RAG e IP) según el plan.
+    Agente Ejecutor: Ejecuta la herramienta RAG según el plan.
     Combina la selección de herramienta y su ejecución en un solo nodo.
     
     Este nodo SOLO accede a:
@@ -410,18 +377,15 @@ def ejecutor_agent_node(state: GraphState, config: Optional[RunnableConfig] = No
     if len(user_prompt) > MAX_PROMPT_LENGTH:
         user_prompt = user_prompt[:MAX_PROMPT_LENGTH] + "..."
     
-    # OPTIMIZACIÓN: Extraer herramienta del plan_step sin llamar al LLM
-    # El router ya determinó la herramienta, solo necesitamos extraerla del plan_step
-    tool_name = _extract_tool_from_step(current_step)
-    
-    # Ejecutar la herramienta correspondiente
+    # Extraer herramienta del plan_step; si hay report_id, puede ser get_report
+    report_id = getattr(state, "report_id", None)
+    tool_name = _extract_tool_from_step(current_step, report_id)
+
     try:
-        if tool_name == "ip":
-            result = execute_ip_tool(current_step, user_prompt, state.messages, stream_callback=stream_callback)
+        if tool_name == "get_report" and report_id:
+            result = execute_get_report(report_id, user_prompt)
         elif tool_name == "rag":
             result = execute_rag_tool(current_step, user_prompt, state.messages, stream_callback=stream_callback)
-        elif tool_name == "dns":
-            result = execute_dns_tool(current_step, user_prompt, state.messages, stream_callback=stream_callback)
         else:
             result = {"error": "tool_not_found"}
     except Exception as e:
@@ -995,25 +959,14 @@ async def synthesizer_node(state: GraphState, config: Optional[RunnableConfig] =
 
     # Detectar qué herramientas se usaron (sin pensamiento redundante, se registrará al final)
 
-    # Detectar qué herramientas se usaron analizando los resultados
-    has_rag_result = False
-    has_ip_result = False
-    has_dns_result = False
-    
-    for r in results:
-        if isinstance(r, dict):
-            # Detectar resultado de RAG (tiene 'answer')
-            if 'answer' in r:
-                has_rag_result = True
-            # Detectar resultado de IP tool (tiene 'comparison', 'traceroute', 'ip1', 'ip2', 'multiple_comparison', etc.)
-            elif any(key in r for key in ['comparison', 'traceroute', 'ip1', 'ip2', 'ip', 'host', 'stdout']) or r.get('type') in ['multiple_comparison', 'ping', 'traceroute', 'multiple_ping']:
-                has_ip_result = True
-            # Detectar resultado de DNS tool (tiene 'domain', 'records', 'type' relacionado con DNS)
-            elif any(key in r for key in ['domain', 'records', 'summary_text']) and ('type' in r and r.get('type') in ['A', 'AAAA', 'MX', 'TXT', 'NS', 'CNAME', 'PTR'] or 'records' in r):
-                has_dns_result = True
-    
-    # CASO 1: Solo se usó RAG - procesar respuesta con LLM para asegurar concisión
-    if has_rag_result and not has_ip_result:
+    # Detectar si se usó RAG (única herramienta actual)
+    has_rag_result = any(
+        isinstance(r, dict) and 'answer' in r
+        for r in results
+    )
+
+    # CASO 1: Solo RAG - procesar respuesta con LLM para asegurar concisión
+    if has_rag_result:
         # Extraer solo el 'answer' de cada resultado RAG
         rag_answers = []
         for r in results:
@@ -1130,239 +1083,7 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
                     "thought_chain": thought_chain
                 }
     
-    # CASO 2: Solo se usó IP - usar LLM para formatear con streaming
-    if has_ip_result and not has_rag_result and not has_dns_result:
-        # Formatear resultados de IP usando el método centralizado
-        ip_results = []
-        seen_comparisons = set()  # Para evitar duplicados
-        
-        for r in results:
-            formatted = ip_tool.format_result(r)
-            
-            # Detectar si es una comparación duplicada
-            if isinstance(r, dict) and ("comparison" in r or ("ip1" in r and "ip2" in r)):
-                # Crear una clave única para la comparación
-                ip1 = r.get("ip1", "")
-                ip2 = r.get("ip2", "")
-                comparison_key = tuple(sorted([ip1, ip2]))  # Ordenar para que sea único sin importar el orden
-                
-                if comparison_key in seen_comparisons:
-                    continue
-                seen_comparisons.add(comparison_key)
-            
-            ip_results.append(formatted)
-        
-        combined_raw = "\n\n".join(ip_results).strip()
-        
-        # Obtener el prompt original del usuario para contexto
-        user_prompt = get_user_prompt_from_messages(state.messages)
-        
-        # Usar LLM para presentar los resultados de manera natural con streaming
-        synthesis_prompt = (
-            f"Pregunta del usuario: {user_prompt}\n\n"
-            "Presenta los siguientes resultados de operaciones de red de manera clara y profesional.\n\n"
-            f"Resultados de operaciones IP:\n{combined_raw}\n\n"
-            "INSTRUCCIONES:\n"
-            "- Presenta los resultados tal como están, sin inventar información\n"
-            "- Usa un lenguaje claro y profesional\n"
-            "- Mantén el formato de los resultados (IPs, latencias, etc.)\n"
-            "- Si hay comparaciones, resáltalas claramente\n"
-            "- Usa **negrita** para valores importantes (IPs, latencias, dominios)\n\n"
-            "Presenta los resultados:"
-        )
-        
-        try:
-            # RESTAURADO: Hacer streaming aquí para velocidad óptima
-            # ASYNC CHANGE
-            final_answer = await llm.agenerate(
-                synthesis_prompt,
-                max_tokens=800,
-                stream_callback=stream_callback  # Streaming directo para velocidad
-            )
-            final_answer = final_answer.strip()
-            
-            thought_chain = add_thought(
-                thought_chain,
-                "Sintetizador",
-                "Síntesis: solo IP",
-                f"Presentando {len(ip_results)} resultado(s) con LLM",
-                "success"
-            )
-            return {
-                "final_output": final_answer,
-                "thought_chain": thought_chain
-            }
-        except Exception as e:
-            # Fallback: usar resultados originales
-            thought_chain = add_thought(
-                thought_chain,
-                "Sintetizador",
-                "Síntesis: solo IP (fallback)",
-                f"Error al procesar con LLM, usando formato original",
-                "warning"
-            )
-            return {
-                "final_output": combined_raw,
-                "thought_chain": thought_chain
-            }
-    
-    # CASO 2.5: Solo se usó DNS - usar LLM para formatear con streaming
-    if has_dns_result and not has_rag_result and not has_ip_result:
-        # Formatear resultados de DNS usando el método centralizado
-        dns_results = [dns_tool.format_result(r) for r in results]
-        
-        combined_raw = "\n\n".join(dns_results).strip()
-        
-        # Obtener el prompt original del usuario para contexto
-        user_prompt = get_user_prompt_from_messages(state.messages)
-        
-        # Usar LLM para presentar los resultados de manera natural con streaming
-        synthesis_prompt = (
-            f"Pregunta del usuario: {user_prompt}\n\n"
-            "Presenta los siguientes resultados de consultas DNS de manera clara y profesional.\n\n"
-            f"Resultados de operaciones DNS:\n{combined_raw}\n\n"
-            "INSTRUCCIONES:\n"
-            "- Presenta los resultados tal como están, sin inventar información\n"
-            "- Usa un lenguaje claro y profesional\n"
-            "- Mantén el formato de los registros DNS (A, MX, TXT, etc.)\n"
-            "- Si hay múltiples registros, organízalos claramente\n"
-            "- Usa **negrita** para valores importantes (dominios, IPs, servidores)\n\n"
-            "Presenta los resultados:"
-        )
-        
-        try:
-            # RESTAURADO: Hacer streaming aquí para velocidad óptima
-            # ASYNC CHANGE
-            final_answer = await llm.agenerate(
-                synthesis_prompt,
-                max_tokens=800,
-                stream_callback=stream_callback  # Streaming directo para velocidad
-            )
-            final_answer = final_answer.strip()
-            
-            thought_chain = add_thought(
-                thought_chain,
-                "Sintetizador",
-                "Síntesis: solo DNS",
-                f"Presentando {len(dns_results)} resultado(s) con LLM",
-                "success"
-            )
-            return {
-                "final_output": final_answer,
-                "thought_chain": thought_chain
-            }
-        except Exception as e:
-            # Fallback: usar resultados originales
-            thought_chain = add_thought(
-                thought_chain,
-                "Sintetizador",
-                "Síntesis: solo DNS (fallback)",
-                f"Error al procesar con LLM, usando formato original",
-                "warning"
-            )
-            return {
-                "final_output": combined_raw,
-                "thought_chain": thought_chain
-            }
-    
-    # CASO 3: Se usaron AMBAS herramientas (RAG + IP) - usar synthesizer para combinar
-    # Este es el único caso donde el synthesizer debe intervenir
-    if has_rag_result and has_ip_result:
-        # Procesar resultados: extraer información útil de cada resultado
-        processed_results = []
-        seen_comparisons = set()  # Para evitar duplicados
-        
-        for r in results:
-            if isinstance(r, dict):
-                # Si tiene 'answer' (RAG), usarlo directamente
-                if 'answer' in r:
-                    processed_results.append(r['answer'])
-                # Si tiene 'error', indicarlo
-                elif 'error' in r:
-                    processed_results.append(f"Error: {r['error']}")
-                # Si es un resultado de IP tool, usar el método centralizado de formateo
-                elif any(key in r for key in ['comparison', 'traceroute', 'ip1', 'ip2', 'ip', 'host', 'stdout']) or r.get('type') in ['multiple_comparison', 'ping', 'traceroute', 'multiple_ping']:
-                    # Detectar si es una comparación duplicada
-                    if ("comparison" in r or ("ip1" in r and "ip2" in r)) and r.get('type') != 'multiple_comparison':
-                        ip1 = r.get("ip1", "")
-                        ip2 = r.get("ip2", "")
-                        comparison_key = tuple(sorted([ip1, ip2]))
-                        
-                        if comparison_key in seen_comparisons:
-                            continue
-                        seen_comparisons.add(comparison_key)
-                    
-                    processed_results.append(ip_tool.format_result(r))
-                # Si es un resultado de DNS tool, usar el método centralizado de formateo
-                elif any(key in r for key in ['domain', 'records', 'summary_text']):
-                    processed_results.append(dns_tool.format_result(r))
-                else:
-                    processed_results.append(str(r))
-            else:
-                processed_results.append(str(r))
-        
-        combined = "\n\n".join(processed_results).strip()
-
-        if not combined:
-            return {"final_output": "No se encontraron resultados para la consulta."}
-
-        # Obtener el prompt original del usuario para contexto
-        user_prompt = get_user_prompt_from_messages(state.messages)
-        
-        # Usar el synthesizer para combinar resultados de múltiples herramientas
-        synthesis_prompt = (
-            f"Pregunta del usuario: {user_prompt}\n\n"
-            "Basándote en los siguientes resultados de las herramientas, genera una respuesta clara, natural y equilibrada.\n\n"
-            f"Resultados:\n{combined}\n\n"
-            "INSTRUCCIONES:\n"
-            "- FIDELIDAD TOTAL: Usa SOLO la información de los resultados proporcionados. NO inventes, NO agregues conocimiento general.\n"
-            "- LENGUAJE NATURAL: Responde como un experto explicando de manera clara y comprensible.\n"
-            "- LONGITUD EQUILIBRADA: \n"
-            "  * Para listas: 3-7 puntos con breve explicación si es necesario\n"
-            "  * Para definiciones: 2-4 oraciones claras\n"
-            "  * Para explicaciones: 100-300 palabras (completo pero no excesivo)\n"
-            "- ESTRUCTURA: Organiza la información de forma lógica, combinando información conceptual (RAG) con datos técnicos (IP) de manera coherente.\n"
-            "  * Primero explica el concepto (si hay información RAG)\n"
-            "  * Luego muestra los resultados de la operación ejecutada (si hay resultados IP/DNS)\n"
-            "- CONTEXTO APROPIADO: Si la pregunta requiere contexto, proporciona una breve introducción (1-2 oraciones) antes de responder.\n"
-            "- COHERENCIA: Los resultados técnicos (ping, traceroute, etc.) son resultados REALES de operaciones que se ejecutaron. Preséntalos como tal, no como ejemplos teóricos.\n"
-            "- NO copies párrafos completos, parafrasea de manera natural\n"
-            "- Mantén un tono profesional pero accesible\n\n"
-            "Genera una respuesta clara, natural y equilibrada usando SOLO la información proporcionada:"
-        )
-
-        try:
-            # RESTAURADO: Hacer streaming aquí para velocidad óptima
-            # ASYNC CHANGE
-            final_response = await llm.agenerate(
-                synthesis_prompt,
-                stream_callback=stream_callback  # Streaming directo para velocidad
-            )
-            thought_chain = add_thought(
-                thought_chain,
-                "Sintetizador",
-                "Síntesis: RAG + IP",
-                "Combinando resultados con LLM",
-                "success"
-            )
-            return {
-                "final_output": final_response.strip(),
-                "thought_chain": thought_chain
-            }
-        except Exception as e:
-            thought_chain = add_thought(
-                thought_chain,
-                "Sintetizador",
-                "Error en síntesis",
-                f"Error al generar respuesta combinada: {str(e)}",
-                "error"
-            )
-            return {
-                "final_output": f"Error al generar la respuesta final: {e}",
-                "thought_chain": thought_chain
-            }
-    
-    # CASO 4: Fallback - si no se detectó ninguna herramienta conocida
+    # CASO 2: Fallback - si no se detectó RAG
     # Simplemente concatenar los resultados
     processed_results = [str(r) for r in results]
     thought_chain = add_thought(
