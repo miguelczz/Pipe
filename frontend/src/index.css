@@ -114,6 +114,16 @@
     @apply surface transition-all duration-200 hover:bg-dark-surface-hover hover:shadow-gemini;
   }
 
+  /* Ocultar scrollbar visual pero permitir el scroll */
+  .scrollbar-none {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+  }
+
   .text-gradient {
     @apply bg-gradient-to-r from-dark-accent-primary via-dark-accent-secondary to-dark-accent-primary bg-clip-text text-transparent;
     background-size: 200% 100%;

@@ -16,7 +16,7 @@ class PipeAgent:
         self.llm_model = settings.llm_model
         self.client = client
 
-    def decide(self, user_input: str, state: AgentState) -> dict:
+    def decide(self, user_input: str, state: AgentState, selected_text: str | None = None) -> dict:
         """
         Decide qué herramienta usar según la intención del usuario.
         Solo RAG está disponible (get_report se añadirá en Fase 4).
@@ -37,10 +37,23 @@ class PipeAgent:
             context_messages_str = "\n".join([f"{m.role if hasattr(m, 'role') else 'user'}: {m.content if hasattr(m, 'content') else str(m)}" for m in last_10_messages])
 
         report_id = getattr(state, "report_id", None)
-        return self._decide_cached(user_input, context_for_cache, context_messages_str, report_id=report_id)
+        return self._decide_cached(
+            user_input,
+            context_for_cache,
+            context_messages_str,
+            report_id=report_id,
+            selected_text=selected_text or ""
+        )
 
     @cache_result("router_decision", ttl=300)
-    def _decide_cached(self, user_input: str, context_text: str, context_messages_str: str, report_id: str = None) -> dict:
+    def _decide_cached(
+        self,
+        user_input: str,
+        context_text: str,
+        context_messages_str: str,
+        report_id: str = None,
+        selected_text: str = "",
+    ) -> dict:
         if context_text:
             context_text = "\n\nContexto de conversación previa:\n" + context_text
 
@@ -49,6 +62,22 @@ class PipeAgent:
             report_instruction = """
 CURRENT REPORT CONTEXT: The user has a report open (report_id is set). If the user is asking about THIS report, this analysis, this capture, the verdict, what happened, "explain this", "why did it fail/pass", "what does this mean", then use tool "get_report" and plan_steps like ["get report for current analysis"]. Otherwise use RAG for general concepts and documentation.
 """
+        else:
+            report_instruction = """
+GLOBAL DOCS CONTEXT: There is NO active report_id. All questions must be answered using the RAG documentation/tools only. Never assume a specific capture or analysis; treat questions as general guidance about Band Steering, Wireshark and the project documentation.
+"""
+
+        selected_text_section = ""
+        if selected_text:
+            selected_text_section = f"""
+USER HIGHLIGHTED FRAGMENT (selected_text):
+\"\"\"{selected_text[:800]}\"\"\"
+
+INTERPRETATION RULES FOR selected_text:
+- This is NOT the user's question by itself, it's the fragment they are looking at.
+- Use it ONLY as additional context to better understand what part of the report or documentation they care about.
+- Always combine it with the explicit user request when deciding the tool.
+"""
 
         combined_prompt = f"""
 You are Pipe, a smart agent specialized in Wireshark capture analysis that decides which internal tool to use for a user's request.
@@ -56,6 +85,8 @@ You are Pipe, a smart agent specialized in Wireshark capture analysis that decid
 STEP 1: Determine if the question is relevant to Wireshark capture analysis, Band Steering, network protocols, or the documentation/guide for understanding captures and results.
 STEP 2: If relevant, choose the right tool and create a short plan step.
 {report_instruction}
+
+{selected_text_section}
 
 {context_text}
 

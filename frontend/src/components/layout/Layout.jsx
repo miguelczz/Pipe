@@ -1,9 +1,8 @@
 import { Link, useLocation } from 'react-router-dom'
-import { MessageSquare, FileText, Trash2, Activity, History } from 'lucide-react'
+import { FileText, Activity, History } from 'lucide-react'
 import { cn } from '../../utils/cn'
-import { useChatContext } from '../../contexts/ChatContext'
-import { Button } from '../ui/Button'
 import { Logo } from '../common/Logo'
+import { useChatLayout } from '../../contexts/ChatLayoutContext'
 
 /**
  * Layout principal de la aplicación
@@ -12,19 +11,32 @@ import { Logo } from '../common/Logo'
  */
 export function Layout({ children }) {
   const location = useLocation()
-  const { clearChatAction, hasMessages } = useChatContext()
+  const { chatWidth, chatSide, chatPanelOpen } = useChatLayout()
+
+  // Log temporal para depuración
+  console.log('Layout render:', { chatWidth, chatSide, chatPanelOpen })
 
   const navItems = [
-    { path: '/', label: 'Chat', icon: MessageSquare },
     { path: '/files', label: 'Archivos', icon: FileText },
     { path: '/network-analysis', label: 'Pruebas', icon: Activity },
     { path: '/reports', label: 'Reportes', icon: History },
   ]
 
+  const marginLeft = chatPanelOpen && chatSide === 'left' ? `${chatWidth}px` : '0'
+  const marginRight = chatPanelOpen && chatSide === 'right' ? `${chatWidth}px` : '0'
+  
+  console.log('Calculated margins:', { marginLeft, marginRight })
+
   return (
-    <div className="min-h-screen bg-dark-bg-primary flex flex-col overflow-x-hidden w-full">
-      {/* Header moderno inspirado en los mejores diseños de IA - Fijo en móvil */}
-      <header className="border-b border-dark-border-primary/30 bg-dark-bg-primary/95 backdrop-blur-xl fixed top-0 left-0 right-0 z-50 shadow-gemini-sm overflow-x-hidden w-full min-w-0">
+    <div 
+      className="min-h-screen bg-dark-bg-primary flex flex-col overflow-x-hidden w-full transition-all duration-[450ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
+      style={{
+        marginLeft,
+        marginRight
+      }}
+    >
+      {/* Header moderno inspirado en los mejores diseños de IA - Ahora se mueve con el contenido */}
+      <header className="border-b border-dark-border-primary/30 bg-dark-bg-primary/95 backdrop-blur-xl z-40 shadow-gemini-sm overflow-x-hidden w-full min-w-0">
         <div className="container-app w-full min-w-0">
           <div className="flex items-center justify-between h-14 sm:h-16">
             <div className="flex items-center gap-2 sm:gap-4">
@@ -39,18 +51,6 @@ export function Layout({ children }) {
             </div>
 
             <nav className="flex items-center gap-1 sm:gap-2">
-              {/* Botón de limpiar conversación - solo en chat y cuando hay mensajes */}
-              {location.pathname === '/' && hasMessages && clearChatAction && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearChatAction}
-                  className="text-dark-text-muted hover:text-dark-status-error hover:bg-dark-status-error/10 rounded-xl transition-all duration-200 p-1.5 sm:p-2"
-                >
-                  <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span className="hidden sm:inline ml-1.5">Limpiar</span>
-                </Button>
-              )}
               {navItems.map((item) => {
                 const Icon = item.icon
                 const isActive = location.pathname === item.path
@@ -77,8 +77,8 @@ export function Layout({ children }) {
         </div>
       </header>
 
-      {/* Main Content con padding top para compensar el header fijo */}
-      <main className="flex-1 flex flex-col overflow-hidden min-h-0 overflow-x-hidden w-full min-w-0 pt-14 sm:pt-16">
+      {/* Main Content sin padding top ya que el header no es fijo */}
+      <main className="flex-1 flex flex-col overflow-hidden min-h-0 overflow-x-hidden w-full min-w-0">
         {children}
       </main>
 
@@ -97,4 +97,3 @@ export function Layout({ children }) {
 }
 
 export default Layout
-

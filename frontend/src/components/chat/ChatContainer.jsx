@@ -1,17 +1,75 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useMemo, useState, useCallback } from 'react'
 import { Message } from './Message'
 import { Logo } from '../common/Logo'
 import { cn } from '../../utils/cn'
+
+/** Agrupa mensajes en bloques: user solo, o user + grupo de respuestas del agente */
+function buildBlocks(messages) {
+  const blocks = []
+  let i = 0
+  while (i < messages.length) {
+    const msg = messages[i]
+    if (msg.role === 'user') {
+      blocks.push({ type: 'user', message: msg })
+      i += 1
+      continue
+    }
+    const assistants = []
+    while (i < messages.length && messages[i].role === 'assistant') {
+      assistants.push(messages[i])
+      i += 1
+    }
+    if (assistants.length > 0) {
+      blocks.push({
+        type: 'assistantGroup',
+        userMessageId: blocks[blocks.length - 1]?.message?.id ?? null,
+        messages: assistants,
+      })
+    }
+  }
+  return blocks
+}
 
 /**
  * Contenedor principal del chat
  * @param {Object} props
  * @param {Array} props.messages - Array de mensajes
  * @param {boolean} props.isLoading - Si está cargando
+ * @param {Function} [props.onEditUserMessage] - Callback al solicitar edición de un mensaje de usuario (legacy)
+ * @param {Function} [props.onSaveEditedMessage] - Callback al guardar edición inline: (message, newContent) => void
+ * @param {'report'|'docs'} [props.mode] - Modo actual (para selector al editar mensaje)
+ * @param {Function} [props.onModeChange] - Callback al cambiar modo
+ * @param {boolean} [props.modeLocked] - Si el modo está bloqueado (p. ej. por selección de texto)
  */
-export function ChatContainer({ messages, isLoading }) {
+export function ChatContainer({ messages, isLoading, onEditUserMessage, onSaveEditedMessage, mode, onModeChange, modeLocked }) {
   const messagesEndRef = useRef(null)
   const containerRef = useRef(null)
+  const [replyGroupIndex, setReplyGroupIndex] = useState({})
+  const prevBlocksRef = useRef(null)
+
+  const blocks = useMemo(() => buildBlocks(messages), [messages])
+  const setGroupPage = useCallback((userMessageId, index) => {
+    setReplyGroupIndex((prev) => ({ ...prev, [userMessageId]: index }))
+  }, [])
+
+  // Cuando se añade una nueva respuesta a un grupo, ir automáticamente a la última
+  useEffect(() => {
+    blocks.forEach((block) => {
+      if (block.type === 'assistantGroup') {
+        const prevBlock = prevBlocksRef.current?.find(
+          (b) => b.type === 'assistantGroup' && b.userMessageId === block.userMessageId
+        )
+        if (prevBlock && block.messages.length > prevBlock.messages.length) {
+          // Se añadió una nueva respuesta, ir a la última
+          setReplyGroupIndex((prev) => ({
+            ...prev,
+            [block.userMessageId]: block.messages.length - 1,
+          }))
+        }
+      }
+    })
+    prevBlocksRef.current = blocks
+  }, [blocks])
 
   // Auto-scroll inteligente
   useEffect(() => {
@@ -66,9 +124,43 @@ export function ChatContainer({ messages, isLoading }) {
         </div>
       ) : (
         <div className="py-4 sm:py-6 overflow-x-hidden w-full min-w-0 max-w-full">
-          {messages.map((message) => (
-            <Message key={message.id} message={message} />
-          ))}
+          {blocks.map((block) => {
+            if (block.type === 'user') {
+              return (
+                <Message
+                  key={block.message.id}
+                  message={block.message}
+                  onEditUserMessage={onEditUserMessage}
+                  onSaveEditedMessage={onSaveEditedMessage}
+                  editMode={mode}
+                  onEditModeChange={onModeChange}
+                  editModeLocked={modeLocked}
+                />
+              )
+            }
+            const { userMessageId, messages: groupMessages } = block
+            const currentIndex = Math.min(
+              replyGroupIndex[userMessageId] ?? 0,
+              groupMessages.length - 1
+            )
+            const currentMessage = groupMessages[currentIndex]
+            const total = groupMessages.length
+            return (
+              <Message
+                key={currentMessage.id}
+                message={currentMessage}
+                onEditUserMessage={onEditUserMessage}
+                onSaveEditedMessage={onSaveEditedMessage}
+                editMode={mode}
+                onEditModeChange={onModeChange}
+                editModeLocked={modeLocked}
+                replyIndex={currentIndex}
+                replyTotal={total}
+                onReplyPrev={total > 1 ? () => setGroupPage(userMessageId, Math.max(0, currentIndex - 1)) : undefined}
+                onReplyNext={total > 1 ? () => setGroupPage(userMessageId, Math.min(total - 1, currentIndex + 1)) : undefined}
+              />
+            )
+          })}
           <div ref={messagesEndRef} />
         </div>
       )}

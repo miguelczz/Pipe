@@ -2,6 +2,7 @@
 Repositorio para operaciones con Qdrant (base de datos vectorial).
 Centraliza el acceso a la base vectorial sin gestionar logging de aplicación.
 """
+import logging
 import uuid
 from typing import List, Dict, Optional
 from qdrant_client import QdrantClient

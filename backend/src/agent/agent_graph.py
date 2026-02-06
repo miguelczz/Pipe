@@ -194,7 +194,10 @@ def planner_node(state: GraphState) -> Dict[str, Any]:
     report_id = getattr(state, "report_id", None)
     context = messages_to_agent_state(state.messages, report_id=report_id)
     router = PipeAgent()
-    decision = router.decide(user_prompt, context)
+
+    # Pasar selected_text si está disponible en el estado (texto resaltado por el usuario en el frontend)
+    selected_text = getattr(state, "selected_text", None)
+    decision = router.decide(user_prompt, context, selected_text=selected_text)
     
     # Verificar si la pregunta fue rechazada por estar fuera de tema
     if decision.get("rejection_message"):

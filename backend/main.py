@@ -18,6 +18,8 @@ logging.basicConfig(
     format="%(asctime)s - [%(name)s] - [%(levelname)s] - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S"
 )
+# Silenciar logs verbosos de fontTools (WeasyPrint) al generar PDFs
+logging.getLogger("fontTools").setLevel(logging.WARNING)
 
 # Logger para este módulo
 logger = logging.getLogger(__name__)

@@ -10,23 +10,18 @@ import {
     AlertTriangle,
     FileText,
     HardDrive,
-    Network,
-    Smartphone,
-    ShieldCheck,
-    CheckCircle2,
-    XCircle,
     X,
     PanelLeft,
     PanelRight,
-    MessageCircle
+    MessageCircle,
+    Trash2,
 } from 'lucide-react'
-import { NetworkAnalysisChartSection } from '../components/network/NetworkAnalysisChartSection'
-import { NetworkAnalysisInsightsSection } from '../components/network/NetworkAnalysisInsightsSection'
 import { ReportBodyContent } from './ReportBodyContent'
 import { networkAnalysisService } from '../services/api'
 import { useReportChat } from '../hooks/useReportChat'
 import { ChatContainer } from '../components/chat/ChatContainer'
 import { ChatInput } from '../components/chat/ChatInput'
+import { useChatLayout } from '../contexts/ChatLayoutContext'
 
 const REPORT_CHAT_SIDE_KEY = 'pipe_report_chat_side'
 const REPORT_CHAT_OPEN_KEY = 'pipe_report_chat_open'
@@ -223,64 +218,23 @@ export function NetworkAnalysisPage() {
         fileInputRef,
         handleSelectClick,
         handleFileChange,
-        resetAnalysis,
     } = useNetworkAnalysis()
 
     const analysisId = result?.band_steering?.analysis_id ?? null
-    const [chatSide, setChatSide] = React.useState(() => {
-        try {
-            return (localStorage.getItem(REPORT_CHAT_SIDE_KEY) || 'right')
-        } catch {
-            return 'right'
-        }
-    })
-    const [chatPanelOpen, setChatPanelOpen] = React.useState(() => {
-        try {
-            const v = localStorage.getItem(REPORT_CHAT_OPEN_KEY)
-            return v !== 'false'
-        } catch {
-            return true
-        }
-    })
-    const [chatWidth, setChatWidth] = React.useState(() => {
-        try {
-            const v = localStorage.getItem(REPORT_CHAT_WIDTH_KEY)
-            if (v != null) {
-                const n = parseInt(v, 10)
-                if (!Number.isNaN(n) && n >= CHAT_WIDTH_MIN && n <= CHAT_WIDTH_MAX) return n
-            }
-        } catch {
-            // ignore
-        }
-        return CHAT_WIDTH_DEFAULT
-    })
+    
+    // Usar el contexto compartido para el estado del chat
+    const chatLayoutContext = useChatLayout()
+    const { chatWidth, setChatWidth, chatSide, setChatSide, chatPanelOpen, setChatPanelOpen } = chatLayoutContext
+    
+    // Estados locales para el chat (no relacionados con el layout)
     const [selectionPopup, setSelectionPopup] = React.useState(null)
     const selectionPopupDataRef = React.useRef(null) // ref para que handleAskAgent tenga el texto aunque el popup se cierre
+    const [chatMode, setChatMode] = React.useState('report') // 'report' | 'docs'
+    const [highlightedContext, setHighlightedContext] = React.useState(null)
+    const [selectionLockActive, setSelectionLockActive] = React.useState(false)
     const [isResizing, setIsResizing] = React.useState(false)
     const reportContentRef = React.useRef(null)
     const isResizingRef = React.useRef(false)
-
-    React.useEffect(() => {
-        try {
-            localStorage.setItem(REPORT_CHAT_SIDE_KEY, chatSide)
-        } catch {
-            // ignore
-        }
-    }, [chatSide])
-    React.useEffect(() => {
-        try {
-            localStorage.setItem(REPORT_CHAT_OPEN_KEY, String(chatPanelOpen))
-        } catch {
-            // ignore
-        }
-    }, [chatPanelOpen])
-    React.useEffect(() => {
-        try {
-            localStorage.setItem(REPORT_CHAT_WIDTH_KEY, String(chatWidth))
-        } catch {
-            // ignore
-        }
-    }, [chatWidth])
 
     // Redimensionar ancho del chat
     const handleResizeStart = React.useCallback((e) => {
@@ -337,11 +291,8 @@ export function NetworkAnalysisPage() {
         document.addEventListener('mousedown', onMouseDown)
         return () => document.removeEventListener('mousedown', onMouseDown)
     }, [selectionPopup])
-    const getSelectedText = React.useCallback(() => {
-        if (typeof window === 'undefined' || !window.getSelection) return ''
-        return window.getSelection().toString() || ''
-    }, [])
-    const reportChat = useReportChat(analysisId, getSelectedText)
+
+    const reportChat = useReportChat(analysisId)
 
     // Función para limpiar el nombre del archivo (quitar UUID y prefijos numéricos)
     const cleanFileName = (fileName) => {
@@ -367,31 +318,6 @@ export function NetworkAnalysisPage() {
         const sizes = ['Bytes', 'KB', 'MB', 'GB']
         const i = Math.floor(Math.log(bytes) / Math.log(factor))
         return parseFloat((bytes / Math.pow(factor, i)).toFixed(2)) + ' ' + sizes[i]
-    }
-
-    // Función para formatear el veredicto técnico a español
-    const formatVerdict = (verdict) => {
-        if (!verdict) return 'N/A'
-
-        const mapping = {
-            'EXCELLENT': 'Excelente',
-            'GOOD': 'Bueno',
-            'PREVENTIVE_SUCCESS': 'Éxito Preventivo',
-            'FAILED_BTM_REJECT': 'Fallo: Rechazo BTM',
-            'FAILED_LOOP': 'Fallo: Bucle entre APs',
-            'FAILED_NO_REASSOC': 'Fallo: Sin reconexión',
-            'FAILED_ALGORITHM': 'Fallo de algoritmo',
-            'WARNING_INCONCLUSIVE': 'Inconcluso',
-            'NOT_EVALUABLE': 'No evaluable',
-            'FAILED': 'Fallido',
-            'ACCEPTABLE': 'Aceptable',
-            'SLOW_BUT_SUCCESSFUL': 'Lento pero Exitoso',
-            'NO_DATA': 'Sin Datos',
-            'NO_STEERING_EVENTS': 'Sin Eventos',
-            'PARTIAL': 'Éxito Parcial'
-        }
-
-        return mapping[verdict] || verdict.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())
     }
 
     // Función para capturar el gráfico como imagen
@@ -2541,12 +2467,15 @@ export function NetworkAnalysisPage() {
 
     const handleAskAgent = React.useCallback(() => {
         const data = selectionPopupDataRef.current || selectionPopup
-        if (!data?.text || !reportChat.sendMessage) return
+        if (!data?.text) return
+        // Abrir panel de chat y cargar el fragmento como contexto visual para que el usuario formule su propia pregunta
         setChatPanelOpen(true)
-        reportChat.sendMessage('Explica o amplía este fragmento del informe:\n\n' + data.text)
+        setChatMode('report')           // Forzar modo reporte mientras haya selección
+        setSelectionLockActive(true)    // Bloquear cambio de modo hasta respuesta o limpieza
+        setHighlightedContext(data.text)
         selectionPopupDataRef.current = null
         setSelectionPopup(null)
-    }, [selectionPopup, reportChat])
+    }, [selectionPopup])
 
     // Contenido del reporte memoizado para no re-renderizar al mostrar el popup y así mantener la selección de texto (p. ej. en párrafos y listas).
     const reportInnerContent = React.useMemo(
@@ -2565,10 +2494,10 @@ export function NetworkAnalysisPage() {
     // Margen del reporte cuando el chat está abierto (para transición suave)
     const reportMargin = result && chatPanelOpen ? chatWidth : 0
 
-    // Panel de chat lateral: posición fija; ancho animado al abrir/cerrar
+    // Panel de chat lateral: posición fija; ancho animado al abrir/cerrar; ocupa todo el alto de la pantalla
     const reportChatPanel = result && (
         <aside
-            className={`fixed top-[72px] bottom-4 z-40 flex flex-col max-h-[calc(100vh-88px)] rounded-xl border border-dark-border-primary/50 bg-dark-bg-primary overflow-hidden print:hidden shadow-lg min-w-0 ${chatSide === 'left' ? 'left-0' : 'right-0'}`}
+            className={`fixed top-0 bottom-0 z-50 flex flex-col h-screen rounded-none border-r border-dark-border-primary/50 bg-dark-bg-primary overflow-hidden print:hidden shadow-lg min-w-0 ${chatSide === 'left' ? 'left-0' : 'right-0'}`}
             aria-label="Chat sobre el informe"
             style={{
                 width: chatPanelOpen ? chatWidth : 0,
@@ -2588,8 +2517,20 @@ export function NetworkAnalysisPage() {
                 <div className="w-0.5 h-12 rounded-full bg-dark-border-primary/50" />
             </div>
             <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-dark-border-primary/50 bg-dark-surface-primary/50 flex-shrink-0">
-                <span className="text-sm font-medium text-dark-text-primary truncate">Chat del informe</span>
+                <span className="text-sm font-medium text-dark-text-primary truncate">
+                    Pipechat
+                </span>
                 <div className="flex items-center gap-1 flex-shrink-0">
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="p-1.5 text-dark-text-muted hover:text-dark-accent-primary"
+                        onClick={() => reportChat.clearMessages()}
+                        title="Limpiar chat"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                    </Button>
                     <Button
                         type="button"
                         variant="ghost"
@@ -2613,13 +2554,43 @@ export function NetworkAnalysisPage() {
                 </div>
             </div>
             <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-                <ChatContainer messages={reportChat.messages} isLoading={reportChat.isLoading} />
+                <ChatContainer
+                    messages={reportChat.messages}
+                    isLoading={reportChat.isLoading}
+                    onSaveEditedMessage={(msg, newContent) => {
+                        if (msg?.role === 'user' && newContent) {
+                            reportChat.sendMessageAfterEdit(
+                                msg.id,
+                                newContent,
+                                highlightedContext,
+                                selectionLockActive ? 'report' : chatMode
+                            )
+                        }
+                    }}
+                    mode={chatMode}
+                    onModeChange={setChatMode}
+                    modeLocked={selectionLockActive}
+                />
             </div>
             <div className="p-2 border-t border-dark-border-primary/50 flex-shrink-0 bg-dark-bg-primary">
                 <ChatInput
-                    onSend={reportChat.sendMessage}
+                    onSend={(content, contextText) =>
+                        reportChat.sendMessage(
+                            content,
+                            contextText,
+                            selectionLockActive ? 'report' : chatMode
+                        )
+                    }
                     isLoading={reportChat.isLoading}
                     disabled={!analysisId}
+                    mode={chatMode}
+                    modeLocked={selectionLockActive}
+                    onModeChange={setChatMode}
+                    contextText={highlightedContext}
+                    onClearContext={() => {
+                        setHighlightedContext(null)
+                        setSelectionLockActive(false)
+                    }}
                 />
             </div>
         </aside>
@@ -2636,9 +2607,7 @@ export function NetworkAnalysisPage() {
                 <div
                     className="container-app py-4 sm:py-8 overflow-x-hidden min-w-0 px-4"
                     style={{ 
-                        width: '1050px',
-                        transform: `translateX(${reportTranslateX}px)`,
-                        transition: reportTransition
+                        width: '1050px'
                     }}
                 >
             <div>
