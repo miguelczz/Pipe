@@ -13,26 +13,22 @@ export function Layout({ children }) {
   const location = useLocation()
   const { chatWidth, chatSide, chatPanelOpen } = useChatLayout()
 
-  // Log temporal para depuración
-  console.log('Layout render:', { chatWidth, chatSide, chatPanelOpen })
-
   const navItems = [
     { path: '/files', label: 'Archivos', icon: FileText },
     { path: '/network-analysis', label: 'Pruebas', icon: Activity },
     { path: '/reports', label: 'Reportes', icon: History },
   ]
 
-  const marginLeft = chatPanelOpen && chatSide === 'left' ? `${chatWidth}px` : '0'
-  const marginRight = chatPanelOpen && chatSide === 'right' ? `${chatWidth}px` : '0'
-  
-  console.log('Calculated margins:', { marginLeft, marginRight })
+  // Padding dinámico para que el contenido se comprima al abrir el chat (no se superpone)
+  const paddingLeft = chatPanelOpen && chatSide === 'left' ? chatWidth : 0
+  const paddingRight = chatPanelOpen && chatSide === 'right' ? chatWidth : 0
 
   return (
     <div 
-      className="min-h-screen bg-dark-bg-primary flex flex-col overflow-x-hidden w-full transition-all duration-[450ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
+      className="min-h-screen bg-dark-bg-primary flex flex-col overflow-x-hidden w-full transition-[padding] duration-[450ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
       style={{
-        marginLeft,
-        marginRight
+        paddingLeft,
+        paddingRight
       }}
     >
       {/* Header moderno inspirado en los mejores diseños de IA - Ahora se mueve con el contenido */}

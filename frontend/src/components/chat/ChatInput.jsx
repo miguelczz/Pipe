@@ -111,7 +111,7 @@ export function ChatInput({
           )}
 
           {/* Contenedor principal del input: textarea arriba, barra de acciones abajo (mismo color de fondo) */}
-          <div className="flex flex-col bg-dark-surface-primary border border-dark-border-primary/50 rounded-2xl shadow-gemini-sm focus-within:border-dark-border-focus focus-within:shadow-gemini transition-all duration-200">
+          <div className="flex flex-col bg-dark-surface-primary border border-dark-border-primary/90 rounded-2xl shadow-gemini-sm focus-within:border-dark-border-focus focus-within:shadow-gemini transition-all duration-200">
             {/* Área de texto (no afecta tamaño de botones) */}
             <div className="px-3 pt-1 pb-1 sm:px-3.5 sm:pt-1.5 sm:pb-1.5">
               <Textarea
@@ -128,7 +128,6 @@ export function ChatInput({
                   WebkitUserSelect: 'text',
                   wordBreak: 'break-word',
                   overflowWrap: 'anywhere',
-                  border: 'none',
                   outline: 'none',
                   maxHeight: '120px',
                   overflowY: 'auto',

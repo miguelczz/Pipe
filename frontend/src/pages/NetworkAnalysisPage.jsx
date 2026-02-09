@@ -23,12 +23,8 @@ import { ChatContainer } from '../components/chat/ChatContainer'
 import { ChatInput } from '../components/chat/ChatInput'
 import { useChatLayout } from '../contexts/ChatLayoutContext'
 
-const REPORT_CHAT_SIDE_KEY = 'pipe_report_chat_side'
-const REPORT_CHAT_OPEN_KEY = 'pipe_report_chat_open'
-const REPORT_CHAT_WIDTH_KEY = 'pipe_report_chat_width'
 const CHAT_WIDTH_MIN = 280
 const CHAT_WIDTH_MAX = 720
-const CHAT_WIDTH_DEFAULT = 380
 
 const PRINT_STYLES = `
         @page {
@@ -218,14 +214,15 @@ export function NetworkAnalysisPage() {
         fileInputRef,
         handleSelectClick,
         handleFileChange,
+        resetAnalysis,
     } = useNetworkAnalysis()
 
     const analysisId = result?.band_steering?.analysis_id ?? null
-    
+
     // Usar el contexto compartido para el estado del chat
     const chatLayoutContext = useChatLayout()
     const { chatWidth, setChatWidth, chatSide, setChatSide, chatPanelOpen, setChatPanelOpen } = chatLayoutContext
-    
+
     // Estados locales para el chat (no relacionados con el layout)
     const [selectionPopup, setSelectionPopup] = React.useState(null)
     const selectionPopupDataRef = React.useRef(null) // ref para que handleAskAgent tenga el texto aunque el popup se cierre
@@ -325,15 +322,15 @@ export function NetworkAnalysisPage() {
         try {
             // Buscar el canvas del gráfico en el DOM (Chart.js renderiza en un canvas)
             // Buscar dentro del contenedor del gráfico para ser más específico
-            const chartContainer = document.querySelector('[class*="BandSteeringChart"]') || 
-                                  document.querySelector('.lg\\:col-span-2 canvas') ||
-                                  document.querySelector('canvas')
-            
+            const chartContainer = document.querySelector('[class*="BandSteeringChart"]') ||
+                document.querySelector('.lg\\:col-span-2 canvas') ||
+                document.querySelector('canvas')
+
             if (chartContainer) {
-                const canvas = chartContainer.tagName === 'CANVAS' 
-                    ? chartContainer 
+                const canvas = chartContainer.tagName === 'CANVAS'
+                    ? chartContainer
                     : chartContainer.querySelector('canvas')
-                
+
                 if (canvas) {
                     // Capturar como imagen PNG con buena calidad
                     return canvas.toDataURL('image/png', 1.0)
@@ -344,11 +341,11 @@ export function NetworkAnalysisPage() {
         }
         return null
     }
-    
+
     // Función para generar HTML limpio para PDF
     const generatePDFHTML = () => {
         if (!result) return ''
-        
+
         const fileName = result?.file_name || fileMetadata?.name || ''
         const cleanName = cleanFileName(fileName).split('.')[0].replace(/_/g, ' ').trim()
         const device = result.band_steering?.device || {}
@@ -358,7 +355,7 @@ export function NetworkAnalysisPage() {
         // Recalcular el veredicto basándose en los checks corregidos
         let verdict = result.band_steering?.verdict || 'UNKNOWN'
         const baseChecks = result.band_steering?.compliance_checks || []
-        
+
         // Recalcular el estado de "Steering Efectivo" para determinar el veredicto correcto
         const steeringCheck = baseChecks.find(c => c.check_name === 'Steering Efectivo')
         if (steeringCheck) {
@@ -379,13 +376,13 @@ export function NetworkAnalysisPage() {
                 let isBandChange = t.is_band_change === true
                 let actualFromBand = fromBand
                 let actualToBand = toBand
-                
+
                 if (idx > 0) {
                     const prevTransition = sortedTransitions[idx - 1]
                     if (prevTransition && prevTransition.to_band) {
                         const prevBand = normalizeBand(prevTransition.to_band)
                         const currentBand = toBand || fromBand
-                        
+
                         if (prevBand && currentBand && prevBand !== currentBand) {
                             actualFromBand = prevBand
                             actualToBand = currentBand
@@ -403,25 +400,25 @@ export function NetworkAnalysisPage() {
                 } else if (!isBandChange && fromBand && toBand && fromBand !== toBand) {
                     isBandChange = true
                 }
-                
+
                 if (isBandChange && actualFromBand && actualToBand && actualFromBand !== actualToBand) {
                     bandChangeCount++
                 }
             })
-            
-            const bssidChangeTransitions = sortedTransitions.filter(t => 
-                t.is_successful && 
-                t.from_bssid && 
-                t.to_bssid && 
+
+            const bssidChangeTransitions = sortedTransitions.filter(t =>
+                t.is_successful &&
+                t.from_bssid &&
+                t.to_bssid &&
                 t.from_bssid !== t.to_bssid
             ).length
-            
+
             const steeringPassed = bandChangeCount > 0 || bssidChangeTransitions > 0
-            
+
             // Recalcular el veredicto basándose en los checks corregidos
             const assocCheck = baseChecks.find(c => c.category === 'association')
             const btmCheck = baseChecks.find(c => c.category === 'btm')
-            
+
             if (assocCheck && !assocCheck.passed) {
                 verdict = 'FAILED'
             } else if (btmCheck && !btmCheck.passed) {
@@ -440,21 +437,21 @@ export function NetworkAnalysisPage() {
                 }
             }
         }
-        
+
         const ssid = savedSsid || fileMetadata?.ssid || ''
         const analysisText = result.analysis || 'No hay análisis disponible'
-        
+
         // Capturar imagen del gráfico
         const chartImage = captureChartImage()
-        
+
         // Obtener MACs
-        const clientMac = result.stats?.diagnostics?.user_provided_client_mac || 
-                         result.stats?.diagnostics?.client_mac || 
-                         'Desconocido'
+        const clientMac = result.stats?.diagnostics?.user_provided_client_mac ||
+            result.stats?.diagnostics?.client_mac ||
+            'Desconocido'
         const rawInfo = result.stats?.diagnostics?.bssid_info || {}
         const macRegex = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i
         const bssids = Object.keys(rawInfo).filter(key => macRegex.test(key))
-        
+
         // Obtener métricas KVR
         const kvrCheck = result.band_steering?.compliance_checks?.find(c => c.check_name === "Estándares KVR")
         let kvrDetected = []
@@ -468,12 +465,12 @@ export function NetworkAnalysisPage() {
             if (kvr['11v']) kvrDetected.push('11v')
             if (kvr['11r']) kvrDetected.push('11r')
         }
-        
+
         // Obtener métricas de steering
         const sa = result.stats?.steering_analysis || {}
         const attempts = sa.steering_attempts ?? 0
         const successful = sa.successful_transitions ?? 0
-        
+
         // Calcular cambios de banda y transiciones
         const transitions = result.band_steering?.transitions || []
         const normalizeBand = (band) => {
@@ -493,7 +490,7 @@ export function NetworkAnalysisPage() {
             let isBandChange = t.is_band_change === true
             let actualFromBand = fromBand
             let actualToBand = toBand
-            
+
             // SIEMPRE comparar con la transición anterior para detectar cambios de banda reales
             // incluso si el backend no los marca correctamente (misma lógica que la gráfica)
             if (idx > 0) {
@@ -501,7 +498,7 @@ export function NetworkAnalysisPage() {
                 if (prevTransition && prevTransition.to_band) {
                     const prevBand = normalizeBand(prevTransition.to_band)
                     const currentBand = toBand || fromBand
-                    
+
                     // Si hay un cambio de banda real comparando con la transición anterior
                     if (prevBand && currentBand && prevBand !== currentBand) {
                         // Hay un cambio de banda real, incluso si el backend no lo marcó
@@ -525,7 +522,7 @@ export function NetworkAnalysisPage() {
                 // Primera transición: si las bandas son diferentes, es un cambio de banda
                 isBandChange = true
             }
-            
+
             // Verificar que realmente hay un cambio de banda válido
             if (isBandChange && actualFromBand && actualToBand && actualFromBand !== actualToBand) {
                 bandChangeCount++
@@ -533,16 +530,16 @@ export function NetworkAnalysisPage() {
                 associationOnlyCount++
             }
         })
-        
+
         // Calcular tiempo medido (usar la misma lógica que la aplicación: basarse en transitions y signal_samples)
         let measuredTime = 'N/A'
         try {
             const transitions = result.band_steering?.transitions || []
             const signalSamples = result.band_steering?.signal_samples || []
-            
+
             // Recopilar todos los timestamps de transiciones y muestras de señal
             const allTimestamps = []
-            
+
             transitions.forEach(t => {
                 if (t && t.start_time != null) {
                     allTimestamps.push(Number(t.start_time))
@@ -551,7 +548,7 @@ export function NetworkAnalysisPage() {
                     allTimestamps.push(Number(t.end_time))
                 }
             })
-            
+
             signalSamples.forEach(s => {
                 if (s && s.timestamp != null) {
                     const ts = Number(s.timestamp)
@@ -574,7 +571,7 @@ export function NetworkAnalysisPage() {
                     const wlanDa = normalizeMac(packet.wlan_da)
                     return wlanSa === normalizedClientMac || wlanDa === normalizedClientMac
                 })
-                
+
                 if (devicePackets.length > 0) {
                     const timestamps = devicePackets
                         .map(p => {
@@ -590,12 +587,12 @@ export function NetworkAnalysisPage() {
                     }
                 }
             }
-            
+
             if (allTimestamps.length > 1) {
                 const minTime = Math.min(...allTimestamps)
                 const maxTime = Math.max(...allTimestamps)
                 const timeDiff = maxTime - minTime
-                
+
                 if (timeDiff > 0) {
                     if (timeDiff < 1) {
                         measuredTime = `${(timeDiff * 1000).toFixed(0)} ms`
@@ -611,27 +608,27 @@ export function NetworkAnalysisPage() {
         } catch {
             measuredTime = 'N/A'
         }
-        
+
         // Obtener métricas BTM
         const btmRequests = result.band_steering?.btm_requests || 0
         const btmResponses = result.band_steering?.btm_responses || 0
         const btmAccept = result.band_steering?.btm_events?.filter(e => e.status_code === 0).length || 0
-        
+
         // Obtener métricas de asociación
         const assocCount = result.stats?.diagnostics?.band_counters?.assoc_count || 0
         const reassocCount = result.stats?.diagnostics?.band_counters?.reassoc_count || 0
         const disassocCount = result.stats?.diagnostics?.band_counters?.disassoc_count || 0
         const deauthCount = result.stats?.diagnostics?.band_counters?.deauth_count || 0
-        
+
         // Obtener soporte KVR detallado
         const kvrSupport = result.band_steering?.kvr_support || {}
         const kSupport = kvrSupport.k === true || kvrDetected.includes('11k')
         const vSupport = kvrSupport.v === true || kvrDetected.includes('11v')
         const rSupport = kvrSupport.r === true || kvrDetected.includes('11r')
-        
+
         // Calcular tiempo en cada banda y en transición (EXACTAMENTE la misma lógica que en el componente)
         const signalSamples = result.band_steering?.signal_samples || []
-        
+
         let bandTiming = null
         try {
             const sortedTransitions = (transitions || [])
@@ -639,7 +636,7 @@ export function NetworkAnalysisPage() {
                 .sort((a, b) => Number(a.start_time) - Number(b.start_time))
 
             const validTransitions = []
-            
+
             for (let idx = 0; idx < sortedTransitions.length; idx++) {
                 const t = sortedTransitions[idx]
                 let fromBand = normalizeBand(t.from_band || '')
@@ -727,20 +724,20 @@ export function NetworkAnalysisPage() {
                     .filter(s => s !== null)
                     .sort((a, b) => a.timestamp - b.timestamp)
                 : []
-            
+
             // Logs de depuración eliminados para producción
-            
+
             const transitionDurations = validTransitions.map(t => {
                 const transStartTime = normalizeTimestamp(t.start_time) || 0
                 const transEndTime = normalizeTimestamp(t.end_time) || 0
-                
+
                 // Si hay end_time, usar la duración real de la transición
                 if (transEndTime > transStartTime) {
                     const duration = transEndTime - transStartTime
                     // Limitar a un máximo razonable (30 segundos) para evitar valores absurdos
                     return Math.min(duration, 30.0)
                 }
-                
+
                 // Si no hay end_time, buscar el primer sample después de start_time
                 if (validSamples.length > 0) {
                     for (let i = 0; i < validSamples.length; i++) {
@@ -753,7 +750,7 @@ export function NetworkAnalysisPage() {
                         }
                     }
                 }
-                
+
                 // Valor por defecto pequeño si no hay información
                 return 0.5
             }).filter(d => !Number.isNaN(d) && d >= 0)
@@ -771,7 +768,7 @@ export function NetworkAnalysisPage() {
             const sampleTimestamps = (signalSamples || [])
                 .map(s => s && s.timestamp != null ? normalizeTimestamp(s.timestamp) : null)
                 .filter(ts => ts != null && !isNaN(ts))
-            
+
             // También incluir timestamps de transiciones para el cálculo de períodos,
             // pero el totalTime se basará solo en signalSamples para coincidir con la gráfica
             const allTimestamps = []
@@ -829,185 +826,185 @@ export function NetworkAnalysisPage() {
             }
 
             if (totalTime > 0) {
-                    let time24 = 0
-                    let time5 = 0
+                let time24 = 0
+                let time5 = 0
 
-                    const bandTimeline = []
-                    if (validTransitions.length > 0) {
-                        const firstTrans = validTransitions[0]
-                        let initialBand = normalizeBand(firstTrans.from_band || '')
-                        if (!initialBand && signalSamples.length > 0) {
-                            const samplesBeforeFirstTrans = signalSamples.filter(s => Number(s.timestamp) < Number(firstTrans.start_time || 0))
-                                .sort((a, b) => Number(b.timestamp) - Number(a.timestamp))
-                            if (samplesBeforeFirstTrans.length > 0) {
-                                initialBand = normalizeBand(samplesBeforeFirstTrans[0].band || '')
-                            }
+                const bandTimeline = []
+                if (validTransitions.length > 0) {
+                    const firstTrans = validTransitions[0]
+                    let initialBand = normalizeBand(firstTrans.from_band || '')
+                    if (!initialBand && signalSamples.length > 0) {
+                        const samplesBeforeFirstTrans = signalSamples.filter(s => Number(s.timestamp) < Number(firstTrans.start_time || 0))
+                            .sort((a, b) => Number(b.timestamp) - Number(a.timestamp))
+                        if (samplesBeforeFirstTrans.length > 0) {
+                            initialBand = normalizeBand(samplesBeforeFirstTrans[0].band || '')
                         }
-                        if (!initialBand) initialBand = normalizeBand(firstTrans.to_band || '')
+                    }
+                    if (!initialBand) initialBand = normalizeBand(firstTrans.to_band || '')
 
-                        // Período inicial antes de la primera transición
-                        if (initialBand && Number(firstTrans.start_time || 0) > minTime) {
+                    // Período inicial antes de la primera transición
+                    if (initialBand && Number(firstTrans.start_time || 0) > minTime) {
+                        bandTimeline.push({
+                            band: initialBand,
+                            start: minTime,
+                            end: Number(firstTrans.start_time || 0)
+                        })
+                    }
+
+                    // Períodos entre transiciones
+                    for (let i = 0; i < validTransitions.length; i++) {
+                        const t = validTransitions[i]
+                        const fromBand = normalizeBand(t.from_band || '')
+                        const toBand = normalizeBand(t.to_band || '')
+                        const transStart = Number(t.start_time || 0)
+                        const transEnd = Number(t.end_time != null ? t.end_time : transStart)
+
+                        // Período de la banda origen antes de la transición
+                        if (fromBand && transStart > (bandTimeline.length > 0 ? bandTimeline[bandTimeline.length - 1].end : minTime)) {
                             bandTimeline.push({
-                                band: initialBand,
-                                start: minTime,
-                                end: Number(firstTrans.start_time || 0)
+                                band: fromBand,
+                                start: bandTimeline.length > 0 ? bandTimeline[bandTimeline.length - 1].end : minTime,
+                                end: transStart
                             })
                         }
 
-                        // Períodos entre transiciones
-                        for (let i = 0; i < validTransitions.length; i++) {
-                            const t = validTransitions[i]
-                            const fromBand = normalizeBand(t.from_band || '')
-                            const toBand = normalizeBand(t.to_band || '')
-                            const transStart = Number(t.start_time || 0)
-                            const transEnd = Number(t.end_time != null ? t.end_time : transStart)
-
-                            // Período de la banda origen antes de la transición
-                            if (fromBand && transStart > (bandTimeline.length > 0 ? bandTimeline[bandTimeline.length - 1].end : minTime)) {
-                                bandTimeline.push({
-                                    band: fromBand,
-                                    start: bandTimeline.length > 0 ? bandTimeline[bandTimeline.length - 1].end : minTime,
-                                    end: transStart
-                                })
-                            }
-
-                            // Período de la banda destino después de la transición
-                        const nextTransStart = (i + 1 < validTransitions.length) 
-                            ? (normalizeTimestamp(validTransitions[i + 1].start_time) || 0) 
+                        // Período de la banda destino después de la transición
+                        const nextTransStart = (i + 1 < validTransitions.length)
+                            ? (normalizeTimestamp(validTransitions[i + 1].start_time) || 0)
                             : maxTime
-                            if (toBand && transEnd < nextTransStart) {
-                                bandTimeline.push({
-                                    band: toBand,
-                                    start: transEnd,
-                                    end: nextTransStart
-                                })
-                            }
-                        }
-                        
-                        // Asegurar que el último período llegue hasta maxTime
-                        if (bandTimeline.length > 0 && bandTimeline[bandTimeline.length - 1].end < maxTime) {
-                            const lastBand = bandTimeline[bandTimeline.length - 1].band
+                        if (toBand && transEnd < nextTransStart) {
                             bandTimeline.push({
-                                band: lastBand,
-                                start: bandTimeline[bandTimeline.length - 1].end,
-                                end: maxTime
+                                band: toBand,
+                                start: transEnd,
+                                end: nextTransStart
                             })
                         }
+                    }
 
-                        for (const period of bandTimeline) {
-                            let periodDuration = period.end - period.start
-                            for (const [transStart, transEnd] of transitionPeriods) {
-                                if (period.start < transEnd && period.end > transStart) {
-                                    const overlapStart = Math.max(period.start, transStart)
-                                    const overlapEnd = Math.min(period.end, transEnd)
-                                    periodDuration -= (overlapEnd - overlapStart)
-                                }
-                            }
-                            if (periodDuration > 0) {
-                                if (period.band === '2.4GHz') {
-                                    time24 += periodDuration
-                                } else if (period.band === '5GHz') {
-                                    time5 += periodDuration
-                                }
+                    // Asegurar que el último período llegue hasta maxTime
+                    if (bandTimeline.length > 0 && bandTimeline[bandTimeline.length - 1].end < maxTime) {
+                        const lastBand = bandTimeline[bandTimeline.length - 1].band
+                        bandTimeline.push({
+                            band: lastBand,
+                            start: bandTimeline[bandTimeline.length - 1].end,
+                            end: maxTime
+                        })
+                    }
+
+                    for (const period of bandTimeline) {
+                        let periodDuration = period.end - period.start
+                        for (const [transStart, transEnd] of transitionPeriods) {
+                            if (period.start < transEnd && period.end > transStart) {
+                                const overlapStart = Math.max(period.start, transStart)
+                                const overlapEnd = Math.min(period.end, transEnd)
+                                periodDuration -= (overlapEnd - overlapStart)
                             }
                         }
-                    } else if (validSamples.length > 0) {
-                        let i = 0
-                        while (i < validSamples.length) {
-                            const currentBand = validSamples[i].band
-                            let periodStart = validSamples[i].timestamp
-                            let periodEnd = periodStart
-
-                            let j = i + 1
-                            while (j < validSamples.length) {
-                                const nextSample = validSamples[j]
-                                const nextTs = nextSample.timestamp
-                                const nextBand = nextSample.band
-
-                                let inTransition = false
-                                for (const [transStart, transEnd] of transitionPeriods) {
-                                    if (transStart <= nextTs && nextTs <= transEnd) {
-                                        inTransition = true
-                                        break
-                                    }
-                                }
-
-                                if (nextBand !== currentBand || inTransition) {
-                                    break
-                                }
-
-                                if (nextTs - periodEnd <= 5.0) {
-                                    periodEnd = nextTs
-                                    j++
-                                } else {
-                                    break
-                                }
+                        if (periodDuration > 0) {
+                            if (period.band === '2.4GHz') {
+                                time24 += periodDuration
+                            } else if (period.band === '5GHz') {
+                                time5 += periodDuration
                             }
-
-                            let periodDuration = periodEnd - periodStart
-                            for (const [transStart, transEnd] of transitionPeriods) {
-                                if (periodStart < transEnd && periodEnd > transStart) {
-                                    const overlapStart = Math.max(periodStart, transStart)
-                                    const overlapEnd = Math.min(periodEnd, transEnd)
-                                    periodDuration -= (overlapEnd - overlapStart)
-                                }
-                            }
-
-                            if (periodDuration > 0) {
-                                if (currentBand === '2.4GHz') {
-                                    time24 += periodDuration
-                                } else if (currentBand === '5GHz') {
-                                    time5 += periodDuration
-                                }
-                            }
-
-                            i = j
                         }
+                    }
+                } else if (validSamples.length > 0) {
+                    let i = 0
+                    while (i < validSamples.length) {
+                        const currentBand = validSamples[i].band
+                        let periodStart = validSamples[i].timestamp
+                        let periodEnd = periodStart
+
+                        let j = i + 1
+                        while (j < validSamples.length) {
+                            const nextSample = validSamples[j]
+                            const nextTs = nextSample.timestamp
+                            const nextBand = nextSample.band
+
+                            let inTransition = false
+                            for (const [transStart, transEnd] of transitionPeriods) {
+                                if (transStart <= nextTs && nextTs <= transEnd) {
+                                    inTransition = true
+                                    break
+                                }
+                            }
+
+                            if (nextBand !== currentBand || inTransition) {
+                                break
+                            }
+
+                            if (nextTs - periodEnd <= 5.0) {
+                                periodEnd = nextTs
+                                j++
+                            } else {
+                                break
+                            }
+                        }
+
+                        let periodDuration = periodEnd - periodStart
+                        for (const [transStart, transEnd] of transitionPeriods) {
+                            if (periodStart < transEnd && periodEnd > transStart) {
+                                const overlapStart = Math.max(periodStart, transStart)
+                                const overlapEnd = Math.min(periodEnd, transEnd)
+                                periodDuration -= (overlapEnd - overlapStart)
+                            }
+                        }
+
+                        if (periodDuration > 0) {
+                            if (currentBand === '2.4GHz') {
+                                time24 += periodDuration
+                            } else if (currentBand === '5GHz') {
+                                time5 += periodDuration
+                            }
+                        }
+
+                        i = j
+                    }
                 }
 
-                    const totalTransitionTime = transitionDurations.reduce((a, b) => a + b, 0)
-                    const totalBandTime = time24 + time5
-                    const expectedTotal = totalTime - totalTransitionTime
+                const totalTransitionTime = transitionDurations.reduce((a, b) => a + b, 0)
+                const totalBandTime = time24 + time5
+                const expectedTotal = totalTime - totalTransitionTime
 
-                    // Ajustar tiempos si hay discrepancia, pero mantener la proporción
-                    if (expectedTotal > 0 && Math.abs(totalBandTime - expectedTotal) > 0.1) {
-                        if (totalBandTime > expectedTotal * 1.1) {
-                            // Si el tiempo de banda es mucho mayor, escalar hacia abajo
-                            const scale = expectedTotal / totalBandTime
-                            time24 *= scale
-                            time5 *= scale
-                        } else if (totalBandTime < expectedTotal * 0.9) {
-                            // Si el tiempo de banda es menor, ajustar proporcionalmente
-                            const scale = expectedTotal / totalBandTime
-                            time24 *= scale
-                            time5 *= scale
-                        }
+                // Ajustar tiempos si hay discrepancia, pero mantener la proporción
+                if (expectedTotal > 0 && Math.abs(totalBandTime - expectedTotal) > 0.1) {
+                    if (totalBandTime > expectedTotal * 1.1) {
+                        // Si el tiempo de banda es mucho mayor, escalar hacia abajo
+                        const scale = expectedTotal / totalBandTime
+                        time24 *= scale
+                        time5 *= scale
+                    } else if (totalBandTime < expectedTotal * 0.9) {
+                        // Si el tiempo de banda es menor, ajustar proporcionalmente
+                        const scale = expectedTotal / totalBandTime
+                        time24 *= scale
+                        time5 *= scale
                     }
+                }
 
-                    const transitionsWithDuration = validTransitions.map((t, idx) => {
+                const transitionsWithDuration = validTransitions.map((t, idx) => {
                     const startTime = normalizeTimestamp(t.start_time) || 0
-                        const duration = idx < transitionDurations.length ? transitionDurations[idx] : 0
-                        return {
-                            fromBand: normalizeBand(t.from_band || ''),
-                            toBand: normalizeBand(t.to_band || ''),
-                            duration: duration,
-                            relStart: startTime - minTime
-                        }
-                    }).filter(t => !Number.isNaN(t.duration) && t.duration >= 0)
-                    
-                    // Recalcular totalBandTime después del ajuste
-                    const finalTotalBandTime = time24 + time5
-                    const finalTotalTime = finalTotalBandTime + totalTransitionTime
-                    
-                    bandTiming = {
-                        time24,
-                        time5,
-                        totalTime: finalTotalTime, // Tiempo total incluyendo transiciones para que los porcentajes sumen 100%
-                        totalBandTime: finalTotalBandTime,
-                        totalTransitionTime,
-                        transitions: transitionsWithDuration,
-                        transitionDurations
+                    const duration = idx < transitionDurations.length ? transitionDurations[idx] : 0
+                    return {
+                        fromBand: normalizeBand(t.from_band || ''),
+                        toBand: normalizeBand(t.to_band || ''),
+                        duration: duration,
+                        relStart: startTime - minTime
                     }
+                }).filter(t => !Number.isNaN(t.duration) && t.duration >= 0)
+
+                // Recalcular totalBandTime después del ajuste
+                const finalTotalBandTime = time24 + time5
+                const finalTotalTime = finalTotalBandTime + totalTransitionTime
+
+                bandTiming = {
+                    time24,
+                    time5,
+                    totalTime: finalTotalTime, // Tiempo total incluyendo transiciones para que los porcentajes sumen 100%
+                    totalBandTime: finalTotalBandTime,
+                    totalTransitionTime,
+                    transitions: transitionsWithDuration,
+                    transitionDurations
+                }
             } else {
                 console.warn('⚠️ [BAND_TIMING PDF] totalTime <= 0, no se puede calcular bandTiming')
             }
@@ -1016,7 +1013,7 @@ export function NetworkAnalysisPage() {
             console.error('❌ [BAND_TIMING PDF] Stack trace:', e.stack)
             bandTiming = null
         }
-        
+
         const formatSeconds = (seconds) => {
             if (seconds == null || Number.isNaN(seconds) || seconds <= 0) return '0 s'
             if (seconds < 1) return `${(seconds * 1000).toFixed(0)} ms`
@@ -1025,18 +1022,18 @@ export function NetworkAnalysisPage() {
             const rem = seconds % 60
             return `${minutes} min ${rem.toFixed(1)} s`
         }
-        
+
         // Convertir markdown a HTML con mejor formato
         const formatAnalysis = (text) => {
             if (!text) return ''
-            
+
             // Dividir por líneas
             const lines = text.split('\n')
             let html = ''
             let inList = false
             let inOrderedList = false
             let listItems = []
-            
+
             const closeList = () => {
                 if (inList) {
                     html += '<ul style="margin: 8px 0; padding-left: 20px; list-style-type: disc;">'
@@ -1057,15 +1054,15 @@ export function NetworkAnalysisPage() {
                     inOrderedList = false
                 }
             }
-            
+
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim()
-                
+
                 if (!line) {
                     closeList()
                     continue
                 }
-                
+
                 // Títulos markdown
                 if (line.match(/^#+\s/)) {
                     closeList()
@@ -1076,7 +1073,7 @@ export function NetworkAnalysisPage() {
                     html += `<h${Math.min(level + 1, 4)} style="margin-top: ${marginTop}; margin-bottom: 8px; font-size: ${fontSize}; font-weight: 600; color: #374151; page-break-after: avoid;">${content}</h${Math.min(level + 1, 4)}>`
                     continue
                 }
-                
+
                 // Listas ordenadas (1., 2., etc.)
                 const orderedMatch = line.match(/^(\d+)\.\s+(.+)$/)
                 if (orderedMatch) {
@@ -1092,7 +1089,7 @@ export function NetworkAnalysisPage() {
                     listItems.push(itemText)
                     continue
                 }
-                
+
                 // Listas no ordenadas (-, *, •)
                 if (line.match(/^[-*•]\s+(.+)$/)) {
                     closeList()
@@ -1107,10 +1104,10 @@ export function NetworkAnalysisPage() {
                     listItems.push(itemText)
                     continue
                 }
-                
+
                 // Si llegamos aquí y hay una lista abierta, cerrarla
                 closeList()
-                
+
                 // Párrafo normal
                 let paraText = line
                 // Procesar negritas
@@ -1118,34 +1115,34 @@ export function NetworkAnalysisPage() {
                 // Procesar cursivas
                 paraText = paraText.replace(/\*(.*?)\*/g, '<em>$1</em>')
                 // Procesar código inline
-                    paraText = paraText.replace(/`([^`]+)`/g, '<code style="background: #f3f4f6; padding: 2px 4px; border-radius: 3px; font-family: monospace; font-size: 7pt;">$1</code>')
-                
+                paraText = paraText.replace(/`([^`]+)`/g, '<code style="background: #f3f4f6; padding: 2px 4px; border-radius: 3px; font-family: monospace; font-size: 7pt;">$1</code>')
+
                 html += `<p style="margin-bottom: 8px; font-size: 8pt; line-height: 1.6; text-align: justify;">${paraText}</p>`
             }
-            
+
             // Cerrar cualquier lista que quede abierta
             closeList()
-            
+
             return html
         }
-        
+
         // Obtener compliance checks
         const complianceChecks = result.band_steering?.compliance_checks || []
-        
+
         // Procesar paquetes de Wireshark para la tabla
         const wiresharkSampleForTable = result.stats?.diagnostics?.wireshark_raw?.sample || []
         const processWiresharkPackets = (sample) => {
             if (!sample || sample.length === 0) return []
-            
+
             return sample.map((row, idx) => {
                 let protocol = '802.11'
                 let info = ''
                 let color = '#6b7280'
-                
+
                 const subtype = row.subtype || ''
                 const category = row.category_code || ''
                 const action = row.action_code || ''
-                
+
                 if (subtype) {
                     const subtypeInt = parseInt(subtype) || 0
                     switch (subtypeInt) {
@@ -1200,18 +1197,18 @@ export function NetworkAnalysisPage() {
                         }
                     }
                 }
-                
+
                 let band = 'Unknown'
                 if (row.frequency) {
                     const freq = parseInt(row.frequency) || 0
                     if (freq >= 2400 && freq <= 2500) band = '2.4 GHz'
                     else if (freq >= 5000 && freq <= 6000) band = '5 GHz'
                 }
-                
+
                 const source = row.source || row.wlan_sa || row.bssid || 'N/A'
                 const destination = row.destination || row.wlan_da || 'Broadcast'
                 const time = parseFloat(row.timestamp) || 0
-                
+
                 return {
                     no: idx + 1,
                     time: time,
@@ -1224,15 +1221,15 @@ export function NetworkAnalysisPage() {
                 }
             })
         }
-        
+
         const wiresharkPackets = processWiresharkPackets(wiresharkSampleForTable)
         const originalCount = result.stats?.diagnostics?.wireshark_raw?.original_count || wiresharkSampleForTable.length
         const isTruncated = result.stats?.diagnostics?.wireshark_raw?.truncated || false
-        
+
         // Función para filtrar paquetes más relevantes de cada tipo
         const filterRelevantPackets = (packets) => {
             if (packets.length <= 50) return packets // Si hay pocos paquetes, mostrar todos
-            
+
             // Obtener transiciones para identificar paquetes relacionados
             const transitions = result.band_steering?.transitions || []
             const transitionTimes = new Set()
@@ -1240,7 +1237,7 @@ export function NetworkAnalysisPage() {
                 if (t.start_time) transitionTimes.add(Number(t.start_time))
                 if (t.end_time) transitionTimes.add(Number(t.end_time))
             })
-            
+
             // Clasificar paquetes por tipo
             const packetsByType = {
                 btm: [], // BTM Requests/Responses (todos relevantes)
@@ -1249,14 +1246,14 @@ export function NetworkAnalysisPage() {
                 beacon: [], // Beacons (solo algunos)
                 other: [] // Otros tipos
             }
-            
+
             packets.forEach(packet => {
                 const info = packet.info.toLowerCase()
                 const time = packet.time
-                
+
                 // Verificar si está cerca de una transición (dentro de 2 segundos)
                 const isNearTransition = Array.from(transitionTimes).some(tt => Math.abs(time - tt) <= 2)
-                
+
                 if (info.includes('btm')) {
                     packetsByType.btm.push({ ...packet, isNearTransition })
                 } else if (info.includes('association') || info.includes('reassociation')) {
@@ -1269,13 +1266,13 @@ export function NetworkAnalysisPage() {
                     packetsByType.other.push({ ...packet, isNearTransition })
                 }
             })
-            
+
             // Seleccionar paquetes relevantes
             const relevantPackets = []
-            
+
             // BTM: todos son relevantes
             relevantPackets.push(...packetsByType.btm)
-            
+
             // Association/Reassociation: los relacionados con transiciones + primeros 3 + últimos 3
             const assocRelevant = packetsByType.association.filter(p => p.isNearTransition)
             const assocOthers = packetsByType.association.filter(p => !p.isNearTransition)
@@ -1290,10 +1287,10 @@ export function NetworkAnalysisPage() {
                     relevantPackets.push(assocOthers[mid]) // Medio
                 }
             }
-            
+
             // Disassociation/Deauthentication: todos son relevantes
             relevantPackets.push(...packetsByType.disassociation)
-            
+
             // Beacon: solo algunos representativos (primeros 2, últimos 2, y algunos intermedios)
             if (packetsByType.beacon.length > 0) {
                 relevantPackets.push(packetsByType.beacon[0]) // Primero
@@ -1310,10 +1307,10 @@ export function NetworkAnalysisPage() {
                     }
                 }
             }
-            
+
             // Otros: solo los relacionados con transiciones
             relevantPackets.push(...packetsByType.other.filter(p => p.isNearTransition))
-            
+
             // Ordenar por tiempo y eliminar duplicados
             const uniquePackets = []
             const seen = new Set()
@@ -1326,16 +1323,16 @@ export function NetworkAnalysisPage() {
                         uniquePackets.push(p)
                     }
                 })
-            
+
             // Limitar a máximo 100 paquetes para el PDF
             return uniquePackets.slice(0, 100)
         }
-        
+
         const relevantWiresharkPackets = filterRelevantPackets(wiresharkPackets)
-        
+
         // Generar nombre del PDF en el estilo "Pipe [MODELO]"
         const pdfTitle = model && model !== 'Genérico' ? `Pipe ${model.toUpperCase()}` : `Pipe ${cleanName.toUpperCase()}`
-        
+
         const htmlContent = `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -1863,65 +1860,65 @@ export function NetworkAnalysisPage() {
             <p class="section-description">Evaluación técnica de capacidades 802.11k/v/r basada directamente en la captura real de Wireshark/tshark</p>
         </div>
         ${(() => {
-            const successVerdicts = ['SUCCESS', 'EXCELLENT', 'GOOD', 'PREVENTIVE_SUCCESS', 'ACCEPTABLE', 'SLOW_BUT_SUCCESSFUL']
-            const failedVerdicts = ['FAILED', 'FAILED_BTM_REJECT', 'FAILED_LOOP', 'FAILED_NO_REASSOC']
-            const partialVerdicts = ['PARTIAL', 'NO_DATA', 'NO_STEERING_EVENTS']
-            
-            const verdictUpper = verdict.toUpperCase()
-            let badgeClass = 'success-badge-large'
-            let badgeText = verdictUpper
-            
-            if (failedVerdicts.includes(verdictUpper)) {
-                badgeClass = 'failed-badge-large'
-                badgeText = 'FAILED'
-            } else if (partialVerdicts.includes(verdictUpper)) {
-                badgeClass = 'partial-badge-large'
-                badgeText = verdictUpper === 'PARTIAL' ? 'PARTIAL' : verdictUpper
-            } else if (successVerdicts.includes(verdictUpper)) {
-                badgeClass = 'success-badge-large'
-                badgeText = verdictUpper === 'SUCCESS' ? 'SUCCESS' : verdictUpper
-            } else {
-                badgeClass = 'success-badge-large'
-                badgeText = verdictUpper
-            }
-            
-            return `<span class="${badgeClass}">${badgeText}</span>`
-        })()}
+                const successVerdicts = ['SUCCESS', 'EXCELLENT', 'GOOD', 'PREVENTIVE_SUCCESS', 'ACCEPTABLE', 'SLOW_BUT_SUCCESSFUL']
+                const failedVerdicts = ['FAILED', 'FAILED_BTM_REJECT', 'FAILED_LOOP', 'FAILED_NO_REASSOC']
+                const partialVerdicts = ['PARTIAL', 'NO_DATA', 'NO_STEERING_EVENTS']
+
+                const verdictUpper = verdict.toUpperCase()
+                let badgeClass = 'success-badge-large'
+                let badgeText = verdictUpper
+
+                if (failedVerdicts.includes(verdictUpper)) {
+                    badgeClass = 'failed-badge-large'
+                    badgeText = 'FAILED'
+                } else if (partialVerdicts.includes(verdictUpper)) {
+                    badgeClass = 'partial-badge-large'
+                    badgeText = verdictUpper === 'PARTIAL' ? 'PARTIAL' : verdictUpper
+                } else if (successVerdicts.includes(verdictUpper)) {
+                    badgeClass = 'success-badge-large'
+                    badgeText = verdictUpper === 'SUCCESS' ? 'SUCCESS' : verdictUpper
+                } else {
+                    badgeClass = 'success-badge-large'
+                    badgeText = verdictUpper
+                }
+
+                return `<span class="${badgeClass}">${badgeText}</span>`
+            })()}
     </div>
 
     <!-- Detalle de Cumplimiento Técnico -->
     <div class="card" style="background: #eff6ff; border-left: 4px solid #3b82f6;">
         <h3 style="margin-top: 0; margin-bottom: 10px; font-size: 10pt; font-weight: 700;">DETALLE DE CUMPLIMIENTO TÉCNICO</h3>
         ${complianceChecks.length > 0 ? complianceChecks.map(check => {
-        const checkDetails = check.details || ''
-        let displayDetails = checkDetails
-        let actualPassed = check.passed
-        
-        // Usar los detalles del check directamente (como en la aplicación)
-        // Solo formatear para HTML y recalcular para "Steering Efectivo"
-        if (check.check_name === 'Steering Efectivo') {
-            // Recalcular displayDetails con el número correcto de cambios de banda
-            displayDetails = `TRANSICIONES CON CAMBIO DE BANDA: ${bandChangeCount} | TRANSICIONES TOTALES: ${successful} | BTM ACCEPT: ${btmAccept}`
-            
-            // Recalcular passed: pasa si hay al menos 1 cambio de banda exitoso
-            // O si hay transiciones exitosas entre BSSIDs distintos
-            const transitions = result.band_steering?.transitions || []
-            const bssidChangeTransitions = transitions.filter(t => 
-                t.is_successful && 
-                t.from_bssid && 
-                t.to_bssid && 
-                t.from_bssid !== t.to_bssid
-            ).length
-            
-            // El check pasa si hay al menos 1 cambio de banda O al menos 1 cambio de BSSID
-            actualPassed = bandChangeCount > 0 || bssidChangeTransitions > 0
-        } else {
-            // Para los demás checks, usar los detalles directamente del backend
-            // Solo reemplazar saltos de línea por <br> para HTML
-            displayDetails = checkDetails.replace(/\n/g, '<br>')
-        }
-        
-        return `
+                const checkDetails = check.details || ''
+                let displayDetails = checkDetails
+                let actualPassed = check.passed
+
+                // Usar los detalles del check directamente (como en la aplicación)
+                // Solo formatear para HTML y recalcular para "Steering Efectivo"
+                if (check.check_name === 'Steering Efectivo') {
+                    // Recalcular displayDetails con el número correcto de cambios de banda
+                    displayDetails = `TRANSICIONES CON CAMBIO DE BANDA: ${bandChangeCount} | TRANSICIONES TOTALES: ${successful} | BTM ACCEPT: ${btmAccept}`
+
+                    // Recalcular passed: pasa si hay al menos 1 cambio de banda exitoso
+                    // O si hay transiciones exitosas entre BSSIDs distintos
+                    const transitions = result.band_steering?.transitions || []
+                    const bssidChangeTransitions = transitions.filter(t =>
+                        t.is_successful &&
+                        t.from_bssid &&
+                        t.to_bssid &&
+                        t.from_bssid !== t.to_bssid
+                    ).length
+
+                    // El check pasa si hay al menos 1 cambio de banda O al menos 1 cambio de BSSID
+                    actualPassed = bandChangeCount > 0 || bssidChangeTransitions > 0
+                } else {
+                    // Para los demás checks, usar los detalles directamente del backend
+                    // Solo reemplazar saltos de línea por <br> para HTML
+                    displayDetails = checkDetails.replace(/\n/g, '<br>')
+                }
+
+                return `
         <div class="compliance-check">
             <div style="flex: 1;">
                 <div class="compliance-check-title">${check.check_name}</div>
@@ -1932,7 +1929,7 @@ export function NetworkAnalysisPage() {
             </div>
         </div>
         `
-    }).join('') : `
+            }).join('') : `
     <div class="compliance-check">
         <div style="flex: 1;">
             <div class="compliance-check-title">Soporte BTM (802.11v)</div>
@@ -2117,20 +2114,20 @@ export function NetworkAnalysisPage() {
                     </div>
                     <span style="font-size: 14pt; font-weight: 700; color: #60a5fa; white-space: nowrap;">
                         ${(() => {
-                            const totalTimeForPct = bandTiming.totalTime || (bandTiming.time24 + bandTiming.time5 + (bandTiming.totalTransitionTime || 0))
-                            const pct24 = totalTimeForPct > 0 ? Math.round((bandTiming.time24 / totalTimeForPct) * 100) : 0
-                            return pct24
-                        })()}%
+                    const totalTimeForPct = bandTiming.totalTime || (bandTiming.time24 + bandTiming.time5 + (bandTiming.totalTransitionTime || 0))
+                    const pct24 = totalTimeForPct > 0 ? Math.round((bandTiming.time24 / totalTimeForPct) * 100) : 0
+                    return pct24
+                })()}%
                     </span>
                 </div>
                 
                 <!-- Barra de progreso -->
                 <div style="width: 100%; height: 10px; background: rgba(0, 0, 0, 0.1); border-radius: 9999px; overflow: hidden; margin-bottom: 12px;">
                     <div style="height: 100%; background: #3b82f6; border-radius: 9999px; width: ${(() => {
-                        const totalTimeForPct = bandTiming.totalTime || (bandTiming.time24 + bandTiming.time5 + (bandTiming.totalTransitionTime || 0))
-                        const pct24 = totalTimeForPct > 0 ? Math.round((bandTiming.time24 / totalTimeForPct) * 100) : 0
-                        return pct24
-                    })()}%;"></div>
+                    const totalTimeForPct = bandTiming.totalTime || (bandTiming.time24 + bandTiming.time5 + (bandTiming.totalTransitionTime || 0))
+                    const pct24 = totalTimeForPct > 0 ? Math.round((bandTiming.time24 / totalTimeForPct) * 100) : 0
+                    return pct24
+                })()}%;"></div>
                 </div>
                 
                 <div style="text-align: right; font-family: 'Courier New', monospace; font-size: 14pt; color: #6b7280; white-space: nowrap;">
@@ -2147,20 +2144,20 @@ export function NetworkAnalysisPage() {
                     </div>
                     <span style="font-size: 14pt; font-weight: 700; color: #34d399; white-space: nowrap;">
                         ${(() => {
-                            const totalTimeForPct = bandTiming.totalTime || (bandTiming.time24 + bandTiming.time5 + (bandTiming.totalTransitionTime || 0))
-                            const pct5 = totalTimeForPct > 0 ? Math.round((bandTiming.time5 / totalTimeForPct) * 100) : 0
-                            return pct5
-                        })()}%
+                    const totalTimeForPct = bandTiming.totalTime || (bandTiming.time24 + bandTiming.time5 + (bandTiming.totalTransitionTime || 0))
+                    const pct5 = totalTimeForPct > 0 ? Math.round((bandTiming.time5 / totalTimeForPct) * 100) : 0
+                    return pct5
+                })()}%
                     </span>
                 </div>
                 
                 <!-- Barra de progreso -->
                 <div style="width: 100%; height: 10px; background: rgba(0, 0, 0, 0.1); border-radius: 9999px; overflow: hidden; margin-bottom: 12px;">
                     <div style="height: 100%; background: #10b981; border-radius: 9999px; width: ${(() => {
-                        const totalTimeForPct = bandTiming.totalTime || (bandTiming.time24 + bandTiming.time5 + (bandTiming.totalTransitionTime || 0))
-                        const pct5 = totalTimeForPct > 0 ? Math.round((bandTiming.time5 / totalTimeForPct) * 100) : 0
-                        return pct5
-                    })()}%;"></div>
+                    const totalTimeForPct = bandTiming.totalTime || (bandTiming.time24 + bandTiming.time5 + (bandTiming.totalTransitionTime || 0))
+                    const pct5 = totalTimeForPct > 0 ? Math.round((bandTiming.time5 / totalTimeForPct) * 100) : 0
+                    return pct5
+                })()}%;"></div>
                 </div>
                 
                 <div style="text-align: right; font-family: 'Courier New', monospace; font-size: 14pt; color: #6b7280; white-space: nowrap;">
@@ -2181,75 +2178,75 @@ export function NetworkAnalysisPage() {
             
             <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
                 ${(() => {
-                    // Crear lista de transiciones de cambios de banda usando la misma lógica que bandChangeCount
-                    const bandChangeTransitions = []
-                    sortedTransitions.forEach((t, idx) => {
-                        if (!t.is_successful) return
-                        const fromBand = normalizeBand(t.from_band)
-                        const toBand = normalizeBand(t.to_band)
-                        let isBandChange = t.is_band_change === true
-                        let actualFromBand = fromBand
-                        let actualToBand = toBand
-                        
-                        if (idx > 0) {
-                            const prevTransition = sortedTransitions[idx - 1]
-                            if (prevTransition && prevTransition.to_band) {
-                                const prevBand = normalizeBand(prevTransition.to_band)
-                                const currentBand = toBand || fromBand
-                                
-                                if (prevBand && currentBand && prevBand !== currentBand) {
-                                    actualFromBand = prevBand
-                                    actualToBand = currentBand
-                                    isBandChange = true
-                                } else if (isBandChange && fromBand === toBand) {
-                                    if (prevBand === toBand) {
-                                        isBandChange = false
-                                    } else if (prevBand && prevBand !== toBand) {
+                        // Crear lista de transiciones de cambios de banda usando la misma lógica que bandChangeCount
+                        const bandChangeTransitions = []
+                        sortedTransitions.forEach((t, idx) => {
+                            if (!t.is_successful) return
+                            const fromBand = normalizeBand(t.from_band)
+                            const toBand = normalizeBand(t.to_band)
+                            let isBandChange = t.is_band_change === true
+                            let actualFromBand = fromBand
+                            let actualToBand = toBand
+
+                            if (idx > 0) {
+                                const prevTransition = sortedTransitions[idx - 1]
+                                if (prevTransition && prevTransition.to_band) {
+                                    const prevBand = normalizeBand(prevTransition.to_band)
+                                    const currentBand = toBand || fromBand
+
+                                    if (prevBand && currentBand && prevBand !== currentBand) {
                                         actualFromBand = prevBand
-                                        actualToBand = toBand
+                                        actualToBand = currentBand
                                         isBandChange = true
+                                    } else if (isBandChange && fromBand === toBand) {
+                                        if (prevBand === toBand) {
+                                            isBandChange = false
+                                        } else if (prevBand && prevBand !== toBand) {
+                                            actualFromBand = prevBand
+                                            actualToBand = toBand
+                                            isBandChange = true
+                                        }
                                     }
                                 }
+                            } else if (!isBandChange && fromBand && toBand && fromBand !== toBand) {
+                                isBandChange = true
                             }
-                        } else if (!isBandChange && fromBand && toBand && fromBand !== toBand) {
-                            isBandChange = true
-                        }
-                        
-                        if (isBandChange && actualFromBand && actualToBand && actualFromBand !== actualToBand) {
-                            // Buscar duración en bandTiming si está disponible
-                            let duration = 0
-                            if (bandTiming && bandTiming.transitions) {
-                                const matchingTransition = bandTiming.transitions.find(bt => 
-                                    bt.fromBand === actualFromBand && bt.toBand === actualToBand
-                                )
-                                if (matchingTransition) {
-                                    duration = matchingTransition.duration || 0
+
+                            if (isBandChange && actualFromBand && actualToBand && actualFromBand !== actualToBand) {
+                                // Buscar duración en bandTiming si está disponible
+                                let duration = 0
+                                if (bandTiming && bandTiming.transitions) {
+                                    const matchingTransition = bandTiming.transitions.find(bt =>
+                                        bt.fromBand === actualFromBand && bt.toBand === actualToBand
+                                    )
+                                    if (matchingTransition) {
+                                        duration = matchingTransition.duration || 0
+                                    }
                                 }
+                                bandChangeTransitions.push({
+                                    fromBand: actualFromBand,
+                                    toBand: actualToBand,
+                                    duration: duration
+                                })
                             }
-                            bandChangeTransitions.push({
-                                fromBand: actualFromBand,
-                                toBand: actualToBand,
-                                duration: duration
-                            })
-                        }
-                    })
-                    return bandChangeTransitions
-                })().map((t) => {
-                    const is24to5 = t.fromBand === '2.4GHz' && t.toBand === '5GHz'
-                    const is5to24 = t.fromBand === '5GHz' && t.toBand === '2.4GHz'
-                    const borderColor = is24to5 
-                        ? 'rgba(59, 130, 246, 0.3)' 
-                        : is5to24 
-                            ? 'rgba(16, 185, 129, 0.3)'
-                            : 'rgba(229, 231, 235, 0.5)'
-                    const bgColor = is24to5 
-                        ? 'rgba(59, 130, 246, 0.05)' 
-                        : is5to24 
-                            ? 'rgba(16, 185, 129, 0.05)'
-                            : 'rgba(0, 0, 0, 0.02)'
-                    const dotColor = is24to5 ? '#3b82f6' : is5to24 ? '#10b981' : '#6366f1'
-                    
-                    return `
+                        })
+                        return bandChangeTransitions
+                    })().map((t) => {
+                        const is24to5 = t.fromBand === '2.4GHz' && t.toBand === '5GHz'
+                        const is5to24 = t.fromBand === '5GHz' && t.toBand === '2.4GHz'
+                        const borderColor = is24to5
+                            ? 'rgba(59, 130, 246, 0.3)'
+                            : is5to24
+                                ? 'rgba(16, 185, 129, 0.3)'
+                                : 'rgba(229, 231, 235, 0.5)'
+                        const bgColor = is24to5
+                            ? 'rgba(59, 130, 246, 0.05)'
+                            : is5to24
+                                ? 'rgba(16, 185, 129, 0.05)'
+                                : 'rgba(0, 0, 0, 0.02)'
+                        const dotColor = is24to5 ? '#3b82f6' : is5to24 ? '#10b981' : '#6366f1'
+
+                        return `
                     <div style="border-radius: 8px; border: 1px solid ${borderColor}; background: ${bgColor}; padding: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                         <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
                             <div style="width: 8px; height: 8px; border-radius: 50%; background: ${dotColor}; flex-shrink: 0;"></div>
@@ -2262,7 +2259,7 @@ export function NetworkAnalysisPage() {
                         </span>
                     </div>
                     `
-                }).join('')}
+                    }).join('')}
             </div>
         </div>
         ` : ''}
@@ -2294,14 +2291,14 @@ export function NetworkAnalysisPage() {
         </thead>
         <tbody>
             ${relevantWiresharkPackets.map((packet, idx) => {
-                const formatTime = (time) => {
-                    if (time < 1) return time.toFixed(6)
-                    if (time < 60) return time.toFixed(6)
-                    const minutes = Math.floor(time / 60)
-                    const seconds = (time % 60).toFixed(6)
-                    return `${minutes}:${seconds}`
-                }
-                return `
+                        const formatTime = (time) => {
+                            if (time < 1) return time.toFixed(6)
+                            if (time < 60) return time.toFixed(6)
+                            const minutes = Math.floor(time / 60)
+                            const seconds = (time % 60).toFixed(6)
+                            return `${minutes}:${seconds}`
+                        }
+                        return `
                 <tr>
                     <td class="packet-no">${idx + 1}</td>
                     <td class="packet-time">${formatTime(packet.time)}</td>
@@ -2312,7 +2309,7 @@ export function NetworkAnalysisPage() {
                     <td class="packet-info" style="color: ${packet.color};">${packet.info}</td>
                 </tr>
                 `
-            }).join('')}
+                    }).join('')}
         </tbody>
     </table>
     ` : ''}
@@ -2330,7 +2327,7 @@ export function NetworkAnalysisPage() {
     </div>
 </body>
 </html>`
-        
+
         return htmlContent
     }
 
@@ -2338,20 +2335,20 @@ export function NetworkAnalysisPage() {
     // Esto asegura que el PDF descargado desde el menú sea siempre el mismo que se genera aquí
     React.useEffect(() => {
         let timeoutId = null
-        
+
         if (result?.band_steering?.analysis_id) {
             // Esperar a que el gráfico se renderice completamente antes de generar el PDF
             timeoutId = setTimeout(async () => {
                 try {
                     const analysisId = result.band_steering.analysis_id
-                    
+
                     // Generar HTML limpio y completo para el PDF
                     const htmlContent = generatePDFHTML()
-                    
+
                     if (htmlContent) {
                         // Guardar el PDF en el backend
                         await networkAnalysisService.savePDF(analysisId, htmlContent)
-                    // PDF generado y guardado automáticamente
+                        // PDF generado y guardado automáticamente
                     }
                 } catch (error) {
                     // No mostrar error al usuario, solo loguear
@@ -2359,7 +2356,7 @@ export function NetworkAnalysisPage() {
                 }
             }, 2000) // Esperar 2 segundos para que el gráfico se renderice
         }
-        
+
         return () => {
             if (timeoutId) {
                 clearTimeout(timeoutId)
@@ -2371,15 +2368,15 @@ export function NetworkAnalysisPage() {
     // Función para descargar el PDF directamente
     const handleDownloadPDF = async () => {
         if (!result) return
-        
+
         const fileName = result?.file_name || fileMetadata?.name || ''
         const cleanName = cleanFileName(fileName).split('.')[0].replace(/_/g, ' ').trim()
         const device = result.band_steering?.device || {}
         const model = device.device_model || 'Genérico'
-        
+
         // Obtener el analysis_id del resultado
         const analysisId = result?.band_steering?.analysis_id
-        
+
         if (!analysisId) {
             setError('No se puede generar el PDF: falta el ID del análisis')
             return
@@ -2388,10 +2385,10 @@ export function NetworkAnalysisPage() {
         try {
             // Esperar un momento para que el gráfico se renderice completamente
             await new Promise(resolve => setTimeout(resolve, 1000))
-            
+
             // Generar HTML limpio y completo para el PDF (incluye captura del gráfico)
             const htmlContent = generatePDFHTML()
-            
+
             if (!htmlContent) {
                 setError('Error al generar el contenido del PDF')
                 return
@@ -2399,18 +2396,18 @@ export function NetworkAnalysisPage() {
 
             // Guardar el PDF en el backend primero
             await networkAnalysisService.savePDF(analysisId, htmlContent)
-            
+
             // Esperar un momento para asegurar que el PDF se guardó
             await new Promise(resolve => setTimeout(resolve, 500))
-            
+
             // Descargar el PDF
             const blob = await networkAnalysisService.downloadPDF(analysisId)
-            
+
             // Generar nombre del archivo
-            const pdfFilename = model && model !== 'Genérico' && model !== 'Unknown' 
+            const pdfFilename = model && model !== 'Genérico' && model !== 'Unknown'
                 ? `Pipe ${model.toUpperCase()}.pdf`
                 : `Pipe ${cleanName.toUpperCase()}.pdf`
-            
+
             // Crear URL temporal para descarga
             const url = window.URL.createObjectURL(blob)
             const link = document.createElement('a')
@@ -2491,13 +2488,10 @@ export function NetworkAnalysisPage() {
         [result, fileMetadata, savedSsid, userSsid]
     )
 
-    // Margen del reporte cuando el chat está abierto (para transición suave)
-    const reportMargin = result && chatPanelOpen ? chatWidth : 0
-
     // Panel de chat lateral: posición fija; ancho animado al abrir/cerrar; ocupa todo el alto de la pantalla
     const reportChatPanel = result && (
         <aside
-            className={`fixed top-0 bottom-0 z-50 flex flex-col h-screen rounded-none border-r border-dark-border-primary/50 bg-dark-bg-primary overflow-hidden print:hidden shadow-lg min-w-0 ${chatSide === 'left' ? 'left-0' : 'right-0'}`}
+            className={`fixed top-0 bottom-0 z-50 flex flex-col h-screen rounded-none border border-dark-border-primary/50 bg-dark-bg-primary overflow-hidden print:hidden shadow-lg min-w-0 ${chatSide === 'left' ? 'left-0' : 'right-0'}`}
             aria-label="Chat sobre el informe"
             style={{
                 width: chatPanelOpen ? chatWidth : 0,
@@ -2596,214 +2590,203 @@ export function NetworkAnalysisPage() {
         </aside>
     )
 
-    // Desplazamiento del reporte: solo la mitad del ancho del chat para quedar centrado en el espacio restante (viewport - chat)
-    const reportTranslateX = reportMargin && chatSide === 'right' ? -reportMargin / 2 : reportMargin && chatSide === 'left' ? reportMargin / 2 : 0
-    const reportTransition = 'transform 0.45s cubic-bezier(0.4, 0, 0.2, 1)'
 
     return (
         <>
             {result && reportChatPanel}
-            <div className="flex justify-center w-full min-w-0">
+            <div className="w-full min-w-0 bg-transparent">
                 <div
-                    className="container-app py-4 sm:py-8 overflow-x-hidden min-w-0 px-4"
-                    style={{ 
-                        width: '1050px'
-                    }}
+                    className="container-app mx-auto py-4 sm:py-8 overflow-x-hidden px-4"
+                    style={{ maxWidth: '1050px' }}
                 >
-            <div>
-            <div className="max-w-5xl mx-auto w-full min-w-0 space-y-6 pt-4 print:pt-2 mt-[30px] mb-[30px]">
-                {/* Bloque superior: título + descripción */}
-                <div className="flex flex-col space-y-2">
-                    <h1 className="text-xl sm:text-2xl font-semibold text-dark-text-primary mb-1 tracking-tight flex items-center gap-2">
-                        <div className="p-2 rounded-lg bg-dark-accent-primary/20">
-                            <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-dark-accent-primary" />
+                    <div className="w-full space-y-6 pt-4 print:pt-2 mt-[30px] mb-[30px]">
+                        {/* Bloque superior: título + descripción */}
+                        <div className="flex flex-col space-y-2">
+                            <h1 className="text-xl sm:text-2xl font-semibold text-dark-text-primary mb-1 tracking-tight flex items-center gap-2">
+                                <div className="p-2 rounded-lg bg-dark-accent-primary/20">
+                                    <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-dark-accent-primary" />
+                                </div>
+                                <span>Análisis de Capturas de Red</span>
+                            </h1>
+                            <p className="text-dark-text-secondary text-xs sm:text-[13px] leading-relaxed break-words text-wrap">
+                                Sube un archivo de captura de red en formato
+                                <code className="px-1 py-0.5 rounded bg-dark-bg-secondary text-dark-accent-primary text-[11px] font-mono mx-1">
+                                    .pcap / .pcapng
+                                </code> y Pipe generará un análisis
+                                detallado del tráfico observado usando inteligencia artificial.
+                            </p>
                         </div>
-                        <span>Análisis de Capturas de Red</span>
-                    </h1>
-                    <p className="text-dark-text-secondary text-xs sm:text-[13px] leading-relaxed break-words text-wrap">
-                        Sube un archivo de captura de red en formato 
-                        <code className="px-1 py-0.5 rounded bg-dark-bg-secondary text-dark-accent-primary text-[11px] font-mono">
-                            .pcap / .pcapng
-                        </code> y Pipe generará un análisis
-                        detallado del tráfico observado usando inteligencia artificial.
 
-                        
-                        .
-                    </p>
-                </div>
+                        {/* Segunda fila: inputs a la izquierda, botones a la derecha */}
+                        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 sm:gap-6">
+                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-[11px] font-medium text-dark-text-muted uppercase tracking-wide">
+                                        SSID de la red <span className="text-red-400">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={userSsid}
+                                        onChange={(e) => setUserSsid(e.target.value)}
+                                        placeholder="Ej: MiWifi_5G"
+                                        className="px-3 py-1.5 rounded-md bg-dark-bg-primary border border-dark-border-primary/70 text-dark-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-dark-accent-primary"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-[11px] font-medium text-dark-text-muted uppercase tracking-wide">
+                                        MAC del cliente <span className="text-red-400">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={userClientMac}
+                                        onChange={(e) => setUserClientMac(e.target.value)}
+                                        placeholder="Ej: d8:cf:bf:4a:50:6f"
+                                        className="px-3 py-1.5 rounded-md bg-dark-bg-primary border border-dark-border-primary/70 text-dark-text-primary text-xs font-mono focus:outline-none focus:ring-1 focus:ring-dark-accent-primary"
+                                    />
+                                </div>
+                            </div>
 
-                {/* Segunda fila: inputs a la izquierda, botones a la derecha */}
-                <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 sm:gap-6">
-                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                        <div className="flex flex-col gap-1">
-                            <label className="text-[11px] font-medium text-dark-text-muted uppercase tracking-wide">
-                                SSID de la red <span className="text-red-400">*</span>
-                            </label>
-                            <input
-                                type="text"
-                                value={userSsid}
-                                onChange={(e) => setUserSsid(e.target.value)}
-                                placeholder="Ej: MiWifi_5G"
-                                className="px-3 py-1.5 rounded-md bg-dark-bg-primary border border-dark-border-primary/70 text-dark-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-dark-accent-primary"
-                            />
-                        </div>
-                        <div className="flex flex-col gap-1">
-                            <label className="text-[11px] font-medium text-dark-text-muted uppercase tracking-wide">
-                                MAC del cliente <span className="text-red-400">*</span>
-                            </label>
-                            <input
-                                type="text"
-                                value={userClientMac}
-                                onChange={(e) => setUserClientMac(e.target.value)}
-                                placeholder="Ej: d8:cf:bf:4a:50:6f"
-                                className="px-3 py-1.5 rounded-md bg-dark-bg-primary border border-dark-border-primary/70 text-dark-text-primary text-xs font-mono focus:outline-none focus:ring-1 focus:ring-dark-accent-primary"
-                            />
-                        </div>
-                    </div>
+                            <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+                                {result && (
+                                    <>
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => setChatPanelOpen((v) => !v)}
+                                            className={`w-full sm:w-auto ${chatPanelOpen ? 'border-dark-accent-primary/50 bg-dark-accent-primary/10 text-dark-accent-primary' : 'border-dark-border-primary/50 text-dark-text-secondary hover:bg-dark-surface-primary'}`}
+                                            title={chatPanelOpen ? 'Ocultar chat del informe' : 'Abrir chat del informe'}
+                                        >
+                                            <MessageCircle className="w-4 h-4 mr-2" />
+                                            {chatPanelOpen ? 'Ocultar chat' : 'Mostrar chat'}
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            onClick={handleDownloadPDF}
+                                            className="w-full sm:w-auto border-dark-accent-primary/10 text-dark-accent-primary hover:bg-dark-accent-primary/10"
+                                        >
+                                            <HardDrive className="w-4 h-4 mr-2" />
+                                            Exportar PDF
+                                        </Button>
+                                    </>
+                                )}
 
-                    <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-                        {result && (
-                            <>
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept=".pcap,.pcapng"
+                                    onChange={handleFileChange}
+                                    className="hidden"
+                                />
                                 <Button
-                                    variant="outline"
-                                    onClick={() => setChatPanelOpen((v) => !v)}
-                                    className={`w-full sm:w-auto ${chatPanelOpen ? 'border-dark-accent-primary/50 bg-dark-accent-primary/10 text-dark-accent-primary' : 'border-dark-border-primary/50 text-dark-text-secondary hover:bg-dark-surface-primary'}`}
-                                    title={chatPanelOpen ? 'Ocultar chat del informe' : 'Abrir chat del informe'}
+                                    type="button"
+                                    onClick={handleSelectClick}
+                                    disabled={uploading || !userSsid.trim() || !userClientMac.trim()}
+                                    className="w-full sm:w-auto disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
-                                    <MessageCircle className="w-4 h-4 mr-2" />
-                                    {chatPanelOpen ? 'Ocultar chat' : 'Mostrar chat'}
+                                    {uploading ? (
+                                        <>
+                                            <Loading size="sm" className="sm:mr-2" />
+                                            <span>Analizando...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Upload className="w-4 h-4 sm:mr-2" />
+                                            <span>{result ? 'Analizar captura' : 'Seleccionar y analizar'}</span>
+                                        </>
+                                    )}
                                 </Button>
-                                <Button
-                                    variant="outline"
-                                    onClick={handleDownloadPDF}
-                                    className="w-full sm:w-auto border-dark-accent-primary/10 text-dark-accent-primary hover:bg-dark-accent-primary/10"
-                                >
-                                    <HardDrive className="w-4 h-4 mr-2" />
-                                    Exportar PDF
-                                </Button>
-                            </>
+                            </div>
+                        </div>
+
+                        {/* Resto del código (Tarjetas, Errores, Resultados)... */}
+                        {(selectedFile || (result && fileMetadata)) && (
+                            <Card className="p-4 border border-dark-accent-primary/20 bg-dark-accent-primary/5 mt-[19px] mb-[19px]">
+                                {/* ... contenido de la tarjeta ... */}
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 rounded-lg bg-dark-accent-primary/20">
+                                        <FileText className="w-5 h-5 text-dark-accent-primary" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium text-dark-text-primary mb-1">
+                                            Archivo {result ? 'analizado' : 'seleccionado'}
+                                        </p>
+                                        <p className="text-xs text-dark-text-secondary break-all truncate">
+                                            {cleanFileName(selectedFile?.name || fileMetadata?.name || result?.file_name)}
+                                        </p>
+                                    </div>
+                                    <div className="text-right flex-shrink-0 flex items-center gap-3">
+                                        <div>
+                                            <p className="text-sm font-semibold text-dark-text-primary">
+                                                {formatFileSize(selectedFile?.size || fileMetadata?.size || 0)}
+                                            </p>
+                                            <p className="text-xs text-dark-text-muted">
+                                                {(selectedFile?.size || fileMetadata?.size || 0).toLocaleString()} bytes
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={handleCloseReport}
+                                            className="p-2 rounded-lg hover:bg-red-500/20 hover:text-red-400 text-dark-text-muted hover:border-red-500/30 border border-transparent transition-all duration-200 flex-shrink-0 group"
+                                            title="Cerrar reporte"
+                                        >
+                                            <X className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                                        </button>
+                                    </div>
+                                </div>
+                            </Card>
                         )}
 
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept=".pcap,.pcapng"
-                            onChange={handleFileChange}
-                            className="hidden"
-                        />
-                        <Button
-                            type="button"
-                            onClick={handleSelectClick}
-                            disabled={uploading || !userSsid.trim() || !userClientMac.trim()}
-                            className="w-full sm:w-auto disabled:opacity-60 disabled:cursor-not-allowed"
-                        >
-                            {uploading ? (
-                                <>
-                                    <Loading size="sm" className="sm:mr-2" />
-                                    <span>Analizando...</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Upload className="w-4 h-4 sm:mr-2" />
-                                    <span>{result ? 'Analizar captura' : 'Seleccionar y analizar'}</span>
-                                </>
-                            )}
-                        </Button>
+                        {error && (
+                            <Card className="p-4 border border-dark-status-error/40 bg-dark-status-error/5 flex items-start gap-3">
+                                <AlertTriangle className="w-5 h-5 text-dark-status-error mt-0.5 flex-shrink-0" />
+                                <p className="text-sm text-dark-status-error">{error}</p>
+                            </Card>
+                        )}
+
+                        {uploading && !result && (
+                            <Card className="p-12 flex flex-col items-center justify-center gap-4">
+                                {/* ... contenido de loading ... */}
+                                <div className="relative">
+                                    <div className="absolute inset-0 rounded-full bg-dark-accent-primary/20 animate-ping"></div>
+                                    <div className="relative p-4 rounded-full bg-dark-accent-primary/10">
+                                        <Activity className="w-8 h-8 text-dark-accent-primary animate-pulse" />
+                                    </div>
+                                </div>
+                                <div className="text-center space-y-2">
+                                    <p className="text-base font-medium text-dark-text-primary">
+                                        Analizando captura de red
+                                    </p>
+                                    <p className="text-sm text-dark-text-secondary max-w-md">
+                                        Pipe está procesando tu archivo y generando un análisis detallado.
+                                        Esto puede tardar unos segundos dependiendo del tamaño del archivo.
+                                    </p>
+                                </div>
+                                <Loading size="md" />
+                            </Card>
+                        )}
+
+                        {result && (
+                            <>
+                                {selectionPopup && createPortal(
+                                    <div
+                                        data-selection-popup
+                                        className="fixed z-[9999]"
+                                        style={{ left: Math.max(8, selectionPopup.left), top: Math.max(8, selectionPopup.top) }}
+                                    >
+                                        <Button size="sm" onClick={handleAskAgent} className="bg-dark-accent-primary hover:bg-dark-accent-hover text-white border-0 shadow-md">
+                                            <MessageCircle className="w-4 h-4 mr-1.5" />
+                                            Preguntar al agente
+                                        </Button>
+                                    </div>,
+                                    document.body
+                                )}
+                                <div ref={reportContentRef} onMouseUp={handleReportMouseUp} className="relative">
+                                    {reportInnerContent}
+                                </div>
+                            </>
+                        )}
                     </div>
-                </div>
 
-
-            </div>
-
-            {(selectedFile || (result && fileMetadata)) && (
-                <Card className="p-4 border border-dark-accent-primary/20 bg-dark-accent-primary/5 mt-[19px] mb-[19px]">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-dark-accent-primary/20">
-                            <FileText className="w-5 h-5 text-dark-accent-primary" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-dark-text-primary mb-1">
-                                Archivo {result ? 'analizado' : 'seleccionado'}
-                            </p>
-                            <p className="text-xs text-dark-text-secondary break-all truncate">
-                                {cleanFileName(selectedFile?.name || fileMetadata?.name || result?.file_name)}
-                            </p>
-                        </div>
-                        <div className="text-right flex-shrink-0 flex items-center gap-3">
-                            <div>
-                                <p className="text-sm font-semibold text-dark-text-primary">
-                                    {formatFileSize(selectedFile?.size || fileMetadata?.size || 0)}
-                                </p>
-                                <p className="text-xs text-dark-text-muted">
-                                    {(selectedFile?.size || fileMetadata?.size || 0).toLocaleString()} bytes
-                                </p>
-                            </div>
-                            <button
-                                onClick={handleCloseReport}
-                                className="p-2 rounded-lg hover:bg-red-500/20 hover:text-red-400 text-dark-text-muted hover:border-red-500/30 border border-transparent transition-all duration-200 flex-shrink-0 group"
-                                title="Cerrar reporte"
-                            >
-                                <X className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                            </button>
-                        </div>
-                    </div>
-                </Card>
-            )}
-
-            {error && (
-                <Card className="p-4 border border-dark-status-error/40 bg-dark-status-error/5 flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-dark-status-error mt-0.5 flex-shrink-0" />
-                    <p className="text-sm text-dark-status-error">{error}</p>
-                </Card>
-            )}
-
-            {uploading && !result && (
-                <Card className="p-12 flex flex-col items-center justify-center gap-4">
-                    <div className="relative">
-                        <div className="absolute inset-0 rounded-full bg-dark-accent-primary/20 animate-ping"></div>
-                        <div className="relative p-4 rounded-full bg-dark-accent-primary/10">
-                            <Activity className="w-8 h-8 text-dark-accent-primary animate-pulse" />
-                        </div>
-                    </div>
-                    <div className="text-center space-y-2">
-                        <p className="text-base font-medium text-dark-text-primary">
-                            Analizando captura de red
-                        </p>
-                        <p className="text-sm text-dark-text-secondary max-w-md">
-                            Pipe está procesando tu archivo y generando un análisis detallado.
-                            Esto puede tardar unos segundos dependiendo del tamaño del archivo.
-                        </p>
-                    </div>
-                    <Loading size="md" />
-                </Card>
-            )}
-
-            {result && (
-                <>
-                    {selectionPopup && createPortal(
-                        <div
-                            data-selection-popup
-                            className="fixed z-[9999]"
-                            style={{ left: Math.max(8, selectionPopup.left), top: Math.max(8, selectionPopup.top) }}
-                        >
-                            <Button size="sm" onClick={handleAskAgent} className="bg-dark-accent-primary hover:bg-dark-accent-hover text-white border-0 shadow-md">
-                                <MessageCircle className="w-4 h-4 mr-1.5" />
-                                Preguntar al agente
-                            </Button>
-                        </div>,
-                        document.body
-                    )}
-                    <div ref={reportContentRef} onMouseUp={handleReportMouseUp} className="relative">
-                        {reportInnerContent}
-                    </div>
-                </>
-            )}
-
-            {/* Report body is in ReportBodyContent.jsx (reportInnerContent) to avoid re-renders that cleared text selection. */}
-            </div>
-
-            {/* Estilos para impresión */}
-            <style dangerouslySetInnerHTML={{ __html: PRINT_STYLES }} />
+                    {/* Estilos para impresión */}
+                    <style dangerouslySetInnerHTML={{ __html: PRINT_STYLES }} />
                 </div>
             </div>
         </>
