@@ -22,6 +22,10 @@ import { useReportChat } from '../hooks/useReportChat'
 import { ChatContainer } from '../components/chat/ChatContainer'
 import { ChatInput } from '../components/chat/ChatInput'
 import { useChatLayout } from '../contexts/ChatLayoutContext'
+import { useGlobalChat } from '../contexts/GlobalChatContext'
+import './styles/NetworkAnalysisPage.print.css'
+import './styles/NetworkAnalysisPage.pdf-html.css'
+import './styles/NetworkAnalysisPage.format.css'
 
 const CHAT_WIDTH_MIN = 280
 const CHAT_WIDTH_MAX = 720
@@ -198,7 +202,7 @@ const PRINT_STYLES = `
         }
       `
 
-export function NetworkAnalysisPage() {
+function NetworkAnalysisPage() {
     const {
         selectedFile,
         uploading,
@@ -219,9 +223,8 @@ export function NetworkAnalysisPage() {
 
     const analysisId = result?.band_steering?.analysis_id ?? null
 
-    // Usar el contexto compartido para el estado del chat
-    const chatLayoutContext = useChatLayout()
-    const { chatWidth, setChatWidth, chatSide, setChatSide, chatPanelOpen, setChatPanelOpen } = chatLayoutContext
+    const { chatWidth, setChatWidth, chatSide, setChatSide, chatPanelOpen, setChatPanelOpen, setAvailableModes, setCurrentPage } = useChatLayout()
+    const globalChat = useGlobalChat()
 
     // Estados locales para el chat (no relacionados con el layout)
     const [selectionPopup, setSelectionPopup] = React.useState(null)
@@ -233,12 +236,80 @@ export function NetworkAnalysisPage() {
     const reportContentRef = React.useRef(null)
     const isResizingRef = React.useRef(false)
 
+    // Inicializar reportChat ANTES de usarlo en useEffects
+    const reportChat = useReportChat(analysisId)
+    
+    // Referencias estables para evitar bucles infinitos
+    const reportChatRef = React.useRef(reportChat)
+    reportChatRef.current = reportChat
+    
+
+    // Actualizar disponibilidad de modos según si hay un reporte
+    React.useEffect(() => {
+        setCurrentPage('network-analysis')
+        if (result) {
+            setAvailableModes(['report', 'docs'])
+        } else {
+            setAvailableModes(['docs'])
+        }
+    }, [result, setAvailableModes, setCurrentPage])
+
+    // Sincronizar mensajes del reportChat con el chat global
+    React.useEffect(() => {
+        const currentReportChat = reportChatRef.current
+        if (currentReportChat.messages.length > 0 && globalChat.messages.length === 0) {
+            // Transferir mensajes existentes del reportChat al globalChat
+            globalChat.setMessages(currentReportChat.messages)
+        }
+    }, [reportChat.messages.length, globalChat.messages.length])
+
+    // Configurar callbacks del chat global para usar reportChat
+    React.useEffect(() => {
+        if (!analysisId) return
+        
+        globalChat.setCallbacks({
+            onSend: (content, contextText) => {
+                const mode = selectionLockActive ? 'report' : chatMode
+                reportChatRef.current.sendMessage(content, contextText, mode)
+            },
+            onClearMessages: () => {
+                reportChatRef.current.clearMessages()
+            },
+            onSaveEditedMessage: (msg, newContent) => {
+                if (msg?.role === 'user' && newContent) {
+                    const mode = selectionLockActive ? 'report' : chatMode
+                    reportChatRef.current.sendMessageAfterEdit(msg.id, newContent, highlightedContext, mode)
+                }
+            }
+        })
+
+        return () => {
+            globalChat.clearCallbacks()
+        }
+    }, [analysisId, chatMode, selectionLockActive, highlightedContext])
+
+    // Sincronizar estado del chat global con reportChat
+    React.useEffect(() => {
+        const currentReportChat = reportChatRef.current
+        globalChat.setMessages(currentReportChat.messages)
+        globalChat.setIsLoading(currentReportChat.isLoading)
+        globalChat.setDisabled(!analysisId)
+    }, [reportChat.messages.length, reportChat.isLoading, analysisId])
+
+    // Sincronizar modo y contexto con el chat global
+    React.useEffect(() => {
+        globalChat.setChatMode(chatMode)
+        globalChat.setHighlightedContext(highlightedContext)
+        globalChat.setSelectionLockActive(selectionLockActive)
+    }, [chatMode, highlightedContext, selectionLockActive])
+
     // Redimensionar ancho del chat
     const handleResizeStart = React.useCallback((e) => {
         e.preventDefault()
         isResizingRef.current = true
         setIsResizing(true)
     }, [])
+    
     React.useEffect(() => {
         if (!result || !chatPanelOpen) return
         const onMove = (e) => {
@@ -262,7 +333,8 @@ export function NetworkAnalysisPage() {
             document.removeEventListener('mousemove', onMove)
             document.removeEventListener('mouseup', onUp)
         }
-    }, [result, chatPanelOpen, chatSide])
+    }, [result, chatPanelOpen, chatSide, setChatWidth])
+    
     React.useEffect(() => {
         if (isResizing) {
             document.body.style.cursor = 'col-resize'
@@ -273,6 +345,108 @@ export function NetworkAnalysisPage() {
             document.body.style.userSelect = ''
         }
     }, [isResizing])
+
+    // Panel de chat lateral: posición fija; ancho animado al abrir/cerrar; ocupa todo el alto de la pantalla
+    const reportChatPanel = result && (
+        <aside
+            className={`fixed top-0 bottom-0 z-50 flex flex-col h-screen rounded-none border-r border-dark-border-primary/50 bg-dark-bg-primary overflow-hidden print:hidden shadow-lg min-w-0 ${chatSide === 'left' ? 'left-0' : 'right-0'}`}
+            aria-label="Chat sobre el informe"
+            style={{
+                width: chatPanelOpen ? chatWidth : 0,
+                transition: 'width 0.45s cubic-bezier(0.4, 0, 0.2, 1)',
+                pointerEvents: chatPanelOpen ? 'auto' : 'none'
+            }}
+            onWheel={(e) => e.stopPropagation()}
+        >
+            {/* Resize handle: borde interior para arrastrar y cambiar ancho */}
+            <div
+                role="separator"
+                aria-label="Redimensionar ancho del chat"
+                className={`absolute top-0 bottom-0 w-2 cursor-col-resize flex-shrink-0 z-10 flex items-center justify-center hover:bg-dark-border-primary/20 ${chatSide === 'left' ? 'right-0' : 'left-0'}`}
+                onMouseDown={handleResizeStart}
+                style={{ [chatSide === 'left' ? 'right' : 'left']: 0 }}
+            >
+                <div className="w-0.5 h-12 rounded-full bg-dark-border-primary/50" />
+            </div>
+            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-dark-border-primary/50 bg-dark-surface-primary/50 flex-shrink-0">
+                <span className="text-sm font-medium text-dark-text-primary truncate">
+                    Pipechat
+                </span>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="p-1.5 text-dark-text-muted hover:text-dark-accent-primary"
+                        onClick={() => reportChat.clearMessages()}
+                        title="Limpiar chat"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="p-1.5 text-dark-text-muted hover:text-dark-accent-primary"
+                        onClick={() => setChatSide(chatSide === 'left' ? 'right' : 'left')}
+                        title={chatSide === 'left' ? 'Mover chat a la derecha' : 'Mover chat a la izquierda'}
+                    >
+                        {chatSide === 'left' ? <PanelRight className="w-4 h-4" /> : <PanelLeft className="w-4 h-4" />}
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="p-1.5 text-dark-text-muted hover:text-dark-accent-primary"
+                        onClick={() => setChatPanelOpen(false)}
+                        title="Cerrar chat"
+                    >
+                        <X className="w-4 h-4" />
+                    </Button>
+                </div>
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+                <ChatContainer
+                    messages={reportChat.messages}
+                    isLoading={reportChat.isLoading}
+                    onSaveEditedMessage={(msg, newContent) => {
+                        if (msg?.role === 'user' && newContent) {
+                            reportChat.sendMessageAfterEdit(
+                                msg.id,
+                                newContent,
+                                highlightedContext,
+                                selectionLockActive ? 'report' : chatMode
+                            )
+                        }
+                    }}
+                    mode={chatMode}
+                    onModeChange={setChatMode}
+                    modeLocked={selectionLockActive}
+                />
+            </div>
+            <div className="p-2 border-t border-dark-border-primary/50 flex-shrink-0 bg-dark-bg-primary">
+                <ChatInput
+                    onSend={(content, contextText) =>
+                        reportChat.sendMessage(
+                            content,
+                            contextText,
+                            selectionLockActive ? 'report' : chatMode
+                        )
+                    }
+                    isLoading={reportChat.isLoading}
+                    disabled={!analysisId}
+                    mode={chatMode}
+                    modeLocked={selectionLockActive}
+                    onModeChange={setChatMode}
+                    contextText={highlightedContext}
+                    onClearContext={() => {
+                        setHighlightedContext(null)
+                        setSelectionLockActive(false)
+                    }}
+                />
+            </div>
+        </aside>
+    )
 
     // Cerrar popup solo al hacer clic fuera del reporte y fuera del botón (no en selectionchange, para no cerrar antes del click y mantener la selección)
     React.useEffect(() => {
@@ -288,8 +462,6 @@ export function NetworkAnalysisPage() {
         document.addEventListener('mousedown', onMouseDown)
         return () => document.removeEventListener('mousedown', onMouseDown)
     }, [selectionPopup])
-
-    const reportChat = useReportChat(analysisId)
 
     // Función para limpiar el nombre del archivo (quitar UUID y prefijos numéricos)
     const cleanFileName = (fileName) => {
@@ -2488,112 +2660,11 @@ export function NetworkAnalysisPage() {
         [result, fileMetadata, savedSsid, userSsid]
     )
 
-    // Panel de chat lateral: posición fija; ancho animado al abrir/cerrar; ocupa todo el alto de la pantalla
-    const reportChatPanel = result && (
-        <aside
-            className={`fixed top-0 bottom-0 z-50 flex flex-col h-screen rounded-none border border-dark-border-primary/50 bg-dark-bg-primary overflow-hidden print:hidden shadow-lg min-w-0 ${chatSide === 'left' ? 'left-0' : 'right-0'}`}
-            aria-label="Chat sobre el informe"
-            style={{
-                width: chatPanelOpen ? chatWidth : 0,
-                transition: 'width 0.45s cubic-bezier(0.4, 0, 0.2, 1)',
-                pointerEvents: chatPanelOpen ? 'auto' : 'none'
-            }}
-            onWheel={(e) => e.stopPropagation()}
-        >
-            {/* Resize handle: borde interior para arrastrar y cambiar ancho */}
-            <div
-                role="separator"
-                aria-label="Redimensionar ancho del chat"
-                className={`absolute top-0 bottom-0 w-2 cursor-col-resize flex-shrink-0 z-10 flex items-center justify-center hover:bg-dark-border-primary/20 ${chatSide === 'left' ? 'right-0' : 'left-0'}`}
-                onMouseDown={handleResizeStart}
-                style={{ [chatSide === 'left' ? 'right' : 'left']: 0 }}
-            >
-                <div className="w-0.5 h-12 rounded-full bg-dark-border-primary/50" />
-            </div>
-            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-dark-border-primary/50 bg-dark-surface-primary/50 flex-shrink-0">
-                <span className="text-sm font-medium text-dark-text-primary truncate">
-                    Pipechat
-                </span>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="p-1.5 text-dark-text-muted hover:text-dark-accent-primary"
-                        onClick={() => reportChat.clearMessages()}
-                        title="Limpiar chat"
-                    >
-                        <Trash2 className="w-4 h-4" />
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="p-1.5 text-dark-text-muted hover:text-dark-accent-primary"
-                        onClick={() => setChatSide(chatSide === 'left' ? 'right' : 'left')}
-                        title={chatSide === 'left' ? 'Mover chat a la derecha' : 'Mover chat a la izquierda'}
-                    >
-                        {chatSide === 'left' ? <PanelRight className="w-4 h-4" /> : <PanelLeft className="w-4 h-4" />}
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="p-1.5 text-dark-text-muted hover:text-dark-accent-primary"
-                        onClick={() => setChatPanelOpen(false)}
-                        title="Cerrar chat"
-                    >
-                        <X className="w-4 h-4" />
-                    </Button>
-                </div>
-            </div>
-            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-                <ChatContainer
-                    messages={reportChat.messages}
-                    isLoading={reportChat.isLoading}
-                    onSaveEditedMessage={(msg, newContent) => {
-                        if (msg?.role === 'user' && newContent) {
-                            reportChat.sendMessageAfterEdit(
-                                msg.id,
-                                newContent,
-                                highlightedContext,
-                                selectionLockActive ? 'report' : chatMode
-                            )
-                        }
-                    }}
-                    mode={chatMode}
-                    onModeChange={setChatMode}
-                    modeLocked={selectionLockActive}
-                />
-            </div>
-            <div className="p-2 border-t border-dark-border-primary/50 flex-shrink-0 bg-dark-bg-primary">
-                <ChatInput
-                    onSend={(content, contextText) =>
-                        reportChat.sendMessage(
-                            content,
-                            contextText,
-                            selectionLockActive ? 'report' : chatMode
-                        )
-                    }
-                    isLoading={reportChat.isLoading}
-                    disabled={!analysisId}
-                    mode={chatMode}
-                    modeLocked={selectionLockActive}
-                    onModeChange={setChatMode}
-                    contextText={highlightedContext}
-                    onClearContext={() => {
-                        setHighlightedContext(null)
-                        setSelectionLockActive(false)
-                    }}
-                />
-            </div>
-        </aside>
-    )
+
 
 
     return (
         <>
-            {result && reportChatPanel}
             <div className="w-full min-w-0 bg-transparent">
                 <div
                     className="container-app mx-auto py-4 sm:py-8 overflow-x-hidden px-4"
@@ -2649,15 +2720,6 @@ export function NetworkAnalysisPage() {
                             <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
                                 {result && (
                                     <>
-                                        <Button
-                                            variant="outline"
-                                            onClick={() => setChatPanelOpen((v) => !v)}
-                                            className={`w-full sm:w-auto ${chatPanelOpen ? 'border-dark-accent-primary/50 bg-dark-accent-primary/10 text-dark-accent-primary' : 'border-dark-border-primary/50 text-dark-text-secondary hover:bg-dark-surface-primary'}`}
-                                            title={chatPanelOpen ? 'Ocultar chat del informe' : 'Abrir chat del informe'}
-                                        >
-                                            <MessageCircle className="w-4 h-4 mr-2" />
-                                            {chatPanelOpen ? 'Ocultar chat' : 'Mostrar chat'}
-                                        </Button>
                                         <Button
                                             variant="outline"
                                             onClick={handleDownloadPDF}

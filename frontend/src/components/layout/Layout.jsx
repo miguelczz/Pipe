@@ -1,8 +1,10 @@
 import { Link, useLocation } from 'react-router-dom'
-import { FileText, Activity, History } from 'lucide-react'
+import { FileText, Activity, History, MessageCircle } from 'lucide-react'
 import { cn } from '../../utils/cn'
 import { Logo } from '../common/Logo'
 import { useChatLayout } from '../../contexts/ChatLayoutContext'
+import { Button } from '../ui/Button'
+import { GlobalChatPanel } from '../chat/GlobalChatPanel'
 
 /**
  * Layout principal de la aplicación
@@ -11,7 +13,7 @@ import { useChatLayout } from '../../contexts/ChatLayoutContext'
  */
 export function Layout({ children }) {
   const location = useLocation()
-  const { chatWidth, chatSide, chatPanelOpen } = useChatLayout()
+  const { chatWidth, chatSide, chatPanelOpen, setChatPanelOpen } = useChatLayout()
 
   const navItems = [
     { path: '/files', label: 'Archivos', icon: FileText },
@@ -68,6 +70,23 @@ export function Layout({ children }) {
                   </Link>
                 )
               })}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setChatPanelOpen(!chatPanelOpen)}
+                className={cn(
+                  'ml-auto px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl transition-all duration-200 flex items-center gap-1 sm:gap-2',
+                  'text-xs sm:text-sm font-medium',
+                  chatPanelOpen
+                    ? 'bg-dark-accent-primary/10 text-dark-accent-primary'
+                    : 'text-dark-text-secondary hover:text-dark-text-primary hover:bg-dark-surface-hover'
+                )}
+                title={chatPanelOpen ? 'Cerrar chat' : 'Abrir chat'}
+              >
+                <MessageCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Chat</span>
+              </Button>
             </nav>
           </div>
         </div>
@@ -88,6 +107,9 @@ export function Layout({ children }) {
           </div>
         </footer>
       )}
+
+      {/* Panel de chat global en todas las páginas */}
+      <GlobalChatPanel />
     </div>
   )
 }

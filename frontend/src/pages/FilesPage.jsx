@@ -5,6 +5,8 @@ import { Button } from '../components/ui/Button'
 import { Loading } from '../components/ui/Loading'
 import { Upload, Trash2, FileText, Calendar } from 'lucide-react'
 import { useToast } from '../hooks/useToast'
+import { useChatLayout } from '../contexts/ChatLayoutContext'
+import React from 'react'
 
 /**
  * Página para gestionar archivos subidos
@@ -13,6 +15,13 @@ export function FilesPage() {
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef(null)
   const { showToast } = useToast()
+  const { setAvailableModes, setCurrentPage } = useChatLayout()
+
+  // Actualizar contexto: solo modo 'docs' en esta página
+  React.useEffect(() => {
+    setCurrentPage('files')
+    setAvailableModes(['docs'])
+  }, [setAvailableModes, setCurrentPage])
 
   const {
     data: files = [],

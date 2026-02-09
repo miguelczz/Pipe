@@ -16,9 +16,13 @@ const ChatLayoutContext = React.createContext({
     chatWidth: 0,
     chatSide: 'right',
     chatPanelOpen: false,
+    availableModes: ['docs'],
+    currentPage: 'default',
     setChatWidth: () => {},
     setChatSide: () => {},
-    setChatPanelOpen: () => {}
+    setChatPanelOpen: () => {},
+    setAvailableModes: () => {},
+    setCurrentPage: () => {}
 })
 
 export function ChatLayoutProvider({ children }) {
@@ -55,6 +59,10 @@ export function ChatLayoutProvider({ children }) {
         }
     })
 
+    // Modos de chat disponibles según la página
+    const [availableModes, setAvailableModes] = React.useState(['docs'])
+    const [currentPage, setCurrentPage] = React.useState('default')
+
     // Guardar en localStorage cuando cambien los valores
     React.useEffect(() => {
         try {
@@ -85,11 +93,15 @@ export function ChatLayoutProvider({ children }) {
             chatWidth,
             chatSide,
             chatPanelOpen,
+            availableModes,
+            currentPage,
             setChatWidth,
             setChatSide,
-            setChatPanelOpen
+            setChatPanelOpen,
+            setAvailableModes,
+            setCurrentPage
         }),
-        [chatWidth, chatSide, chatPanelOpen]
+        [chatWidth, chatSide, chatPanelOpen, availableModes, currentPage]
     )
 
     return (

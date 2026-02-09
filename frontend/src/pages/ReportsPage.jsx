@@ -10,6 +10,7 @@ import { FilterPanel } from '../components/reports/FilterPanel'
 import { StatsPanel } from '../components/reports/StatsPanel'
 import { ReportsListView } from '../components/reports/ReportsListView'
 import { ReportContextMenu } from '../components/reports/ReportContextMenu'
+import { useChatLayout } from '../contexts/ChatLayoutContext'
 import { 
   FileText, 
   Calendar, 
@@ -69,6 +70,13 @@ export function ReportsPage() {
   const [isDeletingSelected, setIsDeletingSelected] = useState(false)
   const navigate = useNavigate()
   const { showToast } = useToast()
+  const { setAvailableModes, setCurrentPage } = useChatLayout()
+
+  // Actualizar contexto: solo modo 'docs' en esta página
+  useEffect(() => {
+    setCurrentPage('reports')
+    setAvailableModes(['docs'])
+  }, [setAvailableModes, setCurrentPage])
   
   // Sistema de selección múltiple
   const {

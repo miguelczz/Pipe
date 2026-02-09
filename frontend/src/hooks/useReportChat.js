@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { agentService } from '../services/api'
 
 const REPORT_CHAT_SESSION_PREFIX = 'report_chat_'
@@ -48,7 +48,7 @@ export function useReportChat(reportId) {
   const [error, setError] = useState(null)
   const abortControllerRef = useRef(null)
 
-  const sessionId = reportId ? `${REPORT_CHAT_SESSION_PREFIX}${reportId}` : null
+  const sessionId = reportId ? `${REPORT_CHAT_SESSION_PREFIX}${reportId}` : 'docs_chat_session'
 
   // Cargar mensajes persistidos al cambiar de reporte
   useEffect(() => {
@@ -125,7 +125,7 @@ export function useReportChat(reportId) {
 
   const sendMessage = useCallback(
     async (content, contextText = null, mode = 'report') => {
-      if (!content?.trim() || isLoading || !sessionId) return
+      if (!content?.trim() || isLoading) return
 
       if (abortControllerRef.current) {
         abortControllerRef.current()
@@ -185,7 +185,7 @@ export function useReportChat(reportId) {
   const sendMessageAfterEdit = useCallback(
     async (messageId, newContent, contextText = null, mode = 'report') => {
       const trimmed = newContent?.trim()
-      if (!trimmed || isLoading || !sessionId) return
+      if (!trimmed || isLoading) return
       if (abortControllerRef.current) abortControllerRef.current()
 
       setMessages((prev) => {
@@ -267,7 +267,7 @@ export function useReportChat(reportId) {
     }
   }, [sessionId, reportId])
 
-  return {
+  return useMemo(() => ({
     messages,
     sendMessage,
     sendMessageAfterEdit,
@@ -275,5 +275,5 @@ export function useReportChat(reportId) {
     error,
     clearMessages,
     sessionId,
-  }
+  }), [messages, sendMessage, sendMessageAfterEdit, isLoading, error, clearMessages, sessionId])
 }

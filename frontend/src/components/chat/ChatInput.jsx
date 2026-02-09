@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { SendHorizontal, Loader2, ChevronDown, X as XIcon, BookOpen, FileSearch } from 'lucide-react'
 import { Textarea } from '../ui/Textarea'
+import { useChatLayout } from '../../contexts/ChatLayoutContext'
 
 /**
  * Componente de input para el chat unificado (Guía / Reporte)
@@ -33,6 +34,9 @@ export function ChatInput({
   const [modeMenuOpen, setModeMenuOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const textareaRef = useRef(null)
+  
+  // Obtener modos disponibles del contexto
+  const { availableModes = ['docs'] } = useChatLayout()
 
   // Auto-ajustar altura del textarea
   useEffect(() => {
@@ -111,7 +115,7 @@ export function ChatInput({
           )}
 
           {/* Contenedor principal del input: textarea arriba, barra de acciones abajo (mismo color de fondo) */}
-          <div className="flex flex-col bg-dark-surface-primary border border-dark-border-primary/90 rounded-2xl shadow-gemini-sm focus-within:border-dark-border-focus focus-within:shadow-gemini transition-all duration-200">
+          <div className="flex flex-col bg-dark-surface-primary border border-dark-border-primary/50 rounded-2xl shadow-gemini-sm focus-within:border-dark-border-focus focus-within:shadow-gemini transition-all duration-200">
             {/* Área de texto (no afecta tamaño de botones) */}
             <div className="px-3 pt-1 pb-1 sm:px-3.5 sm:pt-1.5 sm:pb-1.5">
               <Textarea
@@ -122,12 +126,13 @@ export function ChatInput({
                 placeholder="Escribe tu pregunta..."
                 disabled={disabled}
                 rows={1}
-                className="w-full border-0 border-transparent bg-transparent resize-none focus:ring-0 focus:outline-none text-xs sm:text-[14px] leading-relaxed break-words scrollbar-none"
+                className="w-full min-h-2 border-0 border-transparent bg-transparent resize-none focus:ring-0 focus:outline-none text-xs sm:text-[14px] leading-relaxed break-words scrollbar-none"
                 style={{
                   userSelect: 'text',
                   WebkitUserSelect: 'text',
                   wordBreak: 'break-word',
                   overflowWrap: 'anywhere',
+                  border: 'none',
                   outline: 'none',
                   maxHeight: '120px',
                   overflowY: 'auto',
@@ -159,26 +164,32 @@ export function ChatInput({
                 </button>
                 {!modeLocked && modeMenuOpen && (
                   <div className="absolute left-0 bottom-full mb-1.5 z-40 min-w-[130px] rounded-lg border border-dark-border-primary/70 bg-dark-surface-primary shadow-gemini-sm overflow-hidden text-xs">
-                    <button
-                      type="button"
-                      onClick={() => handleModeSelect('report')}
-                      className={`w-full px-3 py-1.5 text-left hover:bg-dark-bg-secondary/70 transition-colors flex items-center gap-2 ${
-                        mode === 'report' ? 'text-sky-400' : 'text-dark-text-primary'
-                      }`}
-                    >
-                      <FileSearch className="w-3.5 h-3.5" />
-                      <span>Reporte</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleModeSelect('docs')}
-                      className={`w-full px-3 py-1.5 text-left hover:bg-dark-bg-secondary/70 border-t border-dark-border-primary/40 transition-colors flex items-center gap-2 ${
-                        mode === 'docs' ? 'text-emerald-400' : 'text-dark-text-primary'
-                      }`}
-                    >
-                      <BookOpen className="w-3.5 h-3.5" />
-                      <span>Guía</span>
-                    </button>
+                    {availableModes.includes('report') && (
+                      <button
+                        type="button"
+                        onClick={() => handleModeSelect('report')}
+                        className={`w-full px-3 py-1.5 text-left hover:bg-dark-bg-secondary/70 transition-colors flex items-center gap-2 ${
+                          mode === 'report' ? 'text-sky-400' : 'text-dark-text-primary'
+                        }`}
+                      >
+                        <FileSearch className="w-3.5 h-3.5" />
+                        <span>Reporte</span>
+                      </button>
+                    )}
+                    {availableModes.includes('docs') && (
+                      <button
+                        type="button"
+                        onClick={() => handleModeSelect('docs')}
+                        className={`w-full px-3 py-1.5 text-left hover:bg-dark-bg-secondary/70 ${
+                          availableModes.includes('report') ? 'border-t border-dark-border-primary/40' : ''
+                        } transition-colors flex items-center gap-2 ${
+                          mode === 'docs' ? 'text-emerald-400' : 'text-dark-text-primary'
+                        }`}
+                      >
+                        <BookOpen className="w-3.5 h-3.5" />
+                        <span>Guía</span>
+                      </button>
+                    )}
                   </div>
                 )}
 

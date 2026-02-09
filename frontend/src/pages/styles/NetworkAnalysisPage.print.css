@@ -1,0 +1,168 @@
+/* Print styles for NetworkAnalysisPage */
+
+@page {
+  margin: 1.5cm;
+  size: auto;
+}
+
+@media print {
+  /* Hide unnecessary UI elements */
+  nav, 
+  button, 
+  header,
+  .flex-shrink-0,
+  .container-app > div:nth-child(2) > div:first-child > div:last-child {
+    display: none !important;
+  }
+
+  /* Print title positioning */
+  .print\:flex {
+    display: flex !important;
+    position: fixed !important;
+    top: 0 !important;
+    right: 0 !important;
+    z-index: 1000;
+  }
+  
+  /* PDF layout reset */
+  .container-app, body, #root {
+    background: white !important;
+    color: black !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    height: auto !important;
+    width: 100% !important;
+  }
+
+  .max-w-5xl {
+    max-width: 100% !important;
+    width: 100% !important;
+    box-shadow: none !important;
+  }
+  
+  /* Ensure text visibility */
+  h1, h2, h3, h4, p, span, div, li, td, th {
+    color: #000 !important;
+    background-color: transparent !important;
+  }
+  
+  .text-dark-text-primary, 
+  .text-dark-text-secondary, 
+  .text-dark-text-muted,
+  .text-white {
+    color: #111 !important;
+  }
+  
+  /* Cards styling for paper */
+  .Card, [class*="bg-dark-accent-primary/5"], [class*="bg-gradient-to-br"] {
+    background: #fff !important;
+    border: 1px solid #ccc !important;
+    box-shadow: none !important;
+    color: black !important;
+    margin-bottom: 1rem !important;
+    break-inside: avoid;
+  }
+
+  /* Grid fixes for print */
+  .grid {
+    display: block !important;
+  }
+  .md\:grid-cols-3 {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 1% !important;
+    margin-bottom: 20px !important;
+  }
+  .md\:grid-cols-3 > div {
+    flex: 1 !important;
+    width: 32% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    min-height: 75px !important;
+    padding: 10px 15px !important;
+    margin-right: 0 !important;
+  }
+
+  .lg\:grid-cols-3 {
+    display: block !important;
+  }
+  .lg\:col-span-1 {
+    width: 100% !important;
+    margin-bottom: 20px !important;
+  }
+  
+  /* Force page break for analysis section */
+  .lg\:col-span-2 {
+    width: 100% !important;
+    page-break-before: always !important;
+    margin-top: 0 !important;
+    padding-top: 3rem !important;
+  }
+
+  /* Markdown (prose) styling */
+  .prose {
+    color: black !important;
+    max-width: 100% !important;
+  }
+  .prose * {
+    color: black !important;
+  }
+  .prose h2, .prose h3 {
+    border-bottom: 1px solid #eee !important;
+    margin-top: 1.5rem !important;
+    padding-bottom: 0.5rem !important;
+  }
+  
+  /* Verdict details styling */
+  [class*="rounded-lg font-semibold"] {
+    border: 2px solid #000 !important;
+    background: #f8f8f8 !important;
+    padding: 8px 16px !important;
+  }
+  
+  /* Compliance table styling */
+  .space-y-2\.5 > div {
+    background: #fff !important;
+    border: 1px solid #eee !important;
+    padding: 10px 15px !important;
+    margin-bottom: 5px !important;
+    page-break-inside: avoid !important;
+  }
+  
+  /* Compliance badges */
+  .compliance-badge {
+    border: 1px solid #000 !important;
+    padding: 2px 6px !important;
+    font-weight: bold !important;
+    font-size: 9px !important;
+    text-transform: uppercase !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  .compliance-badge.text-green-400 {
+    color: #065f46 !important;
+    background-color: #dcfce7 !important;
+    border-color: #059669 !important;
+  }
+  
+  .compliance-badge.text-red-400 {
+    color: #991b1b !important;
+    background-color: #fee2e2 !important;
+    border-color: #dc2626 !important;
+  }
+  
+  /* Prevent word breaks in technical details */
+  .font-mono {
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+    white-space: pre-wrap !important;
+  }
+  
+  /* Ensure text wrapping */
+  p, span, div {
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+  }
+}
