@@ -2,19 +2,8 @@
  * Constantes globales de la aplicación
  */
 
-// URL de la API
-// En producción (Heroku), usar URL relativa ya que frontend y backend están en el mismo dominio
-// En desarrollo, usar la variable de entorno o localhost por defecto
-const getApiUrl = () => {
-    // Si estamos en producción y no hay VITE_API_URL configurada, usar URL relativa
-    if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) {
-        return ""; // URL relativa - mismo dominio
-    }
-    // Usar variable de entorno o localhost por defecto
-    return import.meta.env.VITE_API_URL || "http://localhost:8000";
-};
-
-export const API_URL = getApiUrl();
+// URL de la API - relativa porque frontend y backend se sirven desde el mismo origen
+export const API_URL = "";
 
 // Endpoints de la API
 export const API_ENDPOINTS = {
