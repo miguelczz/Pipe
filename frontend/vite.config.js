@@ -14,4 +14,43 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    host: '0.0.0.0',
+    port: 5173,
+    // Proxy de las rutas API al backend.
+    // bypass: si el navegador pide HTML (navegación), Vite sirve la SPA.
+    // Solo las llamadas fetch/XHR (Accept: application/json) van al backend.
+    proxy: {
+      '/agent': {
+        target: 'http://pipe-backend:8000',
+      },
+      '/files': {
+        target: 'http://pipe-backend:8000',
+        bypass(req) {
+          if (req.headers.accept && req.headers.accept.includes('text/html')) {
+            return '/index.html'
+          }
+        },
+      },
+      '/tools': {
+        target: 'http://pipe-backend:8000',
+      },
+      '/reports': {
+        target: 'http://pipe-backend:8000',
+        bypass(req) {
+          if (req.headers.accept && req.headers.accept.includes('text/html')) {
+            return '/index.html'
+          }
+        },
+      },
+      '/network-analysis': {
+        target: 'http://pipe-backend:8000',
+        bypass(req) {
+          if (req.headers.accept && req.headers.accept.includes('text/html')) {
+            return '/index.html'
+          }
+        },
+      },
+    },
+  },
 })

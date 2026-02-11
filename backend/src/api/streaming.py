@@ -102,9 +102,10 @@ async def stream_graph_execution(
                 # Procesar estado final
                 final_state = event.get("state")
                 if final_state:
-                    supervised_output = final_state.get('supervised_output')
+                    # Nuevo flujo: Supervisor → Sintetizador → END
+                    # final_output es la respuesta definitiva del Sintetizador (último nodo)
                     final_output = final_state.get('final_output')
-                    assistant_response = supervised_output or final_output or "No se pudo generar una respuesta."
+                    assistant_response = final_output or "No se pudo generar una respuesta."
                     
                     response_data = {
                         "type": "final_response",
@@ -199,10 +200,11 @@ async def agent_query_stream(
             elif msg.role == "assistant":
                 graph_messages.append(AIMessage(content=msg.content))
 
-        # Crear estado inicial del grafo (incluir report_id si el chat es sobre un reporte)
+        # Crear estado inicial del grafo (incluir report_id y selected_text si el chat es sobre un reporte)
         initial_state = GraphState(
             messages=graph_messages,
-            report_id=query.report_id if getattr(query, "report_id", None) else None
+            report_id=query.report_id if getattr(query, "report_id", None) else None,
+            selected_text=query.selected_text if getattr(query, "selected_text", None) else None
         )
 
         # Wrapper para capturar la respuesta final y guardarla en el contexto

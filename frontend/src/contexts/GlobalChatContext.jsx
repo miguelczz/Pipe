@@ -19,6 +19,9 @@ const GlobalChatContext = createContext({
     onClearMessages: null,
     onSaveEditedMessage: null,
     
+    // Referencia directa al sendMessage del useChat global (para inyectar extras)
+    sendMessageRef: { current: null },
+    
     setCallbacks: () => {},
     clearCallbacks: () => {},
 })
@@ -49,6 +52,9 @@ export function GlobalChatProvider({ children }) {
         })
     }, [])
 
+    // Ref al sendMessage del useChat global (el Layout lo configura)
+    const sendMessageRef = React.useRef(null)
+
     const value = React.useMemo(
         () => ({
             messages,
@@ -68,6 +74,8 @@ export function GlobalChatProvider({ children }) {
             onSend: callbacks.onSend,
             onClearMessages: callbacks.onClearMessages,
             onSaveEditedMessage: callbacks.onSaveEditedMessage,
+            
+            sendMessageRef,
             
             setCallbacks,
             clearCallbacks,

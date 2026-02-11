@@ -108,9 +108,9 @@ class RAGASCallbackHandler(BaseCallbackHandler):
             return
         
         # Capturar respuesta final
-        if "supervised_output" in outputs:
-            self.current_answer = outputs["supervised_output"]
-        elif "final_output" in outputs:
+        # Nuevo flujo: Supervisor → Sintetizador → END
+        # final_output es la respuesta definitiva (del Sintetizador, último nodo)
+        if "final_output" in outputs:
             self.current_answer = outputs["final_output"]
         elif "answer" in outputs:
             self.current_answer = outputs["answer"]

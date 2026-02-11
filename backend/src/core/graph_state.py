@@ -62,6 +62,9 @@ class GraphState(BaseModel):
     # ID del reporte actual (cuando el chat está en contexto de un reporte)
     report_id: Annotated[Optional[str], LastValue(str)] = None
     
+    # Texto seleccionado por el usuario en el frontend (fragmento del reporte)
+    selected_text: Annotated[Optional[str], LastValue(str)] = None
+    
     def get_state_snapshot(self) -> Dict[str, Any]:
         """
         Obtiene una instantánea del estado actual.

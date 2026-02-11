@@ -1,8 +1,11 @@
 import { Link, useLocation } from 'react-router-dom'
+import React, { useEffect, useRef, useCallback } from 'react'
 import { FileText, Activity, History, MessageCircle } from 'lucide-react'
 import { cn } from '../../utils/cn'
 import { Logo } from '../common/Logo'
 import { useChatLayout } from '../../contexts/ChatLayoutContext'
+import { useGlobalChat } from '../../contexts/GlobalChatContext'
+import { useChat } from '../../hooks/useChat'
 import { Button } from '../ui/Button'
 import { GlobalChatPanel } from '../chat/GlobalChatPanel'
 
@@ -14,6 +17,51 @@ import { GlobalChatPanel } from '../chat/GlobalChatPanel'
 export function Layout({ children }) {
   const location = useLocation()
   const { chatWidth, chatSide, chatPanelOpen, setChatPanelOpen } = useChatLayout()
+  const globalChat = useGlobalChat()
+  const chat = useChat()
+  
+  const chatRef = useRef(chat)
+  chatRef.current = chat
+
+  // Exponer sendMessage via ref para que las páginas puedan llamarlo con extras
+  globalChat.sendMessageRef.current = chat.sendMessage
+
+  // Función para configurar los callbacks por defecto del chat global
+  const setupDefaultCallbacks = useCallback(() => {
+    globalChat.setCallbacks({
+      onSend: (content, contextText) => chatRef.current.sendMessage(content, contextText),
+      onClearMessages: () => chatRef.current.clearMessages(),
+      onSaveEditedMessage: (message, newContent) => {
+        if (message?.role === 'user' && newContent) {
+          chatRef.current.sendMessageAfterEdit(message, newContent)
+        }
+      },
+    })
+    globalChat.setDisabled(false)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Configurar callbacks por defecto al montar
+  useEffect(() => {
+    setupDefaultCallbacks()
+  }, [setupDefaultCallbacks])
+
+  // Restaurar callbacks por defecto cuando onSend queda null
+  // (esto ocurre cuando una página llama clearCallbacks al desmontarse)
+  useEffect(() => {
+    if (!globalChat.onSend) {
+      setupDefaultCallbacks()
+    }
+  }, [globalChat.onSend, setupDefaultCallbacks])
+
+  // Sincronizar mensajes con el GlobalChatContext
+  useEffect(() => {
+    globalChat.setMessages(chat.messages)
+  }, [chat.messages]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sincronizar estado de carga
+  useEffect(() => {
+    globalChat.setIsLoading(chat.isLoading)
+  }, [chat.isLoading]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const navItems = [
     { path: '/files', label: 'Archivos', icon: FileText },

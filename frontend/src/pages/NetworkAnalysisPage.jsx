@@ -11,16 +11,10 @@ import {
     FileText,
     HardDrive,
     X,
-    PanelLeft,
-    PanelRight,
     MessageCircle,
-    Trash2,
 } from 'lucide-react'
 import { ReportBodyContent } from './ReportBodyContent'
 import { networkAnalysisService } from '../services/api'
-import { useReportChat } from '../hooks/useReportChat'
-import { ChatContainer } from '../components/chat/ChatContainer'
-import { ChatInput } from '../components/chat/ChatInput'
 import { useChatLayout } from '../contexts/ChatLayoutContext'
 import { useGlobalChat } from '../contexts/GlobalChatContext'
 import './styles/NetworkAnalysisPage.print.css'
@@ -228,7 +222,7 @@ function NetworkAnalysisPage() {
 
     // Estados locales para el chat (no relacionados con el layout)
     const [selectionPopup, setSelectionPopup] = React.useState(null)
-    const selectionPopupDataRef = React.useRef(null) // ref para que handleAskAgent tenga el texto aunque el popup se cierre
+    const selectionPopupDataRef = React.useRef(null)
     const [chatMode, setChatMode] = React.useState('report') // 'report' | 'docs'
     const [highlightedContext, setHighlightedContext] = React.useState(null)
     const [selectionLockActive, setSelectionLockActive] = React.useState(false)
@@ -236,13 +230,9 @@ function NetworkAnalysisPage() {
     const reportContentRef = React.useRef(null)
     const isResizingRef = React.useRef(false)
 
-    // Inicializar reportChat ANTES de usarlo en useEffects
-    const reportChat = useReportChat(analysisId)
-    
-    // Referencias estables para evitar bucles infinitos
-    const reportChatRef = React.useRef(reportChat)
-    reportChatRef.current = reportChat
-    
+    // Ref estable para analysisId
+    const analysisIdRef = React.useRef(analysisId)
+    analysisIdRef.current = analysisId
 
     // Actualizar disponibilidad de modos según si hay un reporte
     React.useEffect(() => {
@@ -254,54 +244,42 @@ function NetworkAnalysisPage() {
         }
     }, [result, setAvailableModes, setCurrentPage])
 
-    // Sincronizar mensajes del reportChat con el chat global
-    React.useEffect(() => {
-        const currentReportChat = reportChatRef.current
-        if (currentReportChat.messages.length > 0 && globalChat.messages.length === 0) {
-            // Transferir mensajes existentes del reportChat al globalChat
-            globalChat.setMessages(currentReportChat.messages)
-        }
-    }, [reportChat.messages.length, globalChat.messages.length])
-
-    // Configurar callbacks del chat global para usar reportChat
+    // Sobreescribir onSend del chat global para inyectar report_id
+    // cuando estamos en modo "report" y hay un análisis activo.
+    // Los mensajes siguen siendo gestionados por useChat del Layout.
     React.useEffect(() => {
         if (!analysisId) return
-        
+
         globalChat.setCallbacks({
             onSend: (content, contextText) => {
                 const mode = selectionLockActive ? 'report' : chatMode
-                reportChatRef.current.sendMessage(content, contextText, mode)
-            },
-            onClearMessages: () => {
-                reportChatRef.current.clearMessages()
-            },
-            onSaveEditedMessage: (msg, newContent) => {
-                if (msg?.role === 'user' && newContent) {
-                    const mode = selectionLockActive ? 'report' : chatMode
-                    reportChatRef.current.sendMessageAfterEdit(msg.id, newContent, highlightedContext, mode)
+                const extra = {}
+                if (mode === 'report' && analysisIdRef.current) {
+                    extra.report_id = analysisIdRef.current
                 }
-            }
+                if (contextText?.trim()) {
+                    extra.selected_text = contextText.trim()
+                }
+                // Llamar a sendMessage del useChat global con extras (report_id, selected_text)
+                const send = globalChat.sendMessageRef?.current
+                if (send) {
+                    send(content, contextText, extra)
+                }
+            },
         })
 
         return () => {
+            // Restaurar callbacks por defecto del Layout al salir de la página
             globalChat.clearCallbacks()
         }
-    }, [analysisId, chatMode, selectionLockActive, highlightedContext])
-
-    // Sincronizar estado del chat global con reportChat
-    React.useEffect(() => {
-        const currentReportChat = reportChatRef.current
-        globalChat.setMessages(currentReportChat.messages)
-        globalChat.setIsLoading(currentReportChat.isLoading)
-        globalChat.setDisabled(!analysisId)
-    }, [reportChat.messages.length, reportChat.isLoading, analysisId])
+    }, [analysisId, chatMode, selectionLockActive]) // eslint-disable-line react-hooks/exhaustive-deps
 
     // Sincronizar modo y contexto con el chat global
     React.useEffect(() => {
         globalChat.setChatMode(chatMode)
         globalChat.setHighlightedContext(highlightedContext)
         globalChat.setSelectionLockActive(selectionLockActive)
-    }, [chatMode, highlightedContext, selectionLockActive])
+    }, [chatMode, highlightedContext, selectionLockActive]) // eslint-disable-line react-hooks/exhaustive-deps
 
     // Redimensionar ancho del chat
     const handleResizeStart = React.useCallback((e) => {
@@ -346,107 +324,7 @@ function NetworkAnalysisPage() {
         }
     }, [isResizing])
 
-    // Panel de chat lateral: posición fija; ancho animado al abrir/cerrar; ocupa todo el alto de la pantalla
-    const reportChatPanel = result && (
-        <aside
-            className={`fixed top-0 bottom-0 z-50 flex flex-col h-screen rounded-none border-r border-dark-border-primary/50 bg-dark-bg-primary overflow-hidden print:hidden shadow-lg min-w-0 ${chatSide === 'left' ? 'left-0' : 'right-0'}`}
-            aria-label="Chat sobre el informe"
-            style={{
-                width: chatPanelOpen ? chatWidth : 0,
-                transition: 'width 0.45s cubic-bezier(0.4, 0, 0.2, 1)',
-                pointerEvents: chatPanelOpen ? 'auto' : 'none'
-            }}
-            onWheel={(e) => e.stopPropagation()}
-        >
-            {/* Resize handle: borde interior para arrastrar y cambiar ancho */}
-            <div
-                role="separator"
-                aria-label="Redimensionar ancho del chat"
-                className={`absolute top-0 bottom-0 w-2 cursor-col-resize flex-shrink-0 z-10 flex items-center justify-center hover:bg-dark-border-primary/20 ${chatSide === 'left' ? 'right-0' : 'left-0'}`}
-                onMouseDown={handleResizeStart}
-                style={{ [chatSide === 'left' ? 'right' : 'left']: 0 }}
-            >
-                <div className="w-0.5 h-12 rounded-full bg-dark-border-primary/50" />
-            </div>
-            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-dark-border-primary/50 bg-dark-surface-primary/50 flex-shrink-0">
-                <span className="text-sm font-medium text-dark-text-primary truncate">
-                    Pipechat
-                </span>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="p-1.5 text-dark-text-muted hover:text-dark-accent-primary"
-                        onClick={() => reportChat.clearMessages()}
-                        title="Limpiar chat"
-                    >
-                        <Trash2 className="w-4 h-4" />
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="p-1.5 text-dark-text-muted hover:text-dark-accent-primary"
-                        onClick={() => setChatSide(chatSide === 'left' ? 'right' : 'left')}
-                        title={chatSide === 'left' ? 'Mover chat a la derecha' : 'Mover chat a la izquierda'}
-                    >
-                        {chatSide === 'left' ? <PanelRight className="w-4 h-4" /> : <PanelLeft className="w-4 h-4" />}
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="p-1.5 text-dark-text-muted hover:text-dark-accent-primary"
-                        onClick={() => setChatPanelOpen(false)}
-                        title="Cerrar chat"
-                    >
-                        <X className="w-4 h-4" />
-                    </Button>
-                </div>
-            </div>
-            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-                <ChatContainer
-                    messages={reportChat.messages}
-                    isLoading={reportChat.isLoading}
-                    onSaveEditedMessage={(msg, newContent) => {
-                        if (msg?.role === 'user' && newContent) {
-                            reportChat.sendMessageAfterEdit(
-                                msg.id,
-                                newContent,
-                                highlightedContext,
-                                selectionLockActive ? 'report' : chatMode
-                            )
-                        }
-                    }}
-                    mode={chatMode}
-                    onModeChange={setChatMode}
-                    modeLocked={selectionLockActive}
-                />
-            </div>
-            <div className="p-2 border-t border-dark-border-primary/50 flex-shrink-0 bg-dark-bg-primary">
-                <ChatInput
-                    onSend={(content, contextText) =>
-                        reportChat.sendMessage(
-                            content,
-                            contextText,
-                            selectionLockActive ? 'report' : chatMode
-                        )
-                    }
-                    isLoading={reportChat.isLoading}
-                    disabled={!analysisId}
-                    mode={chatMode}
-                    modeLocked={selectionLockActive}
-                    onModeChange={setChatMode}
-                    contextText={highlightedContext}
-                    onClearContext={() => {
-                        setHighlightedContext(null)
-                        setSelectionLockActive(false)
-                    }}
-                />
-            </div>
-        </aside>
-    )
+    // El panel de chat se renderiza desde el Layout (GlobalChatPanel)
 
     // Cerrar popup solo al hacer clic fuera del reporte y fuera del botón (no en selectionchange, para no cerrar antes del click y mantener la selección)
     React.useEffect(() => {

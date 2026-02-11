@@ -266,13 +266,12 @@ def orchestrator_node(state: GraphState) -> Dict[str, Any]:
         thought_chain = add_thought(
             thought_chain,
             "Orquestador",
-            "Pregunta rechazada → Sintetizador",
-            "Pregunta fuera de tema, pasando mensaje de rechazo",
+            "Pregunta rechazada → Supervisor",
+            "Pregunta fuera de tema, pasando al Supervisor para validar",
             "info"
         )
-        # Agregar el mensaje de rechazo como resultado para que el sintetizador lo procese
         return {
-            "next_component": "Sintetizador",
+            "next_component": "Supervisor",
             "thought_chain": thought_chain,
             "rejection_message": rejection_message
         }
@@ -282,26 +281,26 @@ def orchestrator_node(state: GraphState) -> Dict[str, Any]:
         thought_chain = add_thought(
             thought_chain,
             "Orquestador",
-            "Sin plan → Sintetizador",
+            "Sin plan → Supervisor",
             "No se generó plan de ejecución",
             "info"
         )
         return {
-            "next_component": "Sintetizador",
+            "next_component": "Supervisor",
             "thought_chain": thought_chain
         }
     
-    # Si hay resultados pero no hay pasos pendientes, ir a Sintetizador
+    # Si hay resultados pero no hay pasos pendientes, ir a Supervisor
     if results and not plan_steps:
         thought_chain = add_thought(
             thought_chain,
             "Orquestador",
-            "Todos los pasos completados → Sintetizador",
-            f"{len(results)} resultado(s) listo(s) para sintetizar",
+            "Todos los pasos completados → Supervisor",
+            f"{len(results)} resultado(s) listo(s) para validar",
             "success"
         )
         return {
-            "next_component": "Sintetizador",
+            "next_component": "Supervisor",
             "thought_chain": thought_chain
         }
     
@@ -319,16 +318,16 @@ def orchestrator_node(state: GraphState) -> Dict[str, Any]:
             "thought_chain": thought_chain
         }
     
-    # Fallback: ir a Sintetizador
+    # Fallback: ir a Supervisor
     thought_chain = add_thought(
         thought_chain,
         "Orquestador",
-        "Fallback → Sintetizador",
+        "Fallback → Supervisor",
         "Usando fallback por defecto",
         "info"
     )
     return {
-        "next_component": "Sintetizador",
+        "next_component": "Supervisor",
         "thought_chain": thought_chain
     }
 
@@ -440,153 +439,72 @@ def ejecutor_agent_node(state: GraphState, config: Optional[RunnableConfig] = No
 
 async def supervisor_node(state: GraphState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
     """
-    Supervisor: Valida la calidad de la respuesta final y corrige errores si es necesario.
-    Asegura que la respuesta cumple con estándares de calidad antes de enviarla al usuario.
+    Supervisor: Valida los resultados ANTES de sintetizar. Se ejecuta antes del Sintetizador.
     
-    Este nodo SOLO accede a:
-        pass
-    - state.final_output: para leer la respuesta generada
+    Responsabilidades:
+    1. Verificar si hay resultados válidos de las herramientas
+    2. Detectar si RAG no encontró información → generar fallback con conocimiento general
+    3. Capturar datos para evaluación Ragas (en background)
+    4. Aprobar o enriquecer los resultados para que el Sintetizador los procese
+    
+    Este nodo accede a:
+    - state.results: para validar los resultados de herramientas
     - state.messages: para obtener el contexto del usuario
-    - state.supervised_output: para escribir la respuesta supervisada/corregida
+    - state.rejection_message: para detectar preguntas fuera de tema
+    - state.supervised_output: para escribir fallback si RAG falló (el Sintetizador lo usará)
     - state.quality_score: para escribir la puntuación de calidad
     
-    NO debe acceder a plan_steps, results, tool_name u otros campos.
-    
-    Retorna un diccionario parcial con solo los campos modificados para que
-    LangGraph propague correctamente los valores con LastValue.
+    Retorna un diccionario parcial con solo los campos modificados.
     """
-    final_output = state.final_output or ""
     user_prompt = get_user_prompt_from_messages(state.messages)
     thought_chain = state.thought_chain or []
+    results = state.results or []
     
-    # Capturar datos para evaluación con Ragas (automático)
-    try:
-        from ..utils.ragas_evaluator import get_evaluator
-        from ..settings import settings
-        
-        if settings.ragas_enabled and user_prompt and final_output:
-            evaluator = get_evaluator(enabled=True)
-            if evaluator:
-                # Extraer contextos de los resultados si están disponibles
-                contexts = []
-                if state.results:
-                    for i, result in enumerate(state.results):
-                        if isinstance(result, dict):
-                            # Log de la estructura del resultado para debugging
-                            result_keys = list(result.keys())
-                            
-                            # Buscar contextos directamente (el RAG tool los retorna aquí)
-                            if "contexts" in result:
-                                result_contexts = result["contexts"]
-                                if isinstance(result_contexts, list):
-                                    # Filtrar contextos vacíos o None
-                                    valid_contexts = [c for c in result_contexts if c and isinstance(c, str) and c.strip()]
-                                    contexts.extend(valid_contexts)
-                                else:
-                                    pass
-                            # Si no hay contextos pero hay answer, puede ser resultado de RAG
-                            if "answer" in result:
-                                # El RAG tool retorna {"answer": ..., "hits": número, "contexts": [...]}
-                                # Si no está "contexts", puede ser que se usó contexto de conversación
-                                source = result.get("source", "unknown")
-                                hits = result.get("hits", 0)
-                                
-                                if source == "conversation_context" or source == "conversation_context_fallback":
-                                    pass
-                                elif hits > 0:
-                                    # Hay hits pero no contextos - esto es un problema
-                                    pass
-                                else:
-                                    pass
-                        else:
-                            pass
-                else:
-                    pass
-                
-                # Si no hay contextos, intentar obtenerlos de otras fuentes
-                if not contexts:
-                    pass
-                
-                # Capturar para evaluación
-                evaluator.capture_evaluation(
-                    question=user_prompt,
-                    answer=final_output,
-                    contexts=contexts if contexts else [],
-                    metadata={
-                        "tool_used": "rag",  # Se puede mejorar detectando qué herramienta se usó
-                        "quality_score": state.quality_score if hasattr(state, 'quality_score') else 0.0
-                    }
-                )
-                
-                # Calcular métricas si hay contextos (en background para no bloquear)
-                # Nota: RAGAS puede generar BlockingError en entornos asíncronos
-                # Solución: ejecutar con --allow-blocking o configurar BG_JOB_ISOLATED_LOOPS=true
-                # IMPORTANTE: La evaluación se ejecuta en background para no bloquear la respuesta al usuario
-                if contexts:
-                    try:
-                        # Ejecutar evaluación en background (thread separado) para no bloquear
-                        from threading import Thread
-                        
-                        def evaluate_in_background():
-                            """Ejecuta la evaluación de RAGAS en un thread separado"""
-                            try:
-                                metrics = evaluator.evaluate_captured_data()
-                                if metrics:
-                                    for metric_name, value in metrics.items():
-                                        emoji = "✅" if value >= 0.7 else "⚠️" if value >= 0.5 else "❌"
-                                    avg_score = sum(metrics.values()) / len(metrics) if metrics else 0.0
-                                else:
-                                    pass
-                            except Exception as bg_error:
-                                error_msg = str(bg_error)
-                                if "BlockingError" in error_msg or "blocking" in error_msg.lower():
-                                    pass
-                                else:
-                                    pass
-                        
-                        # Iniciar thread en background (daemon=True para que no bloquee el cierre)
-                        eval_thread = Thread(target=evaluate_in_background, daemon=True)
-                        eval_thread.start()
-                    except Exception as e:
-                        error_msg = str(e)
-                        # No fallar si hay error al iniciar el thread
-    except Exception as e:
-        # No fallar si Ragas no está disponible o hay error
-        pass
-    
-    if not final_output:
+    # ---------------------------------------------------------
+    # 1. Si hay mensaje de rechazo, aprobar directamente (el Sintetizador lo formateará)
+    # ---------------------------------------------------------
+    rejection_message = getattr(state, 'rejection_message', None)
+    if rejection_message:
         thought_chain = add_thought(
             thought_chain,
             "Supervisor",
-            "No hay respuesta para validar",
-            "No se generó ninguna respuesta final",
-            "error"
+            "Aprobado: mensaje de rechazo",
+            "Pregunta fuera de tema, el Sintetizador formateará el rechazo",
+            "info"
         )
         return {
-            "supervised_output": "No se pudo generar una respuesta.",
+            "quality_score": 1.0,
+            "thought_chain": thought_chain
+        }
+    
+    # ---------------------------------------------------------
+    # 2. Verificar si hay resultados válidos
+    # ---------------------------------------------------------
+    if not results:
+        thought_chain = add_thought(
+            thought_chain,
+            "Supervisor",
+            "Sin resultados para validar",
+            "No se encontraron resultados de herramientas",
+            "warning"
+        )
+        return {
             "quality_score": 0.0,
             "thought_chain": thought_chain
         }
     
-    # Validar calidad de la respuesta usando LLM
-    # OPTIMIZACIÓN: Se eliminó la verificación de "fuera de tema" redundante (ya la hace el Planner)
-    
     # ---------------------------------------------------------
-    # FALLBACK: INFORMACIÓN NO ENCONTRADA EN DOCUMENTOS
+    # 3. FALLBACK: Detectar si RAG no encontró información
     # ---------------------------------------------------------
-    # Si el RAG no encontró información, intentar responder con conocimiento general
-    # para cumplir con la regla "debe dar una respuesta si no la tiene"
-    
     rag_missed_info = False
     
-    # 1. Verificar resultados de herramientas
-    if state.results:
-        for res in state.results:
-            if isinstance(res, dict) and res.get("source") in ["no_hits", "empty_context", "no_documents", "qdrant_connection_error"]:
-                rag_missed_info = True
-                break
+    # 3a. Verificar resultados de herramientas por source
+    for res in results:
+        if isinstance(res, dict) and res.get("source") in ["no_hits", "empty_context", "no_documents", "qdrant_connection_error"]:
+            rag_missed_info = True
+            break
     
-    # 2. Verificar texto de la respuesta actual
+    # 3b. Verificar texto de las respuestas RAG
     if not rag_missed_info:
         missing_info_keywords = [
             "no encontré información", "no tengo información", 
@@ -595,11 +513,14 @@ async def supervisor_node(state: GraphState, config: Optional[RunnableConfig] = 
             "fuera de este ámbito especializado", "fuera de este tema especializado",
             "no está relacionada con redes o tecnologías de red"
         ]
-        if any(keyword in final_output.lower() for keyword in missing_info_keywords):
-            rag_missed_info = True
-
+        for res in results:
+            if isinstance(res, dict) and "answer" in res:
+                answer_text = res["answer"].lower()
+                if any(keyword in answer_text for keyword in missing_info_keywords):
+                    rag_missed_info = True
+                    break
+    
     if rag_missed_info:
-        
         fallback_prompt = f"""
 El sistema RAG no encontró información en los documentos para la pregunta del usuario, pero el usuario requiere una respuesta de Pipe.
 Genera una respuesta basada en tu CONOCIMIENTO GENERAL como experto en redes WiFi y Band Steering.
@@ -607,17 +528,14 @@ Genera una respuesta basada en tu CONOCIMIENTO GENERAL como experto en redes WiF
 Pregunta del usuario: "{user_prompt}"
 
 INSTRUCCIONES CRÍTICAS:
-    pass
 1. Comienza la respuesta EXACTAMENTE con esta frase: "⚠️ **Nota:** No encontré esta información específica en tus documentos técnicos, pero basado en estándares generales de redes WiFi:"
 2. Proporciona una respuesta técnica, precisa y útil sobre el tema.
 3. CONTEXTO OBLIGATORIO: Cualquier término como 'asociación' debe interpretarse EXCLUSIVAMENTE como 'asociación inalámbrica 802.11'. NO hables de ámbitos sociales o económicos.
 4. Si la pregunta solicita una lista, enuméralos claramente.
 
 Genera la respuesta técnica y profesional:
-    pass
 """
         try:
-            # ASYNC CHANGE
             fallback_output = await llm.agenerate(fallback_prompt)
             thought_chain = add_thought(
                 thought_chain,
@@ -626,303 +544,116 @@ Genera la respuesta técnica y profesional:
                 "Información no encontrada en docs → Usando conocimiento general",
                 "warning"
             )
+            # Guardar el fallback en supervised_output para que el Sintetizador lo use directamente
             return {
                 "supervised_output": fallback_output.strip(),
-                "quality_score": 0.9, # Asumimos buena calidad del fallback
+                "quality_score": 0.9,
                 "thought_chain": thought_chain
             }
         except Exception as e:
-            # Si falla, continuar con flujo normal (probablemente mejorará la respuesta "no se" original)
-            pass
+            # Si falla, dejar que el Sintetizador trabaje con los resultados crudos
+            thought_chain = add_thought(
+                thought_chain,
+                "Supervisor",
+                "Fallback fallido",
+                f"Error al generar fallback: {str(e)}",
+                "error"
+            )
     
-    # Obtener callback de streaming si existe (para mejoras)
-    stream_callback = None
-    if config and "configurable" in config:
-        stream_callback = config["configurable"].get("stream_callback")
-
-    # Validar calidad de la respuesta usando LLM
-    quality_prompt = f"""
-Evalúa la siguiente respuesta generada para el usuario y determina:
-    pass
-1. Si responde directamente a la pregunta del usuario
-2. Si es clara y concisa
-3. Si contiene información relevante
-4. Si hay errores obvios o información incorrecta
-5. Si la respuesta indica que la pregunta está FUERA DEL TEMA de redes/telecomunicaciones (ej: "No puedo responder preguntas sobre cocina", etc).
-
-Pregunta del usuario: "{user_prompt}"
-
-Respuesta generada:
-    pass
-{final_output}
-
-INSTRUCCIONES DE PUNTUACIÓN:
-    pass
-- Si la respuesta indica CORRECTAMENTE que la pregunta está fuera de tema, asigna un puntaje de 10 (Excelente manejo de límites).
-- Si la respuesta es técnica y correcta, asigna puntaje alto.
-- Si la respuesta es vaga, incorrecta o no responde, asigna puntaje bajo.
-
-Responde SOLO con un número del 0 al 10 (donde 10 es excelente) seguido de una breve explicación.
-Formato: "Puntuación: X. Explicación: ..."
-"""
+    # ---------------------------------------------------------
+    # 4. Resultados válidos: aprobar para el Sintetizador
+    # ---------------------------------------------------------
+    thought_chain = add_thought(
+        thought_chain,
+        "Supervisor",
+        "Validación: aprobado",
+        f"{len(results)} resultado(s) válido(s) para sintetizar",
+        "success"
+    )
     
+    # ---------------------------------------------------------
+    # 5. Capturar datos para evaluación Ragas (en background, no bloquea)
+    # ---------------------------------------------------------
+    # Nota: Se capturan los datos crudos. La respuesta final se generará en el Sintetizador.
+    # La evaluación de Ragas se ejecutará con los datos disponibles.
     try:
-        # ASYNC CHANGE
-        quality_response = await llm.agenerate(quality_prompt)
+        from ..utils.ragas_evaluator import get_evaluator
+        from ..settings import settings
         
-        # Extraer puntuación de la respuesta
-        score_match = re.search(r"(\d+(?:\.\d+)?)", quality_response)
-        if score_match:
-            quality_score = float(score_match.group(1))
-            # Normalizar a rango 0-1
-            quality_score = min(max(quality_score / 10.0, 0.0), 1.0)
-        else:
-            quality_score = 0.7  # Puntuación por defecto si no se puede extraer
-        
-        # Analizar la complejidad de la pregunta para determinar si la longitud es apropiada
-        # IMPORTANTE: Si la pregunta incluye operaciones de red (ping, traceroute, etc.), es al menos "moderada"
-        has_network_operation = any(keyword in user_prompt.lower() for keyword in [
-            "ping", "traceroute", "trace", "haz ping", "hacer ping", "compara", "comparar", "dns", "registros"
-        ])
-        
-        complexity_check_prompt = f"""
-Analiza la siguiente pregunta y determina su complejidad:
-
-Pregunta: "{user_prompt}"
-
-Determina si es:
-    pass
-1. "simple" - Pregunta directa que requiere una respuesta breve (ej: "¿Qué es X?", "¿Cuál es Y?")
-2. "moderada" - Pregunta que requiere una explicación con algunos detalles O incluye operaciones de red (ej: "¿Cómo funciona X?", "Explica Y", "haz ping a X", "¿Qué es X? y haz Y")
-3. "compleja" - Pregunta que requiere una explicación detallada, múltiples aspectos, O una lista completa de elementos (ej: "Compara X e Y", "Explica todos los aspectos de Z", "¿Cuáles son las capas del modelo OSI?", "Menciona todos los tipos de X", "Lista todas las capas", "¿Cuáles son todas las...?")
-
-IMPORTANTE: 
-    pass
-- Si la pregunta combina una explicación Y una operación (ej: "¿Qué es X? y haz Y"), es "moderada" o "compleja", NO "simple".
-- Si la pregunta requiere una LISTA COMPLETA de elementos (ej: "capas del modelo OSI", "tipos de firewalls", "protocolos de red", "todas las capas", "cuáles son las capas"), debe ser marcada como "compleja" para asegurar que se incluyan TODOS los elementos sin omitir ninguno.
-
-Responde SOLO con una palabra: "simple", "moderada" o "compleja".
-"""
-        
-        try:
-            # ASYNC CHANGE
-            complexity_response = await llm.agenerate(complexity_check_prompt)
-            complexity = complexity_response.strip().lower()
-            
-            # Determinar longitud apropiada según complejidad
-            # AUMENTADO: Límites más permisivos para evitar recorte de respuestas importantes
-            # Si hay operaciones de red, aumentar significativamente el límite para preservar resultados técnicos
-            if "simple" in complexity and not has_network_operation:
-                max_appropriate_length = 500  # Aumentado de 200 a 500 para preguntas simples
-            elif "compleja" in complexity:
-                max_appropriate_length = 5000  # Aumentado de 2000 a 5000 para preguntas complejas
-            else:  # moderada o simple con operaciones de red
-                max_appropriate_length = 3000 if has_network_operation else 1500  # Aumentado significativamente
-        except Exception as e:
-            complexity = "moderada"  # Valor por defecto
-            max_appropriate_length = 2000  # Aumentado de 800 a 2000
-        
-        # NUEVA ESTRATEGIA: Solo modificar en casos EXTREMOS para minimizar doble respuesta
-        # - Calidad MUY baja (< 0.4) en lugar de (< 0.5)
-        # - Respuesta EXTREMADAMENTE larga (> 3x límite) en lugar de (> 2x límite)
-        # Esto reduce drásticamente las modificaciones del Supervisor
-        response_too_long = len(final_output) > (max_appropriate_length * 3)  # Más permisivo
-        
-        if quality_score < 0.4 or response_too_long:  # Umbral más bajo
-            # Determinar guía de longitud según complejidad
-            if "simple" in complexity:
-                length_guidance = "Respuesta MUY BREVE y DIRECTA: máximo 2-3 oraciones (30-60 palabras). Ve directo al punto sin explicaciones adicionales, sin introducciones largas, sin conclusiones innecesarias."
-            elif "compleja" in complexity:
-                length_guidance = "Respuesta COMPLETA y DETALLADA: 200-400 palabras con explicación estructurada, ejemplos si son relevantes, y organización clara."
-            else:  # moderada
-                length_guidance = "Respuesta EQUILIBRADA: 80-150 palabras con explicación clara y algunos detalles relevantes. Evita información redundante."
-            
-            improvement_prompt = f"""
-La siguiente respuesta tiene problemas de calidad o no está adaptada a la complejidad de la pregunta. Mejórala para que:
-    pass
-1. Responda DIRECTAMENTE a la pregunta del usuario de manera clara y natural
-2. Sea ADAPTADA a la complejidad de la pregunta: {length_guidance}
-3. Mantenga FIDELIDAD TOTAL a la información proporcionada (NO inventes, NO agregues conocimiento general)
-4. Use lenguaje natural y comprensible
-5. Esté bien estructurada y organizada
-
-INSTRUCCIONES:
-    pass
-- FIDELIDAD: Usa SOLO la información de la respuesta original. NO inventes información.
-- LONGITUD ADAPTATIVA: {length_guidance}
-- LENGUAJE NATURAL: Habla como un experto explicando a un usuario, de manera clara y accesible
-- ESTRUCTURA: Organiza la información de forma lógica
-- PRESERVAR RESULTADOS TÉCNICOS: Si la respuesta incluye resultados de operaciones de red (ping, traceroute, comparaciones, DNS), PRESERVA estos resultados completos. NO los resumas ni elimines información técnica importante.
-- NO copies párrafos completos, parafrasea de manera natural
-- Para preguntas simples, ve directo al punto sin rodeos
-
-Pregunta del usuario: "{user_prompt}"
-
-Respuesta original (con problemas o no adaptada):
-    pass
-{final_output[:2000]}{"..." if len(final_output) > 2000 else ""}
-
-Respuesta mejorada (clara, natural, adaptada a la complejidad y fiel a la información):
-    pass
-"""
-            try:
-                improved_output = await llm.agenerate(
-                    improvement_prompt, 
-                    stream_callback=None # Evitar doble streaming/reemplazo visual
-                )
-                thought_chain = add_thought(
-                    thought_chain,
-                    "Supervisor",
-                    "Validación: mejorada",
-                    f"Calidad: {quality_score:.2f}, se aplicaron mejoras",
-                    "success"
-                )
-                return {
-                    "supervised_output": improved_output.strip(),
-                    "quality_score": quality_score,
-                    "thought_chain": thought_chain
-                }
-            except Exception as e:
-                logging.warning(f"Error al mejorar respuesta: {e}")
-                thought_chain = add_thought(
-                    thought_chain,
-                    "Supervisor",
-                    "Error al mejorar respuesta",
-                    f"No se pudo mejorar la respuesta: {str(e)}",
-                    "error"
-                )
-                # Si falla la mejora, usar la respuesta original
-                return {
-                    "supervised_output": final_output,
-                    "quality_score": quality_score,
-                    "thought_chain": thought_chain
-                }
-        else:
-            # La calidad es aceptable, pero SIEMPRE asegurar que sea concisa
-            supervised_output = final_output.strip()
-            
-            # SOLO ajustar si es EXCESIVAMENTE larga (más del doble del límite)
-            # Esto evita recortar respuestas que están ligeramente por encima del límite
-            if len(supervised_output) > (max_appropriate_length * 2):
-                # Determinar guía de longitud según complejidad
-                if "simple" in complexity:
-                    length_guidance = "Respuesta MUY BREVE: máximo 2-3 oraciones (30-60 palabras). Ve directo al punto."
-                elif "compleja" in complexity:
-                    length_guidance = "Respuesta COMPLETA: 200-400 palabras con explicación estructurada."
-                else:  # moderada
-                    length_guidance = "Respuesta EQUILIBRADA: 80-150 palabras con explicación clara. Evita redundancias."
+        if settings.ragas_enabled and user_prompt:
+            evaluator = get_evaluator(enabled=True)
+            if evaluator:
+                contexts = []
+                for result in results:
+                    if isinstance(result, dict) and "contexts" in result:
+                        result_contexts = result["contexts"]
+                        if isinstance(result_contexts, list):
+                            valid_contexts = [c for c in result_contexts if c and isinstance(c, str) and c.strip()]
+                            contexts.extend(valid_contexts)
                 
-                shortening_prompt = f"""
-Ajusta la siguiente respuesta para que sea apropiada en longitud según la complejidad de la pregunta, manteniendo la información esencial y un lenguaje natural.
-
-INSTRUCCIONES:
-    pass
-- FIDELIDAD: Mantén SOLO la información de la respuesta original. NO inventes información.
-- LONGITUD ADAPTATIVA: {length_guidance}
-- LENGUAJE NATURAL: Mantén un tono claro y comprensible
-- ESTRUCTURA: Organiza la información de forma lógica
-- PRESERVAR RESULTADOS TÉCNICOS: Si la respuesta incluye resultados de operaciones de red (ping, traceroute, comparaciones, DNS), PRESERVA estos resultados completos. NO los resumas ni elimines información técnica importante.
-- NO copies párrafos completos, parafrasea de manera natural
-- Si la pregunta requiere contexto, mantén una breve introducción (1-2 oraciones)
-- Para preguntas simples, ve directo al punto sin rodeos
-
-Pregunta: "{user_prompt}"
-
-Respuesta actual (muy larga para esta pregunta):
-    pass
-{supervised_output[:min(max_appropriate_length + 500, len(supervised_output))]}...
-
-Respuesta ajustada (adaptada a la complejidad, natural y fiel a la información):
-    pass
-"""
-                try:
-                    # DESHABILITADO: El usuario prefiere respuestas largas a que se "cambie" el texto frente a sus ojos.
-                    # shortened = await llm.agenerate(
-                    #     shortening_prompt,
-                    #     stream_callback=None # Evitar doble streaming/reemplazo visual
-                    # )
-                    # supervised_output = shortened.strip()
-                    pass
+                # Extraer respuesta cruda del RAG para la evaluación
+                rag_answer = ""
+                for res in results:
+                    if isinstance(res, dict) and "answer" in res:
+                        rag_answer = res["answer"]
+                        break
+                
+                if rag_answer:
+                    evaluator.capture_evaluation(
+                        question=user_prompt,
+                        answer=rag_answer,
+                        contexts=contexts if contexts else [],
+                        metadata={
+                            "tool_used": "rag",
+                            "quality_score": 0.0
+                        }
+                    )
                     
-                    thought_chain = add_thought(
-                        thought_chain,
-                        "Supervisor",
-                        "Validación: aprobada",
-                        f"Calidad: {quality_score:.2f}, respuesta validada ({len(supervised_output)} caracteres)",
-                        "success"
-                    )
-                except Exception as e:
-                    supervised_output = final_output
-                    thought_chain = add_thought(
-                        thought_chain,
-                        "Supervisor",
-                        "Validación: aprobada (con errores)",
-                        f"Calidad: {quality_score:.2f}, no se pudo acortar: {str(e)}",
-                        "warning"
-                    )
-            else:
-                # Calidad buena y longitud apropiada - NO modificar
-                # El streaming ya se hizo en el Synthesizer
-                thought_chain = add_thought(
-                    thought_chain,
-                    "Supervisor",
-                    "Validación: aprobada sin modificaciones",
-                    f"Calidad: {quality_score:.2f}, respuesta aceptada tal cual",
-                    "success"
-                )
-            
-            # OPTIMIZACIÓN: Limpiar estado para evitar acumulación de memoria (solo si hay mucho contenido)
-            if state.messages and len(state.messages) > 30:
-                state.cleanup_old_messages(max_messages=30)
-            
-            if state.results and len(state.results) > 10:
-                state.cleanup_large_results(max_results=10)
-            
-            return {
-                "supervised_output": supervised_output,
-                "quality_score": quality_score,
-                "thought_chain": thought_chain
-            }
-    except Exception as e:
-        logging.warning(f"Error en supervisor: {e}")
-        thought_chain = add_thought(
-            thought_chain,
-            "Supervisor",
-            "Error en validación",
-            f"Error al validar respuesta: {str(e)}, usando respuesta original",
-            "error"
-        )
-        # OPTIMIZACIÓN: Limpiar estado para evitar acumulación de memoria (solo si hay mucho contenido)
-        if state.messages and len(state.messages) > 30:
-            state.cleanup_old_messages(max_messages=30)
-        
-        if state.results and len(state.results) > 10:
-            state.cleanup_large_results(max_results=10)
-        
-        # Si falla la validación, usar la respuesta original
-        return {
-            "supervised_output": final_output,
-            "quality_score": 0.7,  # Puntuación por defecto
-            "thought_chain": thought_chain
-        }
+                    if contexts:
+                        try:
+                            from threading import Thread
+                            
+                            def evaluate_in_background():
+                                try:
+                                    evaluator.evaluate_captured_data()
+                                except Exception:
+                                    pass
+                            
+                            eval_thread = Thread(target=evaluate_in_background, daemon=True)
+                            eval_thread.start()
+                        except Exception:
+                            pass
+    except Exception:
+        pass
+    
+    # OPTIMIZACIÓN: Limpiar estado para evitar acumulación de memoria
+    if state.messages and len(state.messages) > 30:
+        state.cleanup_old_messages(max_messages=30)
+    
+    if state.results and len(state.results) > 10:
+        state.cleanup_large_results(max_results=10)
+    
+    return {
+        "quality_score": 0.85,
+        "thought_chain": thought_chain
+    }
 
 
 async def synthesizer_node(state: GraphState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
     """
-    Combina los resultados de los pasos anteriores y produce una respuesta final legible.
-    SOLO interviene cuando se usaron múltiples herramientas (RAG + IP).
-    Si solo se usó una herramienta, devuelve el resultado directamente sin modificar.
+    Sintetizador: Genera la respuesta final legible para el usuario.
+    Se ejecuta DESPUÉS del Supervisor, que ya validó los resultados.
     
-    Este nodo SOLO accede a:
-        pass
+    Flujo: ... → Supervisor (valida datos) → Sintetizador (genera respuesta) → END
+    
+    Este nodo accede a:
     - state.results: para leer los resultados de las herramientas
-    - state.messages: para obtener el prompt original del usuario (contexto para síntesis)
+    - state.messages: para obtener el prompt original del usuario
+    - state.supervised_output: si el Supervisor generó un fallback, usarlo directamente
+    - state.rejection_message: para mensajes de rechazo
     - state.final_output: para escribir la respuesta final
     
-    NO debe acceder a plan_steps, tool_name, current_step u otros campos.
-    
-    Retorna un diccionario parcial con solo los campos modificados para que
-    LangGraph propague correctamente los valores con LastValue.
+    Retorna un diccionario parcial con solo los campos modificados.
     """
     results = state.results or []
     thought_chain = state.thought_chain or []
@@ -932,7 +663,34 @@ async def synthesizer_node(state: GraphState, config: Optional[RunnableConfig] =
     if config and "configurable" in config:
         stream_callback = config["configurable"].get("stream_callback")
     
-    # Verificar si hay un mensaje de rechazo (pregunta fuera de tema)
+    # ---------------------------------------------------------
+    # CASO 0: Si el Supervisor generó un fallback (supervised_output), usarlo directamente
+    # Esto ocurre cuando RAG no encontró información y el Supervisor generó
+    # una respuesta con conocimiento general.
+    # ---------------------------------------------------------
+    supervised_output = getattr(state, 'supervised_output', None)
+    if supervised_output:
+        thought_chain = add_thought(
+            thought_chain,
+            "Sintetizador",
+            "Usando fallback del Supervisor",
+            "El Supervisor generó una respuesta con conocimiento general",
+            "info"
+        )
+        # Hacer streaming del fallback si hay callback
+        if stream_callback:
+            try:
+                stream_callback(supervised_output)
+            except Exception:
+                pass
+        return {
+            "final_output": supervised_output,
+            "thought_chain": thought_chain
+        }
+    
+    # ---------------------------------------------------------
+    # CASO 1: Mensaje de rechazo (pregunta fuera de tema)
+    # ---------------------------------------------------------
     rejection_message = getattr(state, 'rejection_message', None)
     if rejection_message:
         thought_chain = add_thought(
@@ -947,6 +705,9 @@ async def synthesizer_node(state: GraphState, config: Optional[RunnableConfig] =
             "thought_chain": thought_chain
         }
     
+    # ---------------------------------------------------------
+    # CASO 2: No hay resultados
+    # ---------------------------------------------------------
     if not results:
         thought_chain = add_thought(
             thought_chain,
@@ -960,111 +721,124 @@ async def synthesizer_node(state: GraphState, config: Optional[RunnableConfig] =
             "thought_chain": thought_chain
         }
 
-    # Detectar qué herramientas se usaron (sin pensamiento redundante, se registrará al final)
-
-    # Detectar si se usó RAG (única herramienta actual)
-    has_rag_result = any(
+    # ---------------------------------------------------------
+    # CASO 3: Resultados de herramientas - procesar respuesta con LLM
+    # ---------------------------------------------------------
+    has_result = any(
         isinstance(r, dict) and 'answer' in r
         for r in results
     )
 
-    # CASO 1: Solo RAG - procesar respuesta con LLM para asegurar concisión
-    if has_rag_result:
-        # Extraer solo el 'answer' de cada resultado RAG
-        rag_answers = []
+    if has_result:
+        # Detectar si la fuente es un reporte o RAG
+        is_report_source = any(
+            isinstance(r, dict) and r.get('source') == 'report_tool'
+            for r in results
+        )
+        
+        # Extraer solo el 'answer' de cada resultado
+        answers = []
         for r in results:
             if isinstance(r, dict) and 'answer' in r:
-                rag_answers.append(r['answer'])
+                answers.append(r['answer'])
         
-        if rag_answers:
+        if answers:
             # Combinar respuestas si hay múltiples
-            combined_raw = "\n\n".join(rag_answers).strip()
+            combined_raw = "\n\n".join(answers).strip()
             
             # Obtener el prompt original del usuario para contexto
             user_prompt = get_user_prompt_from_messages(state.messages)
             
-            # Analizar complejidad de la pregunta para adaptar la respuesta
-            complexity_check_prompt = f"""
+            # Inicializar valores por defecto
+            max_tokens_synthesis = 600
+            
+            if is_report_source:
+                # ── MODO REPORTE: respuesta basada en datos específicos del análisis ──
+                synthesis_prompt = (
+                    f"Pregunta del usuario: {user_prompt}\n\n"
+                    "El usuario está viendo un REPORTE DE ANÁLISIS ESPECÍFICO. A continuación están los datos REALES de su reporte:\n\n"
+                    f"--- DATOS DEL REPORTE ---\n{combined_raw}\n--- FIN DATOS ---\n\n"
+                    "INSTRUCCIONES CRÍTICAS:\n"
+                    "- Responde EXCLUSIVAMENTE con los datos del reporte proporcionado arriba. Estos son datos REALES de un análisis que el usuario hizo.\n"
+                    "- CITA VALORES EXACTOS: MACs, BSSIDs, bandas, tasas de éxito, conteos de BTM, estándares soportados, etc. No redondees ni generalices.\n"
+                    "- Si el usuario pregunta sobre algo que está en los datos, responde con los valores específicos. Por ejemplo:\n"
+                    "  * '¿Qué estándares KVR soporta?' → Menciona exactamente cuáles son True/False del reporte.\n"
+                    "  * '¿Por qué pasó/falló?' → Usa los compliance checks y el veredicto del reporte.\n"
+                    "  * '¿Cuántas transiciones hubo?' → Cita el número exacto y los detalles de cada una.\n"
+                    "- NO des explicaciones teóricas genéricas. El usuario quiere saber sobre SU análisis, no sobre la teoría.\n"
+                    "- Si la pregunta toca algo que NO está en los datos del reporte, di que esa información no está disponible en este análisis.\n"
+                    "- FORMATO:\n"
+                    "  * Usa **negrita** para valores clave (MACs, nombres de estándares, veredictos).\n"
+                    "  * Usa listas con viñetas para datos múltiples.\n"
+                    "  * Sé directo y conciso, sin introducciones innecesarias.\n\n"
+                    "Responde basándote ÚNICAMENTE en los datos del reporte:"
+                )
+                max_tokens_synthesis = 800
+            else:
+                # ── MODO RAG: respuesta basada en documentación general ──
+                # Analizar complejidad
+                complexity = "moderada"
+                length_guidance = "Respuesta EQUILIBRADA: 100-200 palabras con explicación clara."
+                
+                complexity_check_prompt = f"""
 Analiza la siguiente pregunta y determina su complejidad:
 
 Pregunta: "{user_prompt}"
 
 Determina si es:
-    pass
 1. "simple" - Pregunta directa que requiere una respuesta breve (ej: "¿Qué es X?", "¿Cuál es Y?")
-2. "moderada" - Pregunta que requiere una explicación con algunos detalles (ej: "¿Cómo funciona X?", "Explica Y")
-3. "compleja" - Pregunta que requiere una explicación detallada, múltiples aspectos, O una lista completa de elementos (ej: "Compara X e Y", "Explica todos los aspectos de Z", "¿Cuáles son las capas del modelo OSI?", "Menciona todos los tipos de X", "Lista todas las capas", "¿Cuáles son todas las...?")
-
-IMPORTANTE: Si la pregunta requiere una LISTA COMPLETA de elementos (ej: "capas del modelo OSI", "tipos de firewalls", "protocolos de red", "todas las capas", "cuáles son las capas"), debe ser marcada como "compleja" para asegurar que se incluyan TODOS los elementos sin omitir ninguno.
+2. "moderada" - Pregunta que requiere una explicación con algunos detalles
+3. "compleja" - Pregunta que requiere explicación detallada o una lista completa de elementos
 
 Responde SOLO con una palabra: "simple", "moderada" o "compleja".
 """
-            
-            # Inicializar valores por defecto
-            complexity = "moderada"
-            length_guidance = "Respuesta EQUILIBRADA: 80-150 palabras con explicación clara."
-            max_tokens_synthesis = 300
-            
-            try:
-                # ASYNC CHANGE
-                complexity_response = await llm.agenerate(complexity_check_prompt)
-                complexity = complexity_response.strip().lower()
+                try:
+                    complexity_response = await llm.agenerate(complexity_check_prompt)
+                    complexity = complexity_response.strip().lower()
+                    
+                    if "simple" in complexity:
+                        length_guidance = "Respuesta BREVE: 2-4 oraciones (50-100 palabras). Ve directo al punto."
+                        max_tokens_synthesis = 200
+                    elif "compleja" in complexity:
+                        length_guidance = "Respuesta COMPLETA: 300-600 palabras con explicación estructurada. Incluye TODOS los elementos si es una lista."
+                        max_tokens_synthesis = 1200
+                    else:
+                        length_guidance = "Respuesta EQUILIBRADA: 100-200 palabras con explicación clara."
+                        max_tokens_synthesis = 500
+                except Exception:
+                    pass
                 
-                # Determinar guía de longitud según complejidad
-                # AUMENTADO: Límites más altos para asegurar respuestas completas
-                if "simple" in complexity:
-                    length_guidance = "Respuesta BREVE: 2-4 oraciones (50-100 palabras). Ve directo al punto sin introducciones innecesarias."
-                    max_tokens_synthesis = 200  # Aumentado de 100 a 200
-                elif "compleja" in complexity:
-                    length_guidance = "Respuesta COMPLETA: 300-600 palabras con explicación estructurada. Si la pregunta requiere una lista completa (ej: todas las capas del modelo OSI, todos los tipos), asegúrate de incluir TODOS los elementos sin omitir ninguno."
-                    max_tokens_synthesis = 1200  # Aumentado de 600 a 1200 para listas completas
-                else:  # moderada
-                    length_guidance = "Respuesta EQUILIBRADA: 100-200 palabras con explicación clara. Si la pregunta requiere una lista, incluye todos los elementos importantes."
-                    max_tokens_synthesis = 500  # Aumentado de 300 a 500
-            except Exception as e:
-                complexity = "moderada"
-                length_guidance = "Respuesta EQUILIBRADA: 80-150 palabras con explicación clara."
-                max_tokens_synthesis = 300
+                synthesis_prompt = (
+                    f"Pregunta del usuario: {user_prompt}\n\n"
+                    "Basándote en la siguiente respuesta del sistema RAG, genera una respuesta clara, natural y CONCISA.\n\n"
+                    f"Respuesta del RAG:\n{combined_raw}\n\n"
+                    "INSTRUCCIONES:\n"
+                    "- FIDELIDAD TOTAL: Usa SOLO la información de la respuesta RAG. NO inventes, NO agregues conocimiento general.\n"
+                    f"- LONGITUD ADAPTATIVA: {length_guidance}\n"
+                    "- LENGUAJE NATURAL: Responde como un experto de manera clara y comprensible.\n"
+                    "- FORMATO:\n"
+                    "  * Usa **negrita** para conceptos clave y valores importantes.\n"
+                    "  * Listas limpias: viñeta en la MISMA LÍNEA que el texto.\n"
+                    "  * NO uses backticks ni bloques de código para valores individuales.\n"
+                    "- ESTRUCTURA: Organiza la información de forma lógica.\n"
+                    "- NO copies párrafos completos, parafrasea de manera natural.\n\n"
+                    "Genera una respuesta clara y con formato limpio:"
+                )
             
-            # Procesar con LLM para asegurar respuesta natural, equilibrada y fiel a la documentación
-            synthesis_prompt = (
-                f"Pregunta del usuario: {user_prompt}\n\n"
-                "Basándote en la siguiente respuesta del sistema RAG, genera una respuesta clara, natural y CONCISA adaptada a la complejidad de la pregunta.\n\n"
-                f"Respuesta del RAG:\n{combined_raw}\n\n"
-                "INSTRUCCIONES:\n"
-                "- FIDELIDAD TOTAL: Usa SOLO la información de la respuesta RAG. NO inventes, NO agregues conocimiento general.\n"
-                f"- LONGITUD ADAPTATIVA: {length_guidance}\n"
-                "- LENGUAJE NATURAL: Responde como un experto explicando de manera clara y comprensible.\n"
-                "- FORMATO ESTÉTICO (MUY IMPORTANTE):\n"
-                "  * Usa **negrita** para conceptos clave, IPs, dominios y valores importantes. Ej: **8.8.8.8**, **Capa de Red**.\n"
-                "  * LISTAS LIMPIAS: Cuando uses listas, la viñeta (• o -) debe estar en la MISMA LÍNEA que el texto.\n"
-                "    INCORRECTO:\n    •\n    **Concepto:** Definición\n"
-                "    CORRECTO:\n    • **Concepto:** Definición\n"
-                "  * NO USES backticks (`) ni bloques de código (```) para valores individuales.\n"
-                "  * Evita tablas complejas. Prefiere listas claras con viñetas para enumerar datos.\n"
-                "- ESTRUCTURA: Organiza la información de forma lógica y fácil de leer.\n"
-                "- NO copies párrafos completos, parafrasea de manera natural\n\n"
-                "Genera una respuesta clara y con formato limpio (sin bloques innecesarios):"
-            )
-            
+            source_label = "reporte" if is_report_source else "RAG"
             try:
-                # Usar max_tokens adaptado según complejidad
-                # No recortar respuestas - permitir respuestas completas según max_tokens configurado
-                # RESTAURADO: Hacer streaming aquí para velocidad óptima
-                # El Supervisor solo modificará en casos EXTREMOS
-                # ASYNC CHANGE
                 final_answer = await llm.agenerate(
                     synthesis_prompt, 
                     max_tokens=max_tokens_synthesis,
-                    stream_callback=stream_callback  # Streaming directo para velocidad
+                    stream_callback=stream_callback
                 )
                 final_answer = final_answer.strip()
                 
                 thought_chain = add_thought(
                     thought_chain,
                     "Sintetizador",
-                    "Síntesis: solo RAG",
-                    f"Respuesta procesada y acortada ({len(rag_answers)} resultado(s))",
+                    f"Síntesis: {source_label}",
+                    f"Respuesta procesada ({len(answers)} resultado(s))",
                     "success"
                 )
                 return {
@@ -1072,13 +846,13 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
                     "thought_chain": thought_chain
                 }
             except Exception as e:
-                # Fallback: usar respuesta original completa sin truncar
+                # Fallback: usar respuesta original completa
                 final_answer = combined_raw
                 thought_chain = add_thought(
                     thought_chain,
                     "Sintetizador",
-                    "Síntesis: solo RAG (fallback)",
-                    f"Error al procesar, usando respuesta original ({len(rag_answers)} resultado(s))",
+                    f"Síntesis: {source_label} (fallback)",
+                    f"Error al procesar, usando respuesta original ({len(answers)} resultado(s))",
                     "warning"
                 )
                 return {
@@ -1086,8 +860,9 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
                     "thought_chain": thought_chain
                 }
     
-    # CASO 2: Fallback - si no se detectó RAG
-    # Simplemente concatenar los resultados
+    # ---------------------------------------------------------
+    # CASO 4: Fallback - si no se detectó RAG
+    # ---------------------------------------------------------
     processed_results = [str(r) for r in results]
     thought_chain = add_thought(
         thought_chain,
@@ -1115,7 +890,7 @@ graph.add_node("Agente_Ejecutor", ejecutor_agent_node)
 graph.add_node("Sintetizador", synthesizer_node)
 graph.add_node("Supervisor", supervisor_node)
 
-# Flujo de ejecución: Start → Planner → Orquestador → [Agente Ejecutor, Sintetizador, Supervisor] → End
+# Flujo de ejecución: Start → Planner → Orquestador → [Agente Ejecutor → ...] → Supervisor → Sintetizador → End
 graph.add_edge(START, "Planner")
 graph.add_edge("Planner", "Orquestador")
 
@@ -1125,16 +900,15 @@ def route_from_orchestrator(state: GraphState) -> str:
     Decide desde el Orquestador a qué componente dirigirse.
     
     Esta función SOLO accede a:
-        pass
     - state.next_component: para saber a qué componente ir
     - state.plan_steps: para verificar si hay pasos pendientes
     - state.results: para verificar si hay resultados
     
     NO debe acceder a otros campos del state.
+    
     """
     next_component = state.next_component
     plan_steps = state.plan_steps or []
-    results = state.results or []
     
     # Si el orquestador decidió ir a un componente específico, usar esa decisión
     if next_component:
@@ -1143,29 +917,26 @@ def route_from_orchestrator(state: GraphState) -> str:
     # Fallback: decidir basándose en el estado
     if plan_steps:
         return "Agente_Ejecutor"
-    elif results:
-        return "Sintetizador"
     else:
-        return "Sintetizador"
+        return "Supervisor"
 
 # Arista condicional desde Orquestador
-# Nota: El Supervisor solo se alcanza desde Sintetizador, nunca directamente desde Orquestador
+# Nota: El Supervisor se ejecuta ANTES del Sintetizador para validar resultados
 graph.add_conditional_edges(
     "Orquestador",
     route_from_orchestrator,
     {
         "Agente_Ejecutor": "Agente_Ejecutor",
-        "Sintetizador": "Sintetizador"
+        "Supervisor": "Supervisor"
     }
 )
 
-# Desde Agente Ejecutor: volver al Orquestador si hay más pasos, o ir a Sintetizador
+# Desde Agente Ejecutor: volver al Orquestador si hay más pasos, o ir a Supervisor
 def route_from_executor(state: GraphState) -> str:
     """
     Decide desde el Agente Ejecutor a dónde ir.
     
     Esta función SOLO accede a:
-        pass
     - state.plan_steps: para verificar si hay pasos pendientes
     
     NO debe acceder a otros campos del state.
@@ -1175,23 +946,23 @@ def route_from_executor(state: GraphState) -> str:
     # Si hay más pasos, volver al Orquestador para decidir el siguiente paso
     if plan_steps:
         return "Orquestador"
-    # Si no hay más pasos, ir a Sintetizador
-    return "Sintetizador"
+    # Si no hay más pasos, ir a Supervisor (que validará antes de sintetizar)
+    return "Supervisor"
 
 graph.add_conditional_edges(
     "Agente_Ejecutor",
     route_from_executor,
     {
         "Orquestador": "Orquestador",
-        "Sintetizador": "Sintetizador"
+        "Supervisor": "Supervisor"
     }
 )
 
-# Desde Sintetizador: siempre ir a Supervisor
-graph.add_edge("Sintetizador", "Supervisor")
+# Desde Supervisor: siempre ir a Sintetizador (para generar respuesta final)
+graph.add_edge("Supervisor", "Sintetizador")
 
-# Desde Supervisor: siempre terminar
-graph.add_edge("Supervisor", END)
+# Desde Sintetizador: siempre terminar
+graph.add_edge("Sintetizador", END)
 
 # Compilar el grafo base
 # Nota: Exportamos el grafo directamente para compatibilidad con LangGraph Studio

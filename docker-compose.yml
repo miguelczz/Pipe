@@ -81,15 +81,22 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+    image: pipe-pipe-backend:latest    # Reutiliza imagen existente si no se pasa --build
     container_name: pipe-backend
     restart: unless-stopped
     env_file:
       - ./.env
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/src"]
     volumes:
+      - ./backend/src:/app/src
+      - ./backend/main.py:/app/main.py
+      - ./backend/langgraph.json:/app/langgraph.json
+      - ./backend/index_docs.py:/app/index_docs.py
+      # Volúmenes persistentes para datos
       - pipe_uploads:/app/databases/uploads
       - pipe_analyses:/app/data/analyses
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     depends_on:
       pipe-postgres:
         condition: service_healthy
@@ -103,6 +110,24 @@ services:
       timeout: 5s
       retries: 3
       start_period: 60s
+    networks:
+      - pipe-network
+
+  # ==============================
+  # Frontend Dev Server (Vite)
+  # ==============================
+  pipe-frontend:
+    image: node:20-alpine
+    container_name: pipe-frontend
+    restart: unless-stopped
+    working_dir: /app
+    command: sh -c "npm install && npx vite --host"
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "5173:5173"
+    depends_on:
+      - pipe-backend
     networks:
       - pipe-network
 

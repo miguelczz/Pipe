@@ -3,6 +3,7 @@ API endpoints para el agente - Refactorizado para usar modelos centralizados.
 Se limita a adaptar HTTP al grafo de orquestación del agente.
 """
 import json
+import logging
 from fastapi import APIRouter, HTTPException, Depends, Request
 from langchain_core.messages import HumanMessage, AIMessage
 from ..models.schemas import Message, AgentQuery, SimpleQuery
@@ -121,10 +122,11 @@ async def agent_query(
                 graph_messages.append(AIMessage(content=msg.content))
             # Ignorar mensajes "system" para el grafo
 
-        # Crear estado inicial del grafo (incluir report_id si el chat es sobre un reporte)
+        # Crear estado inicial del grafo (incluir report_id y selected_text si el chat es sobre un reporte)
         initial_state = GraphState(
             messages=graph_messages,
-            report_id=query.report_id if getattr(query, "report_id", None) else None
+            report_id=query.report_id if getattr(query, "report_id", None) else None,
+            selected_text=query.selected_text if getattr(query, "selected_text", None) else None
         )
 
         # Ejecutar el grafo completo de forma asíncrona
@@ -141,11 +143,10 @@ async def agent_query(
             )
 
         # Obtener la respuesta final del grafo
-        supervised_output = final_state.get('supervised_output')
+        # Nuevo flujo: Supervisor → Sintetizador → END
+        # final_output es la respuesta definitiva generada por el Sintetizador (último nodo)
         final_output = final_state.get('final_output')
-        
-        # Usar supervised_output si está disponible, sino final_output
-        assistant_response = supervised_output or final_output or "No se pudo generar una respuesta."
+        assistant_response = final_output or "No se pudo generar una respuesta."
         
         # Construir respuesta solo con los nuevos mensajes
         new_messages = [
@@ -185,7 +186,7 @@ async def agent_query(
             "executed_tools": executed_tools,  # Herramientas usadas
             # Información adicional de calidad y proceso
             "quality_score": final_state.get('quality_score'),
-            "has_supervised_output": final_state.get('supervised_output') is not None,
+            "supervisor_used_fallback": final_state.get('supervised_output') is not None,
         }
         
         # Incluir thought_chain solo si está habilitado

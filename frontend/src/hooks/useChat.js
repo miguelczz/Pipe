@@ -1,5 +1,4 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { useLocation } from 'react-router-dom'
 import { agentService } from '../services/api'
 import { getOrCreateSessionId, setStorageItem, getStorageItem } from '../utils/storage'
 import { SESSION_CONFIG } from '../config/constants'
@@ -12,7 +11,6 @@ export function useChat() {
   const [messages, setMessages] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
-  const location = useLocation()
   const [sessionId] = useState(() => 
     getOrCreateSessionId(SESSION_CONFIG.STORAGE_KEY)
   )
@@ -25,86 +23,59 @@ export function useChat() {
     setStorageItem(SESSION_CONFIG.STORAGE_KEY, sessionId)
   }, [sessionId])
 
-  // Guardar mensajes en localStorage como respaldo
+  // Guardar mensajes en localStorage cada vez que cambian
   useEffect(() => {
+    const messagesKey = `${SESSION_CONFIG.STORAGE_KEY}_messages`
     if (messages.length > 0) {
-      const messagesKey = `${SESSION_CONFIG.STORAGE_KEY}_messages`
       setStorageItem(messagesKey, messages)
     }
   }, [messages])
 
-  // Guardar mensajes cuando se sale de la página de chat
+  // Cargar historial al montar el componente (una sola vez)
   useEffect(() => {
-    if (location.pathname !== '/' && messages.length > 0) {
-      const messagesKey = `${SESSION_CONFIG.STORAGE_KEY}_messages`
-      setStorageItem(messagesKey, messages)
-      // Resetear el flag cuando salimos de la página
-      hasLoadedRef.current = false
-    }
-  }, [location.pathname, messages])
-
-  // Cargar historial de sesión al montar el componente o cuando se vuelve a la página de chat
-  useEffect(() => {
-    // Solo cargar si estamos en la página de chat
-    if (location.pathname !== '/') {
-      return
-    }
+    if (hasLoadedRef.current) return
 
     const loadSessionHistory = async () => {
-      // Evitar cargar múltiples veces en la misma sesión de página
-      if (hasLoadedRef.current) {
-        return
-      }
-
       try {
         setIsLoadingHistory(true)
         
-        // Primero intentar cargar desde localStorage como respaldo rápido
+        // Primero cargar desde localStorage (instantáneo)
         const messagesKey = `${SESSION_CONFIG.STORAGE_KEY}_messages`
         const cachedMessages = getStorageItem(messagesKey, [])
         if (cachedMessages.length > 0) {
           setMessages(cachedMessages)
         }
         
-        // Luego cargar desde el backend (más actualizado)
+        // Luego intentar sincronizar con el backend
         const history = await agentService.getSessionHistory(sessionId)
         
         if (history.messages && history.messages.length > 0) {
-          // Convertir mensajes del backend al formato del frontend
           const formattedMessages = history.messages.map((msg, idx) => ({
             id: `msg-${sessionId}-${idx}-${msg.role}`,
             role: msg.role === 'assistant' ? 'assistant' : 'user',
             content: msg.content,
             timestamp: new Date().toISOString(),
           }))
-          // Actualizar con los mensajes del backend (más actualizados)
           setMessages(formattedMessages)
-        } else if (cachedMessages.length === 0) {
-          // Si no hay mensajes en backend ni en cache, limpiar
-          setMessages([])
         }
       } catch (err) {
-        // Si falla el backend, usar cache de localStorage si existe
-        const messagesKey = `${SESSION_CONFIG.STORAGE_KEY}_messages`
-        const cachedMessages = getStorageItem(messagesKey, [])
-        if (cachedMessages.length > 0) {
-          setMessages(cachedMessages)
-        }
+        // Si falla el backend, los mensajes de localStorage ya están cargados
       } finally {
         setIsLoadingHistory(false)
         hasLoadedRef.current = true
       }
     }
 
-    // Recargar cada vez que se monta el componente o se vuelve a la página
     loadSessionHistory()
-  }, [sessionId, location.pathname])
+  }, [sessionId])
 
   /**
    * Envía un mensaje al agente con streaming
    * @param {string} content - Contenido del mensaje
+   * @param {string} [contextText] - Texto de contexto seleccionado (opcional)
+   * @param {Object} [extra] - Campos extra para el payload (report_id, selected_text, etc.)
    */
-  const sendMessage = useCallback(async (content) => {
+  const sendMessage = useCallback(async (content, contextText = null, extra = {}) => {
     if (!content.trim() || isLoading) return
 
     // Cancelar petición anterior si existe
@@ -131,15 +102,13 @@ export function useChat() {
       role: 'assistant',
       content: '',
       timestamp: new Date().toISOString(),
-      isStreaming: true, // Indicador de que está en streaming
+      isStreaming: true,
     }
 
     // Agregar burbuja vacía del asistente
     setMessages((prev) => [...prev, assistantMessage])
 
     try {
-      // Enviar TODOS los mensajes de la conversación (incluyendo el nuevo) para garantizar 
-      // que el backend tenga acceso completo al contexto
       const allMessages = [...messages, userMessage]
       const messagesForAPI = allMessages.map((msg) => ({
         role: msg.role,
@@ -149,12 +118,19 @@ export function useChat() {
       // Variable para acumular el contenido
       let accumulatedContent = ''
 
+      // Construir payload con campos extra opcionales (report_id, selected_text)
+      const payload = {
+        session_id: sessionId,
+        messages: messagesForAPI,
+        ...extra,
+      }
+      if (contextText?.trim()) {
+        payload.selected_text = contextText.trim()
+      }
+
       // Función para cancelar el streaming
       const cancelStream = agentService.sendQueryStream(
-        {
-          session_id: sessionId,
-          messages: messagesForAPI,
-        },
+        payload,
         // onToken: se llama por cada token recibido
         (token) => {
           accumulatedContent += token
@@ -241,6 +217,136 @@ export function useChat() {
   }, [messages, isLoading, sessionId])
 
   /**
+   * Edita un mensaje de usuario y genera una nueva respuesta del asistente (paginado).
+   * Mantiene las respuestas anteriores para permitir navegar entre ellas.
+   * @param {Object} message - Mensaje original a editar (necesita message.id)
+   * @param {string} newContent - Nuevo contenido del mensaje
+   * @param {string} [contextText] - Texto de contexto seleccionado (opcional)
+   * @param {Object} [extra] - Campos extra para el payload (report_id, selected_text, etc.)
+   */
+  const sendMessageAfterEdit = useCallback(async (message, newContent, contextText = null, extra = {}) => {
+    const trimmed = newContent?.trim()
+    if (!trimmed || isLoading) return
+
+    if (abortControllerRef.current) {
+      abortControllerRef.current()
+    }
+
+    const assistantMessageId = `msg-${Date.now()}-assistant`
+
+    // Actualizar el mensaje editado y agregar nueva respuesta vacía al grupo
+    setMessages((prev) => {
+      const index = prev.findIndex((m) => m.id === message.id)
+      if (index === -1) return prev
+
+      // Actualizar contenido del mensaje de usuario
+      const upToEdited = prev.slice(0, index + 1).map((m) =>
+        m.id === message.id ? { ...m, content: trimmed } : m
+      )
+
+      // Mantener las respuestas del asistente que siguen (para el paginado)
+      let j = index + 1
+      while (j < prev.length && prev[j].role === 'assistant') j++
+      const existingReplies = prev.slice(index + 1, j)
+
+      // Nueva respuesta vacía que se irá llenando con streaming
+      const assistantMessage = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date().toISOString(),
+        isStreaming: true,
+      }
+
+      // Resto de mensajes después del grupo actual
+      const rest = prev.slice(j)
+
+      return [...upToEdited, ...existingReplies, assistantMessage, ...rest]
+    })
+
+    setIsLoading(true)
+    setError(null)
+
+    // Construir mensajes para la API (solo hasta el mensaje editado, con el nuevo contenido)
+    const currentMessages = messages
+    const index = currentMessages.findIndex((m) => m.id === message.id)
+    const messagesUpToEdited = index >= 0
+      ? currentMessages.slice(0, index).concat({ ...currentMessages[index], content: trimmed })
+      : currentMessages
+    const messagesForAPI = messagesUpToEdited.map((msg) => ({
+      role: msg.role,
+      content: msg.content,
+    }))
+
+    const payload = {
+      session_id: sessionId,
+      messages: messagesForAPI,
+      ...extra,
+    }
+    if (contextText?.trim()) {
+      payload.selected_text = contextText.trim()
+    }
+
+    let accumulatedContent = ''
+
+    try {
+      const cancelStream = agentService.sendQueryStream(
+        payload,
+        (token) => {
+          accumulatedContent += token
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId ? { ...msg, content: accumulatedContent } : msg
+            )
+          )
+        },
+        (finalData) => {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? {
+                    ...msg,
+                    content: finalData?.content ?? accumulatedContent,
+                    isStreaming: false,
+                    executed_tools: finalData?.executed_tools,
+                    executed_steps: finalData?.executed_steps,
+                  }
+                : msg
+            )
+          )
+          setIsLoading(false)
+          abortControllerRef.current = null
+        },
+        (err) => {
+          if (err?.name === 'AbortError' || err?.message?.includes('canceled')) return
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: err?.message || 'Error', isStreaming: false, isError: true }
+                : msg
+            )
+          )
+          setError(err?.message || 'Error')
+          setIsLoading(false)
+          abortControllerRef.current = null
+        }
+      )
+      abortControllerRef.current = cancelStream
+    } catch (err) {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMessageId
+            ? { ...msg, content: 'Error inesperado', isStreaming: false, isError: true }
+            : msg
+        )
+      )
+      setError('Error inesperado')
+      setIsLoading(false)
+      abortControllerRef.current = null
+    }
+  }, [messages, isLoading, sessionId])
+
+  /**
    * Limpia la conversación actual
    */
   const clearMessages = useCallback(async () => {
@@ -251,17 +357,11 @@ export function useChat() {
       // Continuar limpiando el frontend aunque falle el backend
     }
     
-    // Limpiar mensajes del frontend
+    // Limpiar mensajes del frontend y del localStorage
     setMessages([])
     setError(null)
-    
-    // Limpiar cache de localStorage
     const messagesKey = `${SESSION_CONFIG.STORAGE_KEY}_messages`
-    try {
-      localStorage.removeItem(messagesKey)
-    } catch {
-      // Ignorar fallos de localStorage (privado, cuota, etc.)
-    }
+    try { localStorage.removeItem(messagesKey) } catch (e) { /* ignore */ }
     
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
@@ -284,6 +384,7 @@ export function useChat() {
   return {
     messages,
     sendMessage,
+    sendMessageAfterEdit,
     isLoading,
     error,
     clearMessages,

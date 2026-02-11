@@ -60,7 +60,14 @@ class PipeAgent:
         report_instruction = ""
         if report_id:
             report_instruction = """
-CURRENT REPORT CONTEXT: The user has a report open (report_id is set). If the user is asking about THIS report, this analysis, this capture, the verdict, what happened, "explain this", "why did it fail/pass", "what does this mean", then use tool "get_report" and plan_steps like ["get report for current analysis"]. Otherwise use RAG for general concepts and documentation.
+CRITICAL — REPORT MODE ACTIVE (report_id is set):
+The user is viewing a specific analysis report right now. ANY question they ask should be assumed to be about THIS report unless they EXPLICITLY say otherwise (e.g. "in general", "what does the standard say", "define X").
+
+RULES when report_id is set:
+1. DEFAULT TOOL = "get_report". Use it for ANY question about: results, data, devices, standards support, transitions, BTM, KVR, compliance, verdict, "what happened", "explain this", numbers, statistics, MACs, bands, etc.
+2. ONLY use RAG if the user EXPLICITLY asks for general/theoretical information disconnected from this report (e.g. "What is 802.11k in general?" or "Explain the BTM protocol").
+3. When in doubt, ALWAYS choose "get_report". It is better to answer with report data than with generic documentation.
+4. plan_steps for get_report should be: ["get report for current analysis"]
 """
         else:
             report_instruction = """
@@ -101,8 +108,8 @@ RELEVANCE RULES (STEP 1):
 - FOLLOW-UP: Ambiguous questions like "what are the states?", "and the difference?" MUST be marked RELEVANT if the previous context is technical (Wireshark, BTM, WiFi).
 
 TOOL DECISION (STEP 2 - only if relevant):
-- Use get_report when: the user has a report open and is asking about THIS report/capture/analysis (veredicto, qué pasó, explica esto, por qué falló/pasó).
-- Use RAG for: concepts, definitions, explanations, "what is", "explain", "define", follow-ups, conclusions, summaries, and any question about the documentation or how to understand captures/results in general.
+- If report_id is set (REPORT MODE): use "get_report" by default for almost everything. Only use RAG if the user explicitly asks for generic/theoretical info unrelated to their report.
+- If NO report_id: use RAG for concepts, definitions, explanations, follow-ups, summaries, and any question about documentation.
 - Generate ONE plan_step that is specific (e.g. "get report for current analysis" or "retrieve information about BTM status codes").
 
 OUTPUT FORMAT:

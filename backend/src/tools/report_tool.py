@@ -1,13 +1,15 @@
 """
 Herramienta para obtener un reporte de análisis por ID.
-Devuelve un resumen acotado en tokens (4k-6k aprox.) y opcionalmente enfocado en la pregunta del usuario.
+Devuelve un resumen completo y estructurado con todos los datos del análisis,
+para que el agente pueda responder preguntas específicas sobre el reporte.
 """
 import json
 from pathlib import Path
 from typing import Optional
 
-# Límite aproximado: ~4k-6k tokens ≈ 2000-3000 caracteres para el resumen
-MAX_REPORT_CHARS = 2800
+# Límite: ~8k tokens ≈ 6000 caracteres. Necesitamos incluir todos los datos
+# estructurados para que el agente responda con precisión.
+MAX_REPORT_CHARS = 6000
 
 
 def _get_base_dir() -> Path:
@@ -34,68 +36,111 @@ def _load_report_json(report_id: str) -> Optional[dict]:
 
 def _build_summary(data: dict, user_question: Optional[str] = None) -> str:
     """
-    Construye un resumen estructurado del reporte.
-    Si user_question está informado, prioriza secciones relevantes (por palabras clave).
+    Construye un resumen completo y estructurado del reporte.
+    Incluye TODOS los datos numéricos y técnicos para que el agente
+    pueda responder cualquier pregunta sobre el análisis.
     """
     parts = []
-    q_lower = (user_question or "").lower()
 
-    # Siempre incluir cabecera breve
+    # ── Cabecera ──
     analysis_id = data.get("analysis_id", data.get("id", "N/A"))
     verdict = data.get("verdict", "N/A")
     filename = data.get("file_name", data.get("filename", "N/A"))
-    parts.append(f"Reporte: {analysis_id}\nArchivo: {filename}\nVeredicto: {verdict}")
+    parts.append(f"=== REPORTE DE ANÁLISIS ===\nID: {analysis_id}\nArchivo: {filename}\nVeredicto: {verdict}")
 
-    # Dispositivo
-    device = data.get("band_steering", {}).get("device", {}) if isinstance(data.get("band_steering"), dict) else {}
-    if not device:
-        device = data.get("device", {})
-    if device:
-        vendor = device.get("vendor", device.get("device_vendor", "N/A"))
-        model = device.get("device_model", device.get("model", "N/A"))
-        parts.append(f"Dispositivo: {vendor} - {model}")
+    # ── Dispositivos ──
+    devices = data.get("devices", [])
+    if devices:
+        dev_lines = ["--- Dispositivos Identificados ---"]
+        for dev in devices[:5]:
+            mac = dev.get("mac_address", "N/A")
+            vendor = dev.get("vendor", dev.get("device_vendor", "N/A"))
+            model = dev.get("device_model", dev.get("model", "N/A"))
+            category = dev.get("device_category", "N/A")
+            dev_lines.append(f"  MAC: {mac} | Marca: {vendor} | Modelo: {model} | Categoría: {category}")
+        parts.append("\n".join(dev_lines))
 
-    # Análisis textual (siempre útil)
+    # ── Estándares KVR ──
+    kvr = data.get("kvr_support", {})
+    if kvr:
+        k = kvr.get("k_support", "N/A")
+        v = kvr.get("v_support", "N/A")
+        r = kvr.get("r_support", "N/A")
+        parts.append(f"--- Soporte Estándares KVR ---\n  802.11k (Neighbor Report): {k}\n  802.11v (BSS Transition): {v}\n  802.11r (Fast Roaming): {r}")
+
+    # ── Estadísticas BTM ──
+    btm_req = data.get("btm_requests", "N/A")
+    btm_res = data.get("btm_responses", "N/A")
+    btm_rate = data.get("btm_success_rate", "N/A")
+    succ_trans = data.get("successful_transitions", "N/A")
+    fail_trans = data.get("failed_transitions", "N/A")
+    loops = data.get("loops_detected", "N/A")
+    parts.append(
+        f"--- Estadísticas BTM ---\n"
+        f"  BTM Requests: {btm_req}\n  BTM Responses: {btm_res}\n  BTM Success Rate: {btm_rate}\n"
+        f"  Transiciones exitosas: {succ_trans}\n  Transiciones fallidas: {fail_trans}\n"
+        f"  Loops detectados: {loops}"
+    )
+
+    # ── Compliance Checks ──
+    checks = data.get("compliance_checks", [])
+    # Fallback: en algunos reportes están dentro de band_steering
+    if not checks:
+        bs = data.get("band_steering", {})
+        if isinstance(bs, dict):
+            checks = bs.get("compliance_checks", [])
+    if checks:
+        check_lines = ["--- Cumplimiento Técnico ---"]
+        for c in checks[:10]:
+            name = c.get("check_name", c.get("name", ""))
+            passed = c.get("passed", c.get("status", "N/A"))
+            details = c.get("details", "")
+            severity = c.get("severity", "")
+            line = f"  [{passed}] {name}"
+            if severity:
+                line += f" (severidad: {severity})"
+            if details:
+                line += f"\n       Detalles: {details}"
+            check_lines.append(line)
+        parts.append("\n".join(check_lines))
+
+    # ── Transiciones de banda ──
+    transitions = data.get("transitions", [])
+    if not transitions:
+        bs = data.get("band_steering", {})
+        if isinstance(bs, dict):
+            transitions = bs.get("transitions", [])
+    if transitions:
+        trans_lines = [f"--- Transiciones de Banda ({len(transitions)} total) ---"]
+        for i, t in enumerate(transitions[:8], 1):
+            fr_band = t.get("from_band", "?")
+            to_band = t.get("to_band", "?")
+            fr_bssid = t.get("from_bssid", "?")
+            to_bssid = t.get("to_bssid", "?")
+            is_band_change = t.get("is_band_change", "?")
+            is_success = t.get("is_successful", "?")
+            steering = t.get("steering_type", "?")
+            trans_lines.append(
+                f"  {i}. {fr_band} → {to_band} | BSSID: {fr_bssid} → {to_bssid} | "
+                f"Cambio de banda: {is_band_change} | Exitosa: {is_success} | Tipo: {steering}"
+            )
+        parts.append("\n".join(trans_lines))
+
+    # ── Estadísticas generales ──
+    total_pkts = data.get("total_packets", "N/A")
+    wlan_pkts = data.get("wlan_packets", "N/A")
+    duration = data.get("analysis_duration_ms", "N/A")
+    parts.append(f"--- Paquetes ---\n  Total: {total_pkts} | WLAN: {wlan_pkts} | Duración análisis: {duration} ms")
+
+    # ── Análisis textual (resumen narrativo) ──
     analysis_text = data.get("analysis_text", "")
     if analysis_text:
-        # Si hay pregunta, priorizar párrafos que mencionen términos de la pregunta
-        if q_lower and len(analysis_text) > 800:
-            words = [w.strip() for w in q_lower.split() if len(w) > 2]
-            if words:
-                # Incluir los primeros 400 chars y luego los que contengan palabras clave
-                parts.append("Análisis:")
-                parts.append(analysis_text[:400].strip())
-                rest = analysis_text[400:]
-                for w in words[:5]:
-                    if w in rest.lower():
-                        idx = rest.lower().find(w)
-                        start = max(0, idx - 80)
-                        end = min(len(rest), idx + 120)
-                        snippet = rest[start:end].strip()
-                        if snippet and snippet not in "\n".join(parts):
-                            parts.append("..." + snippet + "...")
-        else:
-            parts.append("Análisis:")
-            parts.append(analysis_text[:1200].strip() if len(analysis_text) > 1200 else analysis_text)
-
-    # Compliance / BTM si la pregunta lo menciona o si hay espacio
-    focus_btm = not q_lower or any(k in q_lower for k in ["btm", "cumplimiento", "compliance", "802.11", "kvr", "transición", "transicion"])
-    band_steering = data.get("band_steering") or {}
-    if isinstance(band_steering, dict) and (focus_btm or len(parts) < 5):
-        checks = band_steering.get("compliance_checks", [])
-        if checks:
-            parts.append("Cumplimiento técnico:")
-            for c in checks[:8]:
-                name = c.get("check_name", c.get("name", ""))
-                status = c.get("status", c.get("passed", ""))
-                parts.append(f"  - {name}: {status}")
-        transitions = band_steering.get("transitions", [])
-        if transitions:
-            parts.append(f"Transiciones de banda: {len(transitions)}")
-            for t in transitions[:5]:
-                fr = t.get("fromBand", t.get("from_band", ""))
-                to = t.get("toBand", t.get("to_band", ""))
-                parts.append(f"  {fr} → {to}")
+        # Incluir porción significativa del texto narrativo
+        max_text = 1500
+        text_snippet = analysis_text[:max_text].strip()
+        if len(analysis_text) > max_text:
+            text_snippet += "\n[... texto completo truncado ...]"
+        parts.append(f"--- Análisis Narrativo ---\n{text_snippet}")
 
     raw = "\n\n".join(parts)
     if len(raw) > MAX_REPORT_CHARS:
@@ -105,12 +150,12 @@ def _build_summary(data: dict, user_question: Optional[str] = None) -> str:
 
 def get_report(report_id: str, user_question: Optional[str] = None) -> str:
     """
-    Obtiene un reporte por ID y devuelve un resumen en texto plano,
-    acotado a ~4k-6k tokens y opcionalmente enfocado en user_question.
+    Obtiene un reporte por ID y devuelve un resumen completo en texto plano
+    con todos los datos estructurados del análisis.
 
     Args:
         report_id: ID del análisis (analysis_id).
-        user_question: Pregunta del usuario para priorizar secciones relevantes.
+        user_question: Pregunta del usuario (reservado para uso futuro).
 
     Returns:
         Resumen del reporte en texto, o mensaje de error si no se encuentra.
