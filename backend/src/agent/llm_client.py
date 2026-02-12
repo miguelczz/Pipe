@@ -86,7 +86,8 @@ class LLMClient:
         stream_callback: Optional[callable] = None,
         model_tier: str = "standard",
         temperature: float = 0.7,
-        system_message: Optional[str] = None
+        system_message: Optional[str] = None,
+        **kwargs
     ) -> str:
         """
         Generate text asynchronously using MSPProvider.
@@ -114,7 +115,8 @@ class LLMClient:
                 max_tokens=max_tokens,
                 temperature=temperature,
                 model_tier=model_tier,
-                stream_callback=stream_callback
+                stream_callback=stream_callback,
+                **kwargs
             )
             
             return response.strip() if response else ""
@@ -130,7 +132,8 @@ class LLMClient:
         stream_callback: Optional[callable] = None,
         model_tier: str = "standard",
         temperature: float = 0.7,
-        system_message: Optional[str] = None
+        system_message: Optional[str] = None,
+        **kwargs
     ) -> str:
         """
         Generate text synchronously using MSPProvider.
@@ -157,7 +160,8 @@ class LLMClient:
                 max_tokens=max_tokens,
                 temperature=temperature,
                 model_tier=model_tier,
-                stream_callback=stream_callback
+                stream_callback=stream_callback,
+                **kwargs
             )
             
             return response.strip() if response else ""
@@ -172,7 +176,8 @@ class LLMClient:
         max_tokens: int = 1000,
         model_tier: str = "standard",
         temperature: float = 0.7,
-        system_message: Optional[str] = None
+        system_message: Optional[str] = None,
+        **kwargs
     ) -> Iterator[str]:
         """
         Generate text with streaming (synchronous iterator).
@@ -204,7 +209,8 @@ class LLMClient:
                 max_tokens=max_tokens,
                 temperature=temperature,
                 model_tier=model_tier,
-                stream_callback=collect_chunk
+                stream_callback=collect_chunk,
+                **kwargs
             )
             
             # Yield collected chunks
@@ -221,7 +227,8 @@ class LLMClient:
         max_tokens: int = 1000,
         model_tier: str = "standard",
         temperature: float = 0.7,
-        system_message: Optional[str] = None
+        system_message: Optional[str] = None,
+        **kwargs
     ) -> AsyncIterator[str]:
         """
         Generate text with async streaming.
@@ -246,7 +253,8 @@ class LLMClient:
                 system_message=sys_msg,
                 max_tokens=max_tokens,
                 temperature=temperature,
-                model_tier=model_tier
+                model_tier=model_tier,
+                **kwargs
             ):
                 yield chunk
         

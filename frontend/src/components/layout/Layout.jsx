@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import React, { useEffect, useRef, useCallback } from 'react'
-import { FileText, Activity, History, MessageCircle } from 'lucide-react'
+import { FileText, Activity, History, MessageCircle, BarChart2 } from 'lucide-react'
 import { cn } from '../../utils/cn'
 import { Logo } from '../common/Logo'
 import { useChatLayout } from '../../contexts/ChatLayoutContext'
@@ -67,6 +67,7 @@ export function Layout({ children }) {
     { path: '/files', label: 'Archivos', icon: FileText },
     { path: '/network-analysis', label: 'Pruebas', icon: Activity },
     { path: '/reports', label: 'Reportes', icon: History },
+    { path: '/observability', label: 'Monitoreo', icon: BarChart2 },
   ]
 
   // Padding dinámico para que el contenido se comprima al abrir el chat (no se superpone)

@@ -87,7 +87,9 @@ INSTRUCCIONES: Marca "seguimiento" solo si pregunta sobre acciones/resultados es
 
 Responde SOLO con una palabra: "seguimiento" o "nueva".
 """
-                llm_response = llm.generate(followup_detection_prompt).strip().lower()
+                llm_response = llm.generate(
+                    followup_detection_prompt
+                ).strip().lower()
                 is_followup = (
                     llm_response.strip().startswith("seguimiento")
                     and len(llm_response.strip()) < 15
@@ -137,7 +139,9 @@ Pregunta del usuario: {prompt}
 
 Respuesta (directa y compacta):
 """
-                    answer = llm.generate(followup_prompt).strip()
+                    answer = llm.generate(
+                        followup_prompt
+                    ).strip()
                     return {
                         "answer": answer,
                         "hits": 0,

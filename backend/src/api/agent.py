@@ -126,7 +126,8 @@ async def agent_query(
         initial_state = GraphState(
             messages=graph_messages,
             report_id=query.report_id if getattr(query, "report_id", None) else None,
-            selected_text=query.selected_text if getattr(query, "selected_text", None) else None
+            selected_text=query.selected_text if getattr(query, "selected_text", None) else None,
+            session_id=query.session_id
         )
 
         # Ejecutar el grafo completo de forma asíncrona

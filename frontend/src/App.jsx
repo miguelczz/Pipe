@@ -7,6 +7,7 @@ import Layout from './components/layout/Layout'
 import FilesPage from './pages/FilesPage'
 import NetworkAnalysisPage from './pages/NetworkAnalysisPage'
 import ReportsPage from './pages/ReportsPage'
+import ObservabilityPage from './pages/ObservabilityPage'
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
                   <Route path="/files" element={<FilesPage />} />
                   <Route path="/network-analysis" element={<NetworkAnalysisPage />} />
                   <Route path="/reports" element={<ReportsPage />} />
+                  <Route path="/observability" element={<ObservabilityPage />} />
                 </Routes>
               </Layout>
             </GlobalChatProvider>

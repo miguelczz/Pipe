@@ -55,6 +55,15 @@ export default defineConfig({
           }
         },
       },
+      '/observability': {
+        target: 'http://pipe-backend:8000',
+        bypass(req) {
+          // Si es una petición de navegación (HTML), dejar que Vite sirva la página de React
+          if (req.headers.accept && req.headers.accept.includes('text/html')) {
+            return '/index.html'
+          }
+        },
+      },
     },
   },
 })

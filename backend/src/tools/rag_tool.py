@@ -7,19 +7,11 @@ import re
 import asyncio
 import concurrent.futures
 from typing import Optional, List, Dict, Any
-from openai import OpenAI
 from ..settings import settings
 from ..repositories.qdrant_repository import QdrantRepository, get_qdrant_repository
 from ..utils.embeddings import embedding_for_text
 from ..core.cache import cache_result
-
-# Cliente OpenAI para generación de respuestas.
-# NOTA: Este cliente es síncrono. Todas las llamadas deben envolverse con asyncio.to_thread()
-# para evitar bloquear el event loop. El cliente puede usar time.sleep internamente para retries.
-client = OpenAI(
-    api_key=settings.openai_api_key,
-    max_retries=2
-)
+from ..agent.llm_client import LLMClient
 
 
 class RAGTool:
@@ -119,11 +111,11 @@ TU MISIÓN:
     
     def __init__(self):
         self.qdrant_repo = get_qdrant_repository()
+        self.llm_client = LLMClient()
 
     async def _query_without_cache(self, query_text: str, top_k: int = 8, conversation_context: Optional[str] = None):
         """
         Método interno que realiza la consulta RAG sin usar cache.
-        Se usa cuando hay contexto de conversación para evitar cachear respuestas contextualizadas.
         """
         return await self._execute_query(query_text, top_k, conversation_context)
 
@@ -131,24 +123,19 @@ TU MISIÓN:
         """
         Método interno que realiza la consulta RAG con cache.
         Solo se usa cuando NO hay contexto de conversación.
-        IMPORTANTE: conversation_context debe ser None siempre cuando se llama este método.
         """
-        # Si por alguna razón se pasa contexto, no usar cache
         if conversation_context:
+             # Si hay contexto, no usamos cache y pasamos el session_id si estuviera disponible (aquí no lo está por firma)
             return await self._query_without_cache(query_text, top_k, conversation_context)
         
-        # Usar el decorador de cache solo cuando no hay contexto
         return await self._execute_query_cached(query_text, top_k)
     
-    @cache_result("rag", ttl=7200)  # Cache por 2 horas (optimizado para mejor rendimiento)
+    @cache_result("rag", ttl=7200)
     async def _execute_query_cached(self, query_text: str, top_k: int = 12):
-        """
-        Método interno cacheado que ejecuta la consulta RAG.
-        Solo se llama cuando NO hay contexto de conversación.
-        """
         return await self._execute_query(query_text, top_k, None)
 
     def query(self, query_text: str, top_k: int = 12, conversation_context: Optional[str] = None):
+
         """
         Realiza una consulta RAG sobre los documentos indexados.
         
@@ -194,7 +181,7 @@ TU MISIÓN:
         if conversation_context:
             return _run_async(self._query_without_cache(query_text, top_k, conversation_context))
         else:
-            # Sin contexto, usar cache normal
+            # Sin contexto, usar cache normal (sin session_id para compartir cache)
             return _run_async(self._query_with_cache(query_text, top_k, None))
 
     def _extract_keywords(self, query_text: str) -> List[str]:
@@ -338,6 +325,7 @@ TU MISIÓN:
             query_text: Texto de la consulta
             top_k: Número de resultados a recuperar
             conversation_context: Contexto opcional de la conversación previa
+            session_id: Session ID opcional para observabilidad
         
         Returns:
             Dict con 'answer' y 'hits'
@@ -374,13 +362,14 @@ Consulta técnica refinada:
     pass
 """
                     def _sync_refine():
-                        res = client.chat.completions.create(
-                            model=settings.llm_model,
-                            messages=[{"role": "system", "content": "Eres un refinador de consultas técnicas."}, {"role": "user", "content": refinement_prompt}],
-                            temperature=0,
+                        # Usar routing tier (Groq) para refinamiento rápido
+                        return self.llm_client.generate(
+                            prompt=refinement_prompt,
+                            system_message="Eres un refinador de consultas técnicas.",
+                            model_tier="routing",
+                            temperature=0.0,
                             max_tokens=60
-                        )
-                        return res.choices[0].message.content.strip()
+                        ).strip()
                     
                     refined = await asyncio.to_thread(_sync_refine)
                     if refined and len(refined) > 5:
@@ -503,16 +492,14 @@ Responde SOLO con una palabra: "relevante" o "no_relevante".
                 
                 # Ejecutar llamada a OpenAI en thread separado (operación síncrona)
                 def _sync_relevance_check():
-                    relevance_response = client.chat.completions.create(
-                        model=settings.llm_model,
-                        messages=[
-                            {"role": "system", "content": self.RELEVANCE_SYSTEM_MESSAGE},
-                            {"role": "user", "content": relevance_prompt}
-                        ],
+                    # Usar routing tier (Groq) para chequeo de relevancia rápido y barato
+                    return self.llm_client.generate(
+                        prompt=relevance_prompt,
+                        system_message=self.RELEVANCE_SYSTEM_MESSAGE,
+                        model_tier="routing",
                         temperature=0.0,
                         max_tokens=10
-                    )
-                    return relevance_response.choices[0].message.content.strip().lower()
+                    ).strip().lower()
                 
                 response_text = await asyncio.to_thread(_sync_relevance_check)
                 is_relevant = "relevante" in response_text and "no_relevante" not in response_text
@@ -527,16 +514,14 @@ Responde SOLO con una palabra: "relevante" o "no_relevante".
                 
                 # Ejecutar llamada a OpenAI en thread separado (operación síncrona)
                 def _sync_complexity_check():
-                    complexity_response = client.chat.completions.create(
-                        model=settings.llm_model,
-                        messages=[
-                            {"role": "system", "content": self.COMPLEXITY_SYSTEM_MESSAGE},
-                            {"role": "user", "content": complexity_prompt}
-                        ],
+                    # Usar routing tier (Groq) para análisis de complejidad
+                    return self.llm_client.generate(
+                        prompt=complexity_prompt,
+                        system_message=self.COMPLEXITY_SYSTEM_MESSAGE,
+                        model_tier="routing",
                         temperature=0.0,
                         max_tokens=10
-                    )
-                    return complexity_response.choices[0].message.content.strip().lower()
+                    ).strip().lower()
                 
                 complexity = await asyncio.to_thread(_sync_complexity_check)
                 return complexity
@@ -658,17 +643,15 @@ EJEMPLOS DE SEGUIMIENTO:
         
         # Ejecutar llamada a OpenAI en thread separado (operación síncrona bloqueante)
         def _sync_generate_answer():
-            """Genera la respuesta usando OpenAI (operación síncrona)."""
-            completion = client.chat.completions.create(
-                model=settings.llm_model,
-                messages=[
-                    {"role": "system", "content": self.SYSTEM_MESSAGE},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.1,  # Temperatura baja para mayor fidelidad y determinismo
-                max_tokens=max_tokens_response  # Tokens adaptados según complejidad de la pregunta
-            )
-            return completion.choices[0].message.content.strip()
+            """Genera la respuesta usando el proveedor configurado (Gemini/OpenAI)."""
+            # Usar standard tier para la generación principal
+            return self.llm_client.generate(
+                prompt=prompt,
+                system_message=self.SYSTEM_MESSAGE,
+                model_tier="standard",  # Usar Standard (Gemini) por defecto, o Quality si se requiere
+                temperature=0.1,
+                max_tokens=max_tokens_response
+            ).strip()
         
         # Usar asyncio.to_thread para ejecutar la operación bloqueante sin bloquear el event loop
         answer = await asyncio.to_thread(_sync_generate_answer)

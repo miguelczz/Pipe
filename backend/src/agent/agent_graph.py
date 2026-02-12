@@ -26,7 +26,7 @@ llm = LLMClient()
 # Helpers para conversión de estado
 # ---------------------------------------------------------
 
-def messages_to_agent_state(messages: List[AnyMessage], report_id: Optional[str] = None) -> AgentState:
+def messages_to_agent_state(messages: List[AnyMessage], report_id: Optional[str] = None, session_id: Optional[str] = None) -> AgentState:
     """
     Convierte los mensajes del State del grafo a un AgentState para el router.
     Incluye report_id cuando el chat está en contexto de un reporte.
@@ -42,7 +42,7 @@ def messages_to_agent_state(messages: List[AnyMessage], report_id: Optional[str]
                 role = "assistant"
             context_window.append(Message(role=role, content=content))
     return AgentState(
-        session_id="graph-session",
+        session_id=session_id or "graph-session",
         context_window=context_window,
         report_id=report_id
     )
@@ -192,7 +192,8 @@ def planner_node(state: GraphState) -> Dict[str, Any]:
     
     # Convertir messages a AgentState para el router (incluir report_id si existe)
     report_id = getattr(state, "report_id", None)
-    context = messages_to_agent_state(state.messages, report_id=report_id)
+    session_id = getattr(state, "session_id", None)
+    context = messages_to_agent_state(state.messages, report_id=report_id, session_id=session_id)
     router = PipeAgent()
 
     # Pasar selected_text si está disponible en el estado (texto resaltado por el usuario en el frontend)
@@ -387,6 +388,7 @@ def ejecutor_agent_node(state: GraphState, config: Optional[RunnableConfig] = No
         if tool_name == "get_report" and report_id:
             result = execute_get_report(report_id, user_prompt)
         elif tool_name == "rag":
+            session_id = getattr(state, "session_id", None)
             result = execute_rag_tool(current_step, user_prompt, state.messages, stream_callback=stream_callback)
         else:
             result = {"error": "tool_not_found"}
@@ -536,7 +538,9 @@ INSTRUCCIONES CRÍTICAS:
 Genera la respuesta técnica y profesional:
 """
         try:
-            fallback_output = await llm.agenerate(fallback_prompt)
+            fallback_output = await llm.agenerate(
+                fallback_prompt
+            )
             thought_chain = add_thought(
                 thought_chain,
                 "Supervisor",
@@ -793,7 +797,9 @@ Determina si es:
 Responde SOLO con una palabra: "simple", "moderada" o "compleja".
 """
                 try:
-                    complexity_response = await llm.agenerate(complexity_check_prompt)
+                    complexity_response = await llm.agenerate(
+                        complexity_check_prompt
+                    )
                     complexity = complexity_response.strip().lower()
                     
                     if "simple" in complexity:
@@ -827,12 +833,12 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
             
             source_label = "reporte" if is_report_source else "RAG"
             try:
-                final_answer = await llm.agenerate(
-                    synthesis_prompt, 
-                    max_tokens=max_tokens_synthesis,
-                    stream_callback=stream_callback
+                synthesis_response = await llm.agenerate(
+                    synthesis_prompt,
+                    stream_callback=stream_callback,
+                    max_tokens=max_tokens_synthesis
                 )
-                final_answer = final_answer.strip()
+                final_answer = synthesis_response.strip()
                 
                 thought_chain = add_thought(
                     thought_chain,

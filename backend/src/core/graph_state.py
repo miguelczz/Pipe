@@ -65,6 +65,9 @@ class GraphState(BaseModel):
     # Texto seleccionado por el usuario en el frontend (fragmento del reporte)
     selected_text: Annotated[Optional[str], LastValue(str)] = None
     
+    # Session ID para observabilidad
+    session_id: Annotated[Optional[str], LastValue(str)] = None
+    
     def get_state_snapshot(self) -> Dict[str, Any]:
         """
         Obtiene una instantánea del estado actual.

@@ -7,7 +7,6 @@ Phase 1: LiteLLM + MSP Custom
 - OpenAI as fallback only
 - Automatic retry with fallback on rate limits or errors
 - Streaming support for real-time responses
-- Langfuse observability integration (Phase 2)
 """
 
 import os
@@ -22,14 +21,6 @@ try:
 except ImportError:
     LITELLM_AVAILABLE = False
     logging.warning("LiteLLM not installed. Install with: pip install litellm>=1.40.0")
-
-try:
-    from langfuse import Langfuse
-    from langfuse.decorators import observe, langfuse_context
-    LANGFUSE_AVAILABLE = True
-except ImportError:
-    LANGFUSE_AVAILABLE = False
-    logging.info("Langfuse not available. Observability disabled.")
 
 from ..settings import settings
 
@@ -56,7 +47,6 @@ class MSPProvider:
     Features:
     - Automatic fallback on rate limits or errors
     - Streaming support for real-time responses
-    - Langfuse observability integration
     - Configurable via environment variables
     """
     
@@ -81,7 +71,7 @@ class MSPProvider:
     }
     
     def __init__(self):
-        """Initialize MSP Provider with API keys and Langfuse client."""
+        """Initialize MSP Provider with API keys."""
         if not LITELLM_AVAILABLE:
             raise ImportError(
                 "LiteLLM is required for MSPProvider. "
@@ -90,19 +80,6 @@ class MSPProvider:
         
         # Configure LiteLLM with API keys
         self._configure_litellm()
-        
-        # Initialize Langfuse client if available
-        self.langfuse_client = None
-        if LANGFUSE_AVAILABLE and settings.langfuse_host:
-            try:
-                self.langfuse_client = Langfuse(
-                    host=settings.langfuse_host,
-                    public_key=settings.langfuse_public_key,
-                    secret_key=settings.langfuse_secret_key,
-                )
-                logger.info("Langfuse observability enabled")
-            except Exception as e:
-                logger.warning(f"Failed to initialize Langfuse: {e}")
         
         logger.info("MSPProvider initialized with LiteLLM")
     
@@ -122,6 +99,8 @@ class MSPProvider:
         # Configure LiteLLM settings
         litellm.drop_params = True  # Drop unsupported params instead of erroring
         litellm.set_verbose = settings.debug  # Enable verbose logging in debug mode
+        
+        # Langfuse observability removed as per user request
     
     def _get_models_for_tier(self, model_tier: str) -> tuple[str, str]:
         """

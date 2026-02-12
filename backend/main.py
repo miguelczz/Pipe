@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from src.api import files, agent, streaming, tools_router, network_analysis, reports
+from src.routes import observability
 from src.models.database import init_db
 import uvicorn
 
@@ -79,6 +80,7 @@ app.include_router(streaming.router)
 app.include_router(tools_router.router)
 app.include_router(network_analysis.router)
 app.include_router(reports.router)
+app.include_router(observability.router)
 
 # Redirección explícita para /reports sin barra (FastAPI no siempre redirige automáticamente)
 @app.get("/reports", include_in_schema=False)
