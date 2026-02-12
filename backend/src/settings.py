@@ -16,6 +16,38 @@ class Settings(BaseSettings):
     qdrant_port: Optional[str] = None  # Puerto de Qdrant (opcional, puede estar en la URL)
     embedding_model: str = "text-embedding-3-large"
     llm_model: str = "gpt-4o-mini"
+    
+    # ==============================
+    # LLM Provider Configuration (Phase 1)
+    # ==============================
+    llm_provider: str = "litellm"  # "litellm" | "openai_direct"
+    
+    # Provider API Keys
+    google_api_key: Optional[str] = None    # Google AI Studio (free tier)
+    groq_api_key: Optional[str] = None      # Groq (free tier)
+    # openai_api_key already defined above   # OpenAI (paid, fallback only)
+    
+    # Model Assignments per Tier
+    # - routing: Intent classification, JSON structured output (fast)
+    # - cheap: Yes/no decisions, single-word responses (fast)
+    # - standard: Text generation with context (quality)
+    # - quality: Synthesis, long-form reports (best quality)
+    # - fallback: Used when primary models fail
+    llm_routing_model: str = "groq/llama-3.3-70b-versatile"
+    llm_cheap_model: str = "groq/llama-3.3-70b-versatile"
+    llm_standard_model: str = "gemini/gemini-2.0-flash-exp"
+    llm_quality_model: str = "gpt-4o"  # User requested OpenAI for best quality
+    llm_fallback_model: str = "gpt-4o-mini"
+    
+    # Embeddings Configuration (stays on OpenAI for best quality)
+    embedding_provider: str = "openai"  # Qdrant configured for 1536 dims
+    
+    # ==============================
+    # Langfuse Observability (Phase 2)
+    # ==============================
+    langfuse_host: Optional[str] = None
+    langfuse_public_key: Optional[str] = None
+    langfuse_secret_key: Optional[str] = None
 
     # Base de datos
     # Hacer opcionales si DATABASE_URL está presente

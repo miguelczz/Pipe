@@ -798,13 +798,13 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
                     
                     if "simple" in complexity:
                         length_guidance = "Respuesta BREVE: 2-4 oraciones (50-100 palabras). Ve directo al punto."
-                        max_tokens_synthesis = 200
+                        max_tokens_synthesis = 300  # Aumentado de 200
                     elif "compleja" in complexity:
                         length_guidance = "Respuesta COMPLETA: 300-600 palabras con explicación estructurada. Incluye TODOS los elementos si es una lista."
-                        max_tokens_synthesis = 1200
+                        max_tokens_synthesis = 2000  # Aumentado de 1200 para evitar cortes
                     else:
                         length_guidance = "Respuesta EQUILIBRADA: 100-200 palabras con explicación clara."
-                        max_tokens_synthesis = 500
+                        max_tokens_synthesis = 800  # Aumentado de 500
                 except Exception:
                     pass
                 

@@ -1,20 +1,20 @@
 import re
 import json
-from openai import OpenAI
 from ..settings import settings
 from ..tools.rag_tool import RAGTool
 from ..models.schemas import AgentState
 from ..core.cache import cache_result
-
-# Cliente moderno de OpenAI
-client = OpenAI(api_key=settings.openai_api_key)
+from .llm_client import LLMClient
 
 
 class PipeAgent:
     def __init__(self):
         self.rag = RAGTool()
+        # Use LLMClient (now with MSPProvider) instead of direct OpenAI
+        self.llm_client = LLMClient(
+            system_message="You are the Pipe Router. Your domain is Wireshark Capture Analysis (Band Steering/Network Protocols). Always respond with valid JSON."
+        )
         self.llm_model = settings.llm_model
-        self.client = client
 
     def decide(self, user_input: str, state: AgentState, selected_text: str | None = None) -> dict:
         """
@@ -124,16 +124,16 @@ Respond ONLY in JSON format. No extra text or markdown.
 """
 
         try:
-            response = client.chat.completions.create(
-                model=self.llm_model,
-                messages=[
-                    {"role": "system", "content": "You are the Pipe Router. Your domain is Wireshark Capture Analysis (Band Steering/Network Protocols). Always respond with valid JSON."},
-                    {"role": "user", "content": combined_prompt}
-                ],
+            # Use LLMClient with 'routing' tier for fast intent classification
+            # This will route to Groq (fast) instead of OpenAI
+            response_text = self.llm_client.generate(
+                prompt=combined_prompt,
                 max_tokens=500,
+                model_tier="routing",  # Fast classification with Groq
+                temperature=0.3  # Lower temperature for more deterministic routing
             )
 
-            text = response.choices[0].message.content.strip()
+            text = response_text.strip()
             if text.startswith("```"):
                 text = text.replace("```json", "").replace("```", "").strip()
             match = re.search(r"\{.*\}", text, re.DOTALL)

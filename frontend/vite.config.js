@@ -21,6 +21,10 @@ export default defineConfig({
     // bypass: si el navegador pide HTML (navegación), Vite sirve la SPA.
     // Solo las llamadas fetch/XHR (Accept: application/json) van al backend.
     proxy: {
+      '/api': {
+        target: 'http://pipe-backend:8000',
+        changeOrigin: true,
+      },
       '/agent': {
         target: 'http://pipe-backend:8000',
       },

@@ -12,14 +12,38 @@ from src.api import files, agent, streaming, tools_router, network_analysis, rep
 from src.models.database import init_db
 import uvicorn
 
-# Configuración centralizada de logging
+# Configuración centralizada de logging y silenciamiento de librerías ruidosas
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - [%(name)s] - [%(levelname)s] - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
+    format="%(asctime)s | %(levelname)-8s | %(name)-15s | %(message)s",
+    datefmt="%H:%M:%S"
 )
-# Silenciar logs verbosos de fontTools (WeasyPrint) al generar PDFs
-logging.getLogger("fontTools").setLevel(logging.WARNING)
+
+# Silenciar logs verbosos de librerías de terceros
+NOISY_LOGGERS = [
+    "fontTools", "fontTools.subset", "fontTools.ttLib", 
+    "weasyprint", "pypdf", "pdfminer", "pyshark",
+    "httpcore", "httpx", "urllib3", "multipart", "watchfiles",
+    "LiteLLM", "litellm"  # Silenciar logs internos de LiteLLM
+]
+
+for logger_name in NOISY_LOGGERS:
+    logging.getLogger(logger_name).setLevel(logging.ERROR)
+
+# Configuración adicional para LiteLLM
+try:
+    import litellm
+    litellm.set_verbose = False
+    litellm.suppress_debug_info = True
+    # Silenciar warnings de asyncio de LiteLLM
+    import warnings
+    warnings.filterwarnings("ignore", category=RuntimeWarning, module="litellm")
+except ImportError:
+    pass
+
+# Asegurar que nuestro logger principal esté activo
+logger = logging.getLogger("pipe-backend")
+logger.setLevel(logging.INFO)
 
 # Logger para este módulo
 logger = logging.getLogger(__name__)

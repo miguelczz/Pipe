@@ -75,6 +75,49 @@ services:
       - pipe-network
 
   # ==============================
+  # Langfuse Observability
+  # ==============================
+  pipe-langfuse:
+    image: ghcr.io/langfuse/langfuse:2
+    container_name: pipe-langfuse
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      # Use PostgreSQL (we already have it)
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pipe-postgres:5432/langfuse
+      
+      # Auth
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-pipe-langfuse-secret-change-in-production}
+      NEXTAUTH_URL: http://${SERVER_HOST:-192.168.10.20}:3000
+      
+      # Encryption salt (required for v2)
+      SALT: ${LANGFUSE_SALT:-langfuse-self-hosted-salt-key-32chars-minimum-required-for-encryption-security}
+      
+      # Default credentials (use LANGFUSE_INIT_ prefix for v2+)
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_ADMIN_EMAIL:-admin@pipe.local}
+      LANGFUSE_INIT_USER_NAME: "Admin"
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_ADMIN_PASSWORD:-admin-change-me}
+      
+      # Initial Project (Optional but recommended)
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-self-hosted}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-self-hosted}
+      LANGFUSE_INIT_PROJECT_NAME: "Pipe Project"
+    ports:
+      - "3000:3000"
+    depends_on:
+      pipe-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    networks:
+      - pipe-network
+
+  # ==============================
   # Backend API
   # ==============================
   pipe-backend:

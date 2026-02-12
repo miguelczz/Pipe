@@ -425,6 +425,7 @@ Consulta técnica refinada:
                 try:
                     collection_info = self.qdrant_repo.get_collection_info()
                     points_count = collection_info.get('points_count', 0) if isinstance(collection_info, dict) else 0
+                    
                     if points_count == 0:
                         return {
                             "answer": "No hay documentos disponibles en la base de datos. Por favor, sube archivos PDF que sirvan como guía para entender capturas de Wireshark y sus resultados (por ejemplo manuales de Band Steering) para que pueda responder tus preguntas.",
@@ -439,9 +440,9 @@ Consulta técnica refinada:
                             alternative_hits = self.qdrant_repo.search(query_vector=query_vector, top_k=20)
                             if alternative_hits:
                                 hits = alternative_hits
-                        except Exception as e:
+                        except Exception:
                             pass
-                except Exception as e:
+                except Exception:
                     pass
                 
                 # Si después de la búsqueda alternativa aún no hay hits, retornar mensaje
