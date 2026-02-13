@@ -1,16 +1,15 @@
 """
-Validador centralizado para frames Deauthentication y Disassociation.
-Asegura que solo se cuenten como steering forzado los deauth dirigidos específicamente al cliente.
+Centralized validator for Deauthentication and Disassociation frames.
+Ensures that only deauths specifically directed to the client are counted as forced steering.
 
-Este módulo es crítico para:
-    pass
-1. Evitar contar deauth broadcast como steering
-2. Distinguir entre destierro forzado vs salidas normales (inactividad, client-initiated)
-3. Unificar la lógica entre wireshark_tool.py y btm_analyzer.py
+This module is critical for:
+1. Avoiding counting broadcast deauths as steering
+2. Distinguishing between forced exile vs. normal departures (inactivity, client-initiated)
+3. Unifying logic between wireshark_tool.py and btm_analyzer.py
 """
 from typing import Dict, Tuple
 
-# Reason codes IEEE 802.11 que indican salida GRACEFUL (normal/voluntaria)
+# IEEE 802.11 reason codes indicating GRACEFUL departure (normal/voluntary)
 GRACEFUL_DEAUTH_REASONS = {
     3: "STA is leaving (client-initiated)",
     4: "Disassociated due to inactivity",
@@ -18,7 +17,7 @@ GRACEFUL_DEAUTH_REASONS = {
     32: "Disassociated due to inactivity",
 }
 
-# Reason codes que indican destierro FORZADO del AP (trigger para steering)
+# Reason codes indicating FORCED exile from AP (trigger for steering)
 FORCED_DEAUTH_REASONS = {
     1: "Unspecified reason (likely AP-initiated)",
     2: "Previous authentication no longer valid",
@@ -38,13 +37,13 @@ FORCED_DEAUTH_REASONS = {
 
 class DeauthValidator:
     """
-    Valida si un frame Deauthentication o Disassociation está dirigido a un cliente específico
-    y clasifica el tipo de destierro (forzado vs graceful).
+    Validates if a Deauthentication or Disassociation frame is directed to a specific client
+    and classifies the type of exile (forced vs graceful).
     """
 
     @staticmethod
     def normalize_mac(mac: str) -> str:
-        """Normaliza dirección MAC a formato lowercase sin validación estricta."""
+        """Normalizes MAC address to lowercase format without strict validation."""
         if not mac:
             return ""
         return mac.strip().lower()
@@ -52,7 +51,7 @@ class DeauthValidator:
     @staticmethod
     def is_broadcast(da: str) -> bool:
         """
-        Retorna True si la dirección de destino es broadcast o multicast.
+        Returns True if the destination address is broadcast or multicast.
         
         - Broadcast: ff:ff:ff:ff:ff:ff
         - Multicast IPv4: 01:00:5e:xx:xx:xx
@@ -72,21 +71,20 @@ class DeauthValidator:
         ap_bssid: str = None
     ) -> bool:
         """
-        Valida si un deauth/disassoc frame involucra al cliente específico.
+        Validates if a deauth/disassoc frame involves the specific client.
         
-        Criterios:
-            pass
-        1. DA (Destination) == client_mac (el cliente recibe el deauth del AP) O
-        2. SA (Source) == client_mac (el cliente envía el deauth al AP)
-        3. No es broadcast o multicast
+        Criteria:
+        1. DA (Destination) == client_mac (the client receives the deauth from the AP) OR
+        2. SA (Source) == client_mac (the client sends the deauth to the AP)
+        3. Not broadcast or multicast
         
         Args:
-            deauth_event: Dict con campos "da", "sa", "bssid", etc.
-            client_mac: MAC del cliente a validar (ej: "11:22:33:44:55:66")
-            ap_bssid: MAC del AP (opcional, para validación adicional)
+            deauth_event: Dict with fields "da", "sa", "bssid", etc.
+            client_mac: Client MAC to validate (e.g., "11:22:33:44:55:66")
+            ap_bssid: AP MAC (optional, for additional validation)
         
         Returns:
-            bool: True si el frame involucra al cliente (como receptor o emisor)
+            bool: True if the frame involves the client (as receiver or sender)
         """
         da = DeauthValidator.normalize_mac(deauth_event.get("da", ""))
         sa = DeauthValidator.normalize_mac(deauth_event.get("sa", ""))
@@ -95,15 +93,15 @@ class DeauthValidator:
         if not client_check:
             return False
         
-        # Rechazar broadcast y multicast
+        # Reject broadcast and multicast
         if da and DeauthValidator.is_broadcast(da):
             return False
         
-        # Caso 1: AP envía deauth al cliente (DA == client_mac)
+        # Case 1: AP sends deauth to client (DA == client_mac)
         if da == client_check:
             return True
         
-        # Caso 2: Cliente envía deauth al AP (SA == client_mac)
+        # Case 2: Client sends deauth to AP (SA == client_mac)
         if sa == client_check:
             return True
         
@@ -112,30 +110,29 @@ class DeauthValidator:
     @staticmethod
     def is_forced_deauth(reason_code: int) -> bool:
         """
-        Clasifica si un reason_code indica destierro FORZADO del AP.
+        Classifies if a reason_code indicates FORCED exile from the AP.
         
         Args:
-            reason_code: Código de razón (0-65535)
+            reason_code: Reason code (0-65535)
         
         Returns:
-            bool: True si es destierro forzado, False si es graceful
+            bool: True if it is forced exile, False if it is graceful
         
-        Lógica:
-            pass
-        - Si está en GRACEFUL_DEAUTH_REASONS → False (salida normal)
-        - Si está en FORCED_DEAUTH_REASONS → True (destierro AP)
-        - Si está fuera de ambas listas → True (ser conservador y asumir forzado)
+        Logic:
+        - If it is in GRACEFUL_DEAUTH_REASONS → False (normal departure)
+        - If it is in FORCED_DEAUTH_REASONS → True (AP exile)
+        - If it is outside both lists → True (be conservative and assume forced)
         """
         try:
             code_int = int(reason_code)
         except (ValueError, TypeError):
-            # Código inválido, asumir forzado por seguridad
+            # Invalid code, assume forced for safety
             return True
         
         if code_int in GRACEFUL_DEAUTH_REASONS:
             return False
         
-        # Cualquier otro código: asumir forzado (mejor falso positivo que falso negativo)
+        # Any other code: assume forced (better false positive than false negative)
         return True
 
     @staticmethod
@@ -145,45 +142,44 @@ class DeauthValidator:
         ap_bssid: str = None
     ) -> str:
         """
-        Clasifica un evento deauth en una de varias categorías.
+        Classifies a deauth event into one of several categories.
         
         Args:
-            event: Dict con campos "da", "sa", "reason_code", etc.
-            client_mac: MAC del cliente siendo analizado
-            ap_bssid: MAC del AP (opcional)
+            event: Dict with fields "da", "sa", "reason_code", etc.
+            client_mac: MAC of the client being analyzed
+            ap_bssid: AP MAC (optional)
         
         Returns:
-            str: Una de:
-                pass
-            - "broadcast": Deauth dirigido a broadcast/multicast
-            - "directed_to_other": No involucra al cliente (ni como receptor ni emisor)
-            - "graceful": Involucra al cliente pero con reason code graceful (salida voluntaria)
-            - "forced_to_client": AP destierra al cliente (reason code forzado)
-            - "unknown": No se puede clasificar (campos faltantes)
+            str: One of:
+            - "broadcast": Deauth directed to broadcast/multicast
+            - "directed_to_other": Does not involve the client (neither as receiver nor sender)
+            - "graceful": Involves the client but with a graceful reason code (voluntary departure)
+            - "forced_to_client": AP exiles the client (forced reason code)
+            - "unknown": Cannot be classified (missing fields)
         """
         da = event.get("da", "").strip().lower()
         sa = event.get("sa", "").strip().lower()
         
-        # Verificar broadcast primero
+        # Check broadcast first
         if da and DeauthValidator.is_broadcast(da):
             return "broadcast"
         
         if not da and not sa:
             return "unknown"
         
-        # Verificar si involucra al cliente (como receptor o emisor)
+        # Check if it involves the client (as receiver or sender)
         client_norm = DeauthValidator.normalize_mac(client_mac)
         da_norm = DeauthValidator.normalize_mac(da) if da else ""
         sa_norm = DeauthValidator.normalize_mac(sa) if sa else ""
         
-        # Verificar si el cliente está involucrado
-        client_is_receiver = da_norm == client_norm  # AP → Cliente
-        client_is_sender = sa_norm == client_norm     # Cliente → AP
+        # Check if the client is involved
+        client_is_receiver = da_norm == client_norm  # AP → Client
+        client_is_sender = sa_norm == client_norm     # Client → AP
         
         if not client_is_receiver and not client_is_sender:
             return "directed_to_other"
         
-        # El cliente está involucrado, verificar reason code
+        # The client is involved, check reason code
         reason_raw = event.get("reason_code", 0)
         try:
             if isinstance(reason_raw, str) and reason_raw.startswith("0x"):
@@ -193,17 +189,17 @@ class DeauthValidator:
         except (ValueError, TypeError):
             reason = 0
         
-        # Si el cliente es el emisor (SA == client_mac), generalmente es graceful
-        # Si el AP es el emisor (DA == client_mac), verificar reason code
+        # If the client is the sender (SA == client_mac), it is generally graceful
+        # If the AP is the sender (DA == client_mac), check reason code
         if client_is_sender:
-            # Cliente envía deauth: generalmente es graceful (salida voluntaria)
+            # Client sends deauth: generally graceful (voluntary departure)
             if DeauthValidator.is_forced_deauth(reason):
-                # Aunque tenga reason code "forzado", si el cliente lo envía, es voluntario
+                # Even if it has a "forced" reason code, if the client sends it, it is voluntary
                 return "graceful"
             else:
                 return "graceful"
         else:
-            # AP envía deauth al cliente: verificar si es forzado o graceful
+            # AP sends deauth to client: check if it is forced or graceful
             if DeauthValidator.is_forced_deauth(reason):
                 return "forced_to_client"
             else:
@@ -211,9 +207,9 @@ class DeauthValidator:
 
     @staticmethod
     def get_reason_description(reason_code: int) -> str:
-        """Retorna descripción textual de un reason_code."""
+        """Returns textual description of a reason_code."""
         try:
-            # Asegurar que sea int incluso si viene como hex string
+            # Ensure it is int even if it comes as hex string
             if isinstance(reason_code, str) and reason_code.startswith("0x"):
                 code_int = int(reason_code, 16)
             else:
@@ -236,18 +232,18 @@ class DeauthValidator:
         ap_bssid: str = None
     ) -> Tuple[bool, str, str]:
         """
-        Validación y clasificación en una llamada.
+        Validation and classification in one call.
         
         Args:
-            event: Dict del evento deauth
-            client_mac: MAC del cliente
-            ap_bssid: MAC del AP (opcional)
+            event: Deauth event dict
+            client_mac: Client MAC
+            ap_bssid: AP MAC (optional)
         
         Returns:
             Tuple[is_forced, classification, description]
-            - is_forced (bool): True si es destierro forzado al cliente
-            - classification (str): Categoría ("broadcast", "graceful", "forced_to_client", etc)
-            - description (str): Descripción textual para logging
+            - is_forced (bool): True if it is forced exile to client
+            - classification (str): Category ("broadcast", "graceful", "forced_to_client", etc)
+            - description (str): Textual description for logging
         """
         classification = DeauthValidator.classify_deauth_event(event, client_mac, ap_bssid)
         is_forced = classification == "forced_to_client"
@@ -271,5 +267,5 @@ class DeauthValidator:
         return is_forced, classification, description
 
 
-# Configuración
-REASSOC_TIMEOUT_SECONDS = 15.0  # Ventana temporal para buscar reassoc después de deauth
+# Configuration
+REASSOC_TIMEOUT_SECONDS = 15.0  # Time window to search for reassoc after deauth

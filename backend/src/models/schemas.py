@@ -1,5 +1,5 @@
 """
-Schemas Pydantic para validación de datos y serialización
+Pydantic schemas for data validation and serialization
 """
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
@@ -7,17 +7,17 @@ from datetime import datetime
 
 
 # ============================================================================
-# Schemas de Mensajes y Estado del Agente
+# Message Schemas and Agent State
 # ============================================================================
 
 class Message(BaseModel):
-    """Modelo para mensajes en el contexto de conversación"""
+    """Model for messages in conversation context"""
     role: str  # "user", "agent", "system"
     content: str
 
 
 class AgentState(BaseModel):
-    """Estado del agente con contexto y variables"""
+    """Agent state with context and variables"""
     session_id: str = "default-session"
     user_id: Optional[str] = None
     context_window: List[Message] = Field(default_factory=list)
@@ -26,53 +26,53 @@ class AgentState(BaseModel):
     report_id: Optional[str] = None
 
     def add_message(self, role: str, content: str):
-        """Agrega un mensaje al contexto, limitando a 20 mensajes"""
+        """Adds a message to context, limiting to 20 messages"""
         self.context_window.append(Message(role=role, content=content))
         if len(self.context_window) > 20:
             self.context_window = self.context_window[-20:]
 
 
 # ============================================================================
-# Schemas de API
+# API Schemas
 # ============================================================================
 
 class AgentQuery(BaseModel):
-    """Schema para consultas al agente"""
+    """Schema for agent queries"""
     session_id: str = "default-session"
     user_id: Optional[str] = None
     messages: List[Message] = Field(
         ..., 
         min_length=1, 
-        description="Lista de mensajes, debe incluir al menos un mensaje del usuario"
+        description="List of messages, must include at least one user message"
     )
-    # Configuración opcional
+    # Optional configuration
     max_context_messages: Optional[int] = Field(
         default=None,
-        description="Número máximo de mensajes de contexto a usar (por defecto: todos)"
+        description="Maximum number of context messages to use (default: all)"
     )
     temperature: Optional[float] = Field(
         default=None,
         ge=0.0,
         le=2.0,
-        description="Temperatura para generación (0.0-2.0, por defecto: usa configuración del sistema)"
+        description="Temperature for generation (0.0-2.0, default: uses system config)"
     )
     include_thought_chain: Optional[bool] = Field(
         default=None,
-        description="Incluir cadena de pensamiento en la respuesta (por defecto: según configuración)"
+        description="Include thought chain in response (default: according to configuration)"
     )
-    report_id: Optional[str] = Field(default=None, description="ID del reporte cuando el chat es sobre un análisis concreto")
-    selected_text: Optional[str] = Field(default=None, description="Texto seleccionado por el usuario en el reporte")
+    report_id: Optional[str] = Field(default=None, description="Report ID when the chat is about a specific analysis")
+    selected_text: Optional[str] = Field(default=None, description="Text selected by the user in the report")
 
 
 class SimpleQuery(BaseModel):
-    """Schema simplificado para consultas - solo el prompt del usuario"""
-    prompt: str = Field(..., min_length=1, description="El mensaje del usuario")
-    session_id: Optional[str] = Field(default="default-session", description="ID de sesión (opcional)")
-    user_id: Optional[str] = Field(default=None, description="ID de usuario (opcional)")
+    """Simplified schema for queries - only user prompt"""
+    prompt: str = Field(..., min_length=1, description="The user message")
+    session_id: Optional[str] = Field(default="default-session", description="Session ID (optional)")
+    user_id: Optional[str] = Field(default=None, description="User ID (optional)")
 
 
 class FileUploadResponse(BaseModel):
-    """Respuesta al subir un archivo"""
+    """Response when uploading a file"""
     document_id: str
     filename: str
     status: str
@@ -80,14 +80,14 @@ class FileUploadResponse(BaseModel):
 
 
 class FileListResponse(BaseModel):
-    """Respuesta al listar archivos"""
+    """Response when listing files"""
     document_id: str
     filename: str
     uploaded_at: Optional[datetime] = None
 
 
 class DocumentMetadata(BaseModel):
-    """Metadatos de un documento"""
+    """Metadata of a document"""
     document_id: str
     filename: str
     source: str

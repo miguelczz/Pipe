@@ -1,6 +1,6 @@
 """
-API endpoints para gestión de archivos - Refactorizado para usar repositorios.
-Expone operaciones de subida, listado y borrado sin lógica de logging.
+API endpoints for file management - Refactored to use repositories.
+Exposes upload, list and delete operations without logging logic.
 """
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from typing import List
@@ -14,7 +14,7 @@ from datetime import datetime
 
 router = APIRouter(prefix="/files", tags=["files"])
 
-# Instancias de repositorios
+# Repository instances
 document_repo = DocumentRepository()
 qdrant_repo = get_qdrant_repository()
 
@@ -24,44 +24,44 @@ async def upload_pdf(
     db: SQLSession = Depends(get_db)
 ):
     """
-    Sube y procesa un archivo PDF.
-    Guarda el archivo, genera embeddings y almacena metadatos en BD.
+    Uploads and processes a PDF file.
+    Saves the file, generates embeddings and stores metadata in DB.
     """
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are accepted.")
 
-    # Leer contenido del archivo
+    # Read file content
     content = await file.read()
     
-    # Guardar archivo usando el repositorio
+    # Save file using the repository
     document_id, file_path = document_repo.save_file(content, file.filename)
     
-    # Procesar PDF (chunk + embeddings + store en Qdrant)
+    # Process PDF (chunk + embeddings + store in Qdrant)
     chunk_count = 0
     try:
-        # Obtener número de puntos antes de insertar
+        # Get point count before inserting
         collection_info_before = qdrant_repo.get_collection_info()
         points_before = collection_info_before.get('points_count', 0) if isinstance(collection_info_before, dict) else 0
         
         processed_doc_id = await process_and_store_pdf(file_path, document_id=document_id)
         
-        # Verificar que los datos se insertaron en Qdrant
+        # Verify data was inserted in Qdrant
         collection_info_after = qdrant_repo.get_collection_info()
         if "error" in collection_info_after:
-            raise ValueError(f"Error al obtener información de Qdrant: {collection_info_after.get('error')}")
+            raise ValueError(f"Error getting Qdrant info: {collection_info_after.get('error')}")
         
         points_after = collection_info_after.get('points_count', 0)
         chunk_count = points_after - points_before
         
         if chunk_count == 0:
-            raise ValueError("No se insertaron chunks en Qdrant. Verifica los logs para más detalles.")
+            raise ValueError("No chunks were inserted into Qdrant. Check logs for details.")
     except Exception as e:
         raise HTTPException(
             status_code=500, 
-            detail=f"Error al procesar el PDF: {str(e)}"
+            detail=f"Error processing PDF: {str(e)}"
         )
     
-    # Guardar metadatos en BD
+    # Store metadata in DB
     document_repo.create_document_metadata(
         db=db,
         document_id=document_id,
@@ -85,11 +85,11 @@ async def upload_pdfs(
     db: SQLSession = Depends(get_db)
 ):
     """
-    Sube y procesa múltiples archivos PDF.
-    Cada archivo se guarda, se divide en chunks, se generan embeddings y se almacenan en Qdrant.
+    Uploads and processes multiple PDF files.
+    Each file is saved, split into chunks, embeddings are generated and stored in Qdrant.
     """
     if not files:
-        raise HTTPException(status_code=400, detail="No se proporcionaron archivos.")
+        raise HTTPException(status_code=400, detail="No files provided.")
     results = []
     for file in files:
         if not file.filename or not file.filename.lower().endswith(".pdf"):
@@ -109,11 +109,11 @@ async def upload_pdfs(
             await process_and_store_pdf(file_path, document_id=document_id)
             collection_info_after = qdrant_repo.get_collection_info()
             if "error" in collection_info_after:
-                raise ValueError(collection_info_after.get('error', 'Error en Qdrant'))
+                raise ValueError(collection_info_after.get('error', 'Qdrant error'))
             points_after = collection_info_after.get('points_count', 0)
             chunk_count = points_after - points_before
             if chunk_count == 0:
-                raise ValueError("No se insertaron chunks en Qdrant.")
+                raise ValueError("No chunks were inserted into Qdrant.")
         except Exception as e:
             document_repo.delete_file(document_id)
             results.append(FileUploadResponse(
@@ -143,7 +143,7 @@ async def upload_pdfs(
 @router.get("/", response_model=List[FileListResponse])
 async def list_files(db: SQLSession = Depends(get_db)):
     """
-    Lista todos los archivos con sus metadatos.
+    Lists all files with their metadata.
     """
     documents = document_repo.list_documents(db)
     return [
@@ -162,24 +162,24 @@ async def delete_file(
     db: SQLSession = Depends(get_db)
 ):
     """
-    Elimina un archivo y todos sus vectores asociados.
+    Deletes a file and all its associated vectors.
     """
-    # Verificar que el documento existe
+    # Verify document exists
     doc = document_repo.get_document_by_id(db, document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Eliminar archivo del sistema de archivos
+    # Delete file from filesystem
     document_repo.delete_file(document_id)
     
-    # Eliminar vectores de Qdrant (no crítico si falla)
+    # Delete vectors from Qdrant (non-critical if it fails)
     try:
         delete_by_id(document_id)
     except Exception as e:
-        # Continuar con la eliminación aunque falle Qdrant
+        # Continue with deletion even if Qdrant fails
         pass
 
-    # Eliminar metadatos de BD
+    # Delete metadata from DB
     document_repo.delete_document(db, document_id)
     
     return {

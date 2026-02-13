@@ -1,6 +1,6 @@
 """
-Schemas Pydantic para el análisis de Band Steering.
-Definiciones de estructuras de datos para eventos 802.11, BTM, métricas y reportes.
+Pydantic schemas for Band Steering analysis.
+Data structure definitions for 802.11 events, BTM, metrics and reports.
 """
 from enum import Enum
 from datetime import datetime, timezone
@@ -9,13 +9,13 @@ from pydantic import BaseModel, Field
 
 
 # ============================================================================
-# Enums y Constantes
+# Enums and Constants
 # ============================================================================
 
 class BTMStatusCode(str, Enum):
     """
-    Códigos de estado BTM según estándar 802.11v.
-    Define la respuesta del cliente a una solicitud de transición.
+    BTM status codes according to 802.11v standard.
+    Defines the client response to a transition request.
     """
     ACCEPT = "0"
     ACCEPT_PREFERRED = "1"
@@ -30,13 +30,13 @@ class BTMStatusCode(str, Enum):
 
     @classmethod
     def is_success(cls, code: Union[str, int]) -> bool:
-        """Determina si un código representa una transición exitosa (0 o 1)."""
+        """Determines if a code represents a successful transition (0 or 1)."""
         str_code = str(code)
         return str_code in [cls.ACCEPT.value, cls.ACCEPT_PREFERRED.value]
 
     @classmethod
     def get_description(cls, code: Union[str, int]) -> str:
-        """Obtiene la descripción legible del código según tabla 9-428."""
+        """Gets the readable description of the code according to table 9-428."""
         descriptions = {
             "0": "Accept",
             "1": "Reject - Unspecified reject reason",
@@ -53,17 +53,17 @@ class BTMStatusCode(str, Enum):
 
 class SteeringType(str, Enum):
     """
-    Tipos de patrones de steering detectados.
+    Types of steering patterns detected.
     """
     AGGRESSIVE = "aggressive"  # Deauth/Disassoc forzada
     ASSISTED = "assisted"      # BTM, 802.11v
-    PREVENTIVE = "preventive"  # Steering preventivo antes de degradación
+    PREVENTIVE = "preventive"  # Preventive steering before degradation
     UNKNOWN = "unknown"
 
 
 class DeviceCategory(str, Enum):
     """
-    Categorías de dispositivos basadas en OUI y comportamiento.
+    Device categories based on OUI and behavior.
     """
     MOBILE = "mobile_device"
     COMPUTER = "computer_laptop"
@@ -74,152 +74,152 @@ class DeviceCategory(str, Enum):
 
 
 # ============================================================================
-# Modelos de Componentes
+# Component Models
 # ============================================================================
 
 class DeviceInfo(BaseModel):
-    """Información detallada de un dispositivo analizado."""
-    mac_address: str = Field(..., description="MAC address del dispositivo")
-    oui: str = Field(..., description="OUI (primeros 6 caracteres)")
-    vendor: str = Field(..., description="Fabricante identificado")
-    device_model: Optional[str] = Field(None, description="Modelo del dispositivo (si es detectable)")
-    device_category: DeviceCategory = Field(default=DeviceCategory.UNKNOWN, description="Categoría del dispositivo")
-    is_virtual: bool = Field(False, description="Indica si es una máquina virtual o MAC aleatoria")
-    confidence_score: float = Field(0.0, ge=0.0, le=1.0, description="Confianza en la identificación (0-1)")
+    """Detailed information of an analyzed device."""
+    mac_address: str = Field(..., description="Device MAC address")
+    oui: str = Field(..., description="OUI (first 6 characters)")
+    vendor: str = Field(..., description="Identified manufacturer")
+    device_model: Optional[str] = Field(None, description="Device model (if detectable)")
+    device_category: DeviceCategory = Field(default=DeviceCategory.UNKNOWN, description="Device category")
+    is_virtual: bool = Field(False, description="Indicates if it is a virtual machine or random MAC")
+    confidence_score: float = Field(0.0, ge=0.0, le=1.0, description="Identification confidence (0-1)")
 
 
 class BTMEvent(BaseModel):
-    """Evento individual relacionado con BSS Transition Management (802.11v)."""
-    timestamp: float = Field(..., description="Timestamp del evento en la captura")
-    event_type: str = Field(..., description="Tipo de evento: 'request' o 'response'")
-    client_mac: str = Field(..., description="MAC del cliente involucrado")
-    ap_bssid: str = Field(..., description="BSSID del AP involucrado")
-    status_code: Optional[int] = Field(None, description="Código de estado BTM (solo para responses)")
-    band: Optional[str] = Field(None, description="Banda de frecuencia (2.4GHz/5GHz)")
-    frequency: Optional[int] = Field(None, description="Frecuencia en MHz")
-    rssi: Optional[int] = Field(None, description="Intensidad de señal (dBm)")
-    # Campos adicionales para contexto
-    frame_number: Optional[int] = Field(None, description="Número de frame en Wireshark")
+    """Individual event related to BSS Transition Management (802.11v)."""
+    timestamp: float = Field(..., description="Event timestamp in the capture")
+    event_type: str = Field(..., description="Event type: 'request' or 'response'")
+    client_mac: str = Field(..., description="MAC of the involved client")
+    ap_bssid: str = Field(..., description="BSSID of the involved AP")
+    status_code: Optional[int] = Field(None, description="BTM status code (only for responses)")
+    band: Optional[str] = Field(None, description="Frequency band (2.4GHz/5GHz)")
+    frequency: Optional[int] = Field(None, description="Frequency in MHz")
+    rssi: Optional[int] = Field(None, description="Signal strength (dBm)")
+    # Additional context fields
+    frame_number: Optional[int] = Field(None, description="Wireshark frame number")
 
 
 class SteeringTransition(BaseModel):
     """
-    Representa una transición de roaming/steering completa.
+    Represents a complete roaming/steering transition.
     """
-    client_mac: str = Field(..., description="MAC del cliente")
-    steering_type: SteeringType = Field(default=SteeringType.UNKNOWN, description="Tipo de mecanismo de steering usado")
+    client_mac: str = Field(..., description="Client MAC")
+    steering_type: SteeringType = Field(default=SteeringType.UNKNOWN, description="Type of steering mechanism used")
     
-    # Tiempos
-    start_time: float = Field(..., description="Inicio de la transición (ej. primer BTM Request o Deauth)")
-    end_time: Optional[float] = Field(None, description="Fin de la transición (ej. Reassociation Complete)")
-    duration: Optional[float] = Field(None, description="Duración en segundos")
+    # Timing
+    start_time: float = Field(..., description="Transition start (e.g., first BTM Request or Deauth)")
+    end_time: Optional[float] = Field(None, description="Transition end (e.g., Reassociation Complete)")
+    duration: Optional[float] = Field(None, description="Duration in seconds")
     
-    # Origen y Destino
-    from_bssid: Optional[str] = Field(None, description="BSSID de origen")
-    to_bssid: Optional[str] = Field(None, description="BSSID de destino")
-    from_band: Optional[str] = Field(None, description="Banda de origen")
-    to_band: Optional[str] = Field(None, description="Banda de destino")
+    # Source and Destination
+    from_bssid: Optional[str] = Field(None, description="Source BSSID")
+    to_bssid: Optional[str] = Field(None, description="Destination BSSID")
+    from_band: Optional[str] = Field(None, description="Source band")
+    to_band: Optional[str] = Field(None, description="Destination band")
     
-    # Estado de la transición
-    is_successful: bool = Field(..., description="¿La transición se completó exitosamente?")
-    is_band_change: bool = Field(False, description="¿Hubo cambio de banda (ej. 2.4 -> 5)?")
-    returned_to_original: bool = Field(False, description="¿El cliente volvió al AP original (ping-pong)?")
+    # Transition status
+    is_successful: bool = Field(..., description="Was the transition completed successfully?")
+    is_band_change: bool = Field(False, description="Was there a band change (e.g., 2.4 -> 5)?")
+    returned_to_original: bool = Field(False, description="Did the client return to the original AP (ping-pong)?")
     
-    # Detalles técnicos
-    btm_status_code: Optional[int] = Field(None, description="Código BTM asociado si aplica")
-    failure_reason: Optional[str] = Field(None, description="Razón del fallo si no fue exitosa")
+    # Technical details
+    btm_status_code: Optional[int] = Field(None, description="Associated BTM code if applicable")
+    failure_reason: Optional[str] = Field(None, description="Failure reason if not successful")
 
 
 class KVRSupport(BaseModel):
-    """Evaluación de soporte de estándares 802.11k/v/r."""
-    k_support: bool = Field(False, description="Soporte 802.11k (Radio Measurement)")
-    v_support: bool = Field(False, description="Soporte 802.11v (BTM/WNM)")
-    r_support: bool = Field(False, description="Soporte 802.11r (Fast Transition)")
+    """Evaluation of standards 802.11k/v/r."""
+    k_support: bool = Field(False, description="802.11k support (Radio Measurement)")
+    v_support: bool = Field(False, description="802.11v support (BTM/WNM)")
+    r_support: bool = Field(False, description="802.11r support (Fast Transition)")
 
 
 class ComplianceCheck(BaseModel):
     """
-    Un chequeo individual de cumplimiento (ej. 'Soporte BTM', 'Sin Bucles').
-    Usado para generar la tabla de resumen.
+    Individual compliance check (e.g., 'BTM Support', 'No Loops').
+    Used to generate the summary table.
     """
-    check_name: str = Field(..., description="Nombre corto de la verificación")
-    description: str = Field(..., description="Descripción detallada")
-    category: str = Field(..., description="Categoría: 'btm', 'kvr', 'association', 'performance'")
-    passed: bool = Field(..., description="¿Pasó la prueba?")
-    severity: str = Field(..., description="Severidad: 'low', 'medium', 'high', 'critical'")
-    details: Optional[str] = Field(None, description="Detalles técnicos (ej. 'Requests: 5, Resp: 0')")
-    recommendation: Optional[str] = Field(None, description="Acción sugerida si falló")
+    check_name: str = Field(..., description="Short name of the verification")
+    description: str = Field(..., description="Detailed description")
+    category: str = Field(..., description="Category: 'btm', 'kvr', 'association', 'performance'")
+    passed: bool = Field(..., description="Did it pass the test?")
+    severity: str = Field(..., description="Severity: 'low', 'medium', 'high', 'critical'")
+    details: Optional[str] = Field(None, description="Technical details (e.g., 'Requests: 5, Resp: 0')")
+    recommendation: Optional[str] = Field(None, description="Suggested action if failed")
 
 
 class CaptureFragment(BaseModel):
     """
-    Metadatos de un fragmento de captura extraído (ej. el pcap del roaming).
+    Metadata of an extracted capture fragment (e.g., roaming pcap).
     """
-    fragment_id: str = Field(..., description="Identificador único del fragmento")
-    fragment_type: str = Field(..., description="Tipo: 'btm_sequence', 'transition', 'channel_change'")
-    description: str = Field(..., description="Descripción humana del fragmento")
-    start_time: float = Field(..., description="Timestamp inicio")
-    end_time: float = Field(..., description="Timestamp fin")
-    packet_count: int = Field(0, description="Cantidad de paquetes en el fragmento")
-    file_path: Optional[str] = Field(None, description="Ruta absoluta al archivo generado")
-    download_url: Optional[str] = Field(None, description="URL relativa para descarga")
+    fragment_id: str = Field(..., description="Unique fragment identifier")
+    fragment_type: str = Field(..., description="Type: 'btm_sequence', 'transition', 'channel_change'")
+    description: str = Field(..., description="Human description of the fragment")
+    start_time: float = Field(..., description="Start timestamp")
+    end_time: float = Field(..., description="End timestamp")
+    packet_count: int = Field(0, description="Number of packets in the fragment")
+    file_path: Optional[str] = Field(None, description="Absolute path to the generated file")
+    download_url: Optional[str] = Field(None, description="Relative URL for download")
 
 
 # ============================================================================
-# Modelo Principal de Análisis
+# Main Analysis Model
 # ============================================================================
 
 class SignalSample(BaseModel):
-    timestamp: float = Field(..., description="Timestamp del paquete")
-    rssi: int = Field(..., description="Intensidad de señal (dBm)")
-    band: str = Field(..., description="Banda (2.4GHz/5GHz)")
-    frequency: int = Field(..., description="Frecuencia en MHz")
+    timestamp: float = Field(..., description="Packet timestamp")
+    rssi: int = Field(..., description="Signal strength (dBm)")
+    band: str = Field(..., description="Band (2.4GHz/5GHz)")
+    frequency: int = Field(..., description="Frequency in MHz")
 
 
 class BandSteeringAnalysis(BaseModel):
     """
-    Objeto raiz que contiene TODO el resultado del análisis de una captura.
+    Root object that contains ALL results of a capture analysis.
     """
-    analysis_id: str = Field(..., description="UUID del análisis")
-    filename: str = Field(..., description="Nombre del archivo pcap original")
-    analysis_timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Fecha de análisis")
+    analysis_id: str = Field(..., description="Analysis UUID")
+    filename: str = Field(..., description="Original pcap filename")
+    analysis_timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Analysis date")
     
-    # Métricas Globales
-    total_packets: int = Field(0, description="Total paquetes analizados")
-    wlan_packets: int = Field(0, description="Total paquetes WiFi")
-    analysis_duration_ms: int = Field(0, description="Tiempo que tomó el análisis (ms)")
+    # Global Metrics
+    total_packets: int = Field(0, description="Total packets analyzed")
+    wlan_packets: int = Field(0, description="Total WiFi packets")
+    analysis_duration_ms: int = Field(0, description="Analysis time (ms)")
     
-    # Dispositivos Identificados
-    devices: List[DeviceInfo] = Field(default_factory=list, description="Lista de dispositivos únicos analizados")
+    # Identified Devices
+    devices: List[DeviceInfo] = Field(default_factory=list, description="List of analyzed unique devices")
     
-    # Eventos y Transiciones
-    btm_events: List[BTMEvent] = Field(default_factory=list, description="Lista plana de eventos BTM")
-    transitions: List[SteeringTransition] = Field(default_factory=list, description="Lista de transiciones detectadas")
-    signal_samples: List[SignalSample] = Field(default_factory=list, description="Muestras de señal en el tiempo")
+    # Events and Transitions
+    btm_events: List[BTMEvent] = Field(default_factory=list, description="Flat list of BTM events")
+    transitions: List[SteeringTransition] = Field(default_factory=list, description="List of detected transitions")
+    signal_samples: List[SignalSample] = Field(default_factory=list, description="Signal samples over time")
     
-    # Métricas Agregadas
+    # Aggregate Metrics
     btm_requests: int = Field(0, description="Total Requests")
     btm_responses: int = Field(0, description="Total Responses")
-    btm_success_rate: float = Field(0.0, ge=0.0, le=1.0, description="Tasa de éxito (Responses 0/1 sobre Total)")
+    btm_success_rate: float = Field(0.0, ge=0.0, le=1.0, description="Success rate (Responses 0/1 over Total)")
     
-    successful_transitions: int = Field(0, description="Total transiciones exitosas")
-    failed_transitions: int = Field(0, description="Total transiciones fallidas")
+    successful_transitions: int = Field(0, description="Total successful transitions")
+    failed_transitions: int = Field(0, description="Total failed transitions")
     
-    loops_detected: bool = Field(False, description="¿Se detectó ping-pong entre bandas?")
+    loops_detected: bool = Field(False, description="Was band ping-pong detected?")
     
-    # Cumplimiento y Soporte
-    kvr_support: KVRSupport = Field(default_factory=KVRSupport, description="Resumen de soporte KVR")
-    compliance_checks: List[ComplianceCheck] = Field(default_factory=list, description="Lista de chequeos para tabla de resumen")
+    # Compliance and Support
+    kvr_support: KVRSupport = Field(default_factory=KVRSupport, description="KVR support summary")
+    compliance_checks: List[ComplianceCheck] = Field(default_factory=list, description="List of checks for the summary table")
     
-    # Resultado Final
-    verdict: str = Field(..., description="Veredicto final: 'SUCCESS', 'PARTIAL', 'FAILED', 'NO_DATA'")
-    analysis_text: Optional[str] = Field(None, description="Informe narrativo generado por la IA")
+    # Final Result
+    verdict: str = Field(..., description="Final verdict: 'SUCCESS', 'PARTIAL', 'FAILED', 'NO_DATA'")
+    analysis_text: Optional[str] = Field(None, description="Narrative report generated by AI")
     
-    # Datos Crudos Completos (para reconstrucción de UI)
-    raw_stats: Optional[Dict[str, Any]] = Field(None, description="Estadísticas completas de Wireshark (diagnostics, steering_analysis, etc.)")
+    # Complete Raw Data (for UI reconstruction)
+    raw_stats: Optional[Dict[str, Any]] = Field(None, description="Complete Wireshark stats (diagnostics, steering_analysis, etc.)")
     
-    # Fragmentos
-    fragments: List[CaptureFragment] = Field(default_factory=list, description="Fragmentos de pcap extraídos")
+    # Fragments
+    fragments: List[CaptureFragment] = Field(default_factory=list, description="Extracted pcap fragments")
 
     class Config:
         use_enum_values = True

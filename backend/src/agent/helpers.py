@@ -1,6 +1,6 @@
 """
-Funciones helper para los nodos del agente.
-Centraliza lógica común y elimina duplicación, sin gestionar logging.
+Helper functions for agent nodes.
+Centralizes common logic and eliminates duplication, without managing logging.
 """
 import re
 from typing import Optional, List, Tuple
@@ -11,79 +11,76 @@ llm = LLMClient()
 
 def detect_operation_type(step: str, prompt: str, conversation_context: Optional[str] = None) -> str:
     """
-    Detecta el tipo de operación usando heurística primero, LLM solo si es necesario.
-    OPTIMIZACIÓN: Usa análisis heurístico rápido antes de llamar al LLM.
+    Detects the operation type using heuristics first, LLM only if necessary.
+    OPTIMIZATION: Uses fast heuristic analysis before calling the LLM.
     
     Args:
-        step: Paso del plan
-        prompt: Pregunta original del usuario
-        conversation_context: Contexto opcional de la conversación previa
+        step: Plan step
+        prompt: Original user question
+        conversation_context: Optional context from previous conversation
     
     Returns:
-        "ping", "traceroute", "compare", o "default"
+        "ping", "traceroute", "compare", or "default"
     """
-    # OPTIMIZACIÓN: Primero intentar heurística rápida (sin LLM)
+    # OPTIMIZATION: First try fast heuristics (without LLM)
     step_lower = (step or "").lower()
     prompt_lower = (prompt or "").lower()
     context_lower = (conversation_context or "").lower()
     
     combined_text = f"{step_lower} {prompt_lower} {context_lower}"
     
-    # Detectar comparación (más específico primero)
-    # Incluir variaciones del verbo comparar y patrones comunes
+    # Detect comparison (most specific first)
+    # Include variations of compare verb and common patterns
     compare_keywords = [
-        "compare", "compara", "comparar", "comparando", "comparison", "comparación",
-        "diferencias", "differences", "contrast", "contraste",
-        "vs", "versus", "frente a",
-        # Patrones que indican comparación entre dos elementos
-        "ping de", "latencia de"  # Cuando se menciona junto con "con" o "y"
+        "compare", "comparison", "differences", "contrast", "vs", "versus",
+        # Patterns indicating comparison between two elements
+        "ping from", "ping of", "latency of"  # When mentioned with "with" or "and"
     ]
     
-    # Detectar patrones de comparación (ej: "ping de X con Y", "X vs Y")
+    # Detect comparison patterns (e.g., "ping of X with Y", "X vs Y")
     has_compare_keyword = any(keyword in combined_text for keyword in compare_keywords)
     has_comparison_pattern = (
-        (" con " in combined_text or " y " in combined_text) and 
-        (combined_text.count(".com") >= 2 or combined_text.count(".") >= 4)  # Múltiples dominios
+        (" with " in combined_text or " and " in combined_text) and 
+        (combined_text.count(".com") >= 2 or combined_text.count(".") >= 4)  # Multiple domains
     )
     
     if has_compare_keyword and has_comparison_pattern:
         return "compare"
     
-    # También detectar si hay palabras clave explícitas de comparación
-    if any(keyword in combined_text for keyword in ["compare", "compara", "comparar", "comparando", "comparison", "comparación", "vs", "versus", "diferencias", "differences"]):
+    # Also detect if there are explicit comparison keywords
+    if any(keyword in combined_text for keyword in ["compare", "comparison", "vs", "versus", "differences"]):
         return "compare"
     
-    # Detectar traceroute
-    if any(keyword in combined_text for keyword in ["traceroute", "trace route", "trace-route", "trazar ruta", "ruta de red"]):
+    # Detect traceroute
+    if any(keyword in combined_text for keyword in ["traceroute", "trace route", "trace-route", "network route"]):
         return "traceroute"
     
-    # Detectar ping (más común, verificar después de traceroute)
-    if any(keyword in combined_text for keyword in ["ping", "latencia", "latency", "tiempo de respuesta", "response time"]):
+    # Detect ping (most common, check after traceroute)
+    if any(keyword in combined_text for keyword in ["ping", "latency", "response time"]):
         return "ping"
     
-    # Si no se puede determinar con heurística, usar LLM (solo cuando es necesario)
+    # If cannot determine with heuristics, use LLM (only when necessary)
     try:
-        context_section = f"\nContexto de conversación previa:\n{conversation_context}" if conversation_context else ""
+        context_section = f"\nPrevious conversation context:\n{conversation_context}" if conversation_context else ""
         
         analysis_prompt = f"""
-Analiza la siguiente solicitud y determina qué tipo de operación de red se necesita realizar.
+Analyze the following request and determine what type of network operation needs to be performed.
 
-Paso del plan: "{step}"
-Pregunta original: "{prompt}"
+Plan step: "{step}"
+Original question: "{prompt}"
 {context_section}
 
-Tipos de operación disponibles:
-    pass
-- "ping": Medir latencia/tiempo de respuesta a un host o dominio
-- "traceroute": Trazar la ruta de red hasta un host o dominio
-- "compare": Comparar dos o más hosts/dominios/IPs (análisis comparativo)
-- "default": Otra operación de red no especificada
+Available operation types:
+- "ping": Measure latency/response time to a host or domain
+- "traceroute": Trace the network path to a host or domain
+- "compare": Compare two or more hosts/domains/IPs (comparative analysis)
+- "default": Other unspecified network operation
 
-Responde SOLO con una palabra: "ping", "traceroute", "compare", o "default"
+Respond ONLY with one word: "ping", "traceroute", "compare", or "default"
 """
         response = llm.generate(analysis_prompt, max_tokens=50).strip().lower()
         
-        # Extraer el tipo de operación de la respuesta
+        # Extract operation type from response
         if "compare" in response or "compar" in response:
             return "compare"
         elif "traceroute" in response or "trace" in response:
@@ -98,10 +95,10 @@ Responde SOLO con una palabra: "ping", "traceroute", "compare", o "default"
 
 def extract_domain_from_text(text: str) -> Optional[str]:
     """
-    Extrae un dominio del texto usando regex.
+    Extracts a domain from text using regex.
     
     Returns:
-        Dominio encontrado o None
+        Domain found or None
     """
     domain_pattern = r"\b(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}\b"
     match = re.search(domain_pattern, text)
@@ -110,10 +107,10 @@ def extract_domain_from_text(text: str) -> Optional[str]:
 
 def extract_ip_from_text(text: str) -> Optional[str]:
     """
-    Extrae una IP del texto usando regex.
+    Extracts an IP from text using regex.
     
     Returns:
-        IP encontrada o None
+        IP found or None
     """
     ip_pattern = r"\b(?:\d{1,3}\.){3}\d{1,3}\b"
     match = re.search(ip_pattern, text)
@@ -122,47 +119,47 @@ def extract_ip_from_text(text: str) -> Optional[str]:
 
 def extract_domains_from_text(text: str) -> List[str]:
     """
-    Extrae todos los dominios del texto usando regex primero, y LLM como fallback.
+    Extracts all domains from text using regex first, and LLM as fallback.
     
     Returns:
-        Lista de dominios encontrados
+        List of domains found
     """
-    # Primero buscar dominios explícitos con regex
+    # First look for explicit domains with regex
     domain_pattern = r"\b(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}\b"
     explicit_domains = re.findall(domain_pattern, text)
     
-    # Si encontramos dominios explícitos, retornarlos
+    # If explicit domains found, return them
     if explicit_domains:
-        return list(dict.fromkeys(explicit_domains))  # Eliminar duplicados manteniendo orden
+        return list(dict.fromkeys(explicit_domains))  # Remove duplicates maintaining order
     
-    # Si no encontramos dominios explícitos, usar LLM para identificar servicios/dominios
-    # Esto permite que el agente identifique servicios mencionados por nombre (Google, Facebook, etc.)
+    # If no explicit domains found, use LLM to identify services/domains
+    # This allows the agent to identify services mentioned by name (Google, Facebook, etc.)
     llm_domains = extract_domains_using_llm(text)
     
-    # Combinar y eliminar duplicados
+    # Combine and remove duplicates
     all_domains = explicit_domains + llm_domains
-    return list(dict.fromkeys(all_domains))  # Eliminar duplicados manteniendo orden
+    return list(dict.fromkeys(all_domains))  # Remove duplicates maintaining order
 
 
 def extract_domain_using_llm(text: str) -> Optional[str]:
     """
-    Extrae un dominio del texto usando LLM como fallback.
-    Útil cuando el regex no encuentra dominios explícitos.
+    Extracts a domain from text using LLM as fallback.
+    Useful when regex doesn't find explicit domains.
     
     Returns:
-        Dominio encontrado o None
+        Domain found or None
     """
     try:
         prompt = f"""
-        Del siguiente texto, identifica el nombre de dominio o servicio mencionado (como Instagram, Facebook, Google, etc.).
-        Responde SOLO con el nombre del dominio encontrado, sin explicaciones ni texto adicional.
-        Si no encuentras un nombre de dominio, responde "ninguno".
-        
-        Texto: "{text}"
-        """
+From the following text, identify the domain name or service mentioned (such as Instagram, Facebook, Google, etc.).
+Respond ONLY with the found domain name, without explanations or additional text.
+If you don't find a domain name, respond "none".
+
+Text: "{text}"
+"""
         response = llm.generate(prompt).strip().lower()
         
-        if response and response != "ninguno":
+        if response and response != "none":
             words = re.findall(r'\b[a-zA-Z][a-zA-Z0-9-]*\b', response)
             if words:
                 domain_name = words[0]
@@ -173,7 +170,7 @@ def extract_domain_using_llm(text: str) -> Optional[str]:
         return None
 
 
-# Lista de servicios comunes conocidos para conversión rápida
+# List of known common services for fast conversion
 COMMON_SERVICES = {
     "facebook": "facebook.com",
     "google": "google.com",
@@ -200,21 +197,21 @@ COMMON_SERVICES = {
 
 def extract_domains_using_llm(text: str) -> List[str]:
     """
-    Extrae múltiples dominios del texto usando LLM de manera inteligente.
-    El LLM identifica servicios mencionados por nombre y los convierte a dominios completos.
+    Extracts multiple domains from text using LLM intelligently.
+    The LLM identifies services mentioned by name and converts them to full domains.
     
-    Primero verifica si es un servicio conocido (más rápido), luego usa LLM como fallback.
+    First checks if it's a known service (faster), then uses LLM as fallback.
     
     Returns:
-        Lista de dominios encontrados (formato: ejemplo.com)
+        List of domains found (format: example.com)
     """
-    # Primero verificar si es un servicio conocido (más rápido y confiable)
+    # First check if it's a known service (faster and more reliable)
     text_lower = text.lower()
     found_domains = []
     
     for service, domain in COMMON_SERVICES.items():
         if service in text_lower:
-            # Verificar que no sea parte de otra palabra
+            # Verify it's not part of another word
             import re
             pattern = r'\b' + re.escape(service) + r'\b'
             if re.search(pattern, text_lower):
@@ -224,22 +221,20 @@ def extract_domains_using_llm(text: str) -> List[str]:
     if found_domains:
         return found_domains
     
-    # Si no se encontraron servicios conocidos, usar LLM
+    # If no known services found, use LLM
     try:
         prompt = f"""
-Analiza el siguiente texto e identifica TODOS los servicios, empresas o dominios mencionados.
+Analyze the following text and identify ALL mentioned services, companies, or domains.
 
-INSTRUCCIONES:
-    pass
-1. Identifica servicios mencionados por nombre (ej: "Google", "Facebook", "Amazon") o por dominio completo (ej: "google.com")
-2. Para cada servicio identificado, convierte el nombre al dominio completo correspondiente (ej: "Google" → "google.com", "Gmail" → "gmail.com")
-3. Si ya es un dominio completo, úsalo tal cual
-4. Responde SOLO con los dominios completos, uno por línea, en formato: ejemplo.com
-5. No incluyas explicaciones, puntos, ni texto adicional
-6. Si no encuentras ningún servicio o dominio, responde "ninguno"
+INSTRUCTIONS:
+1. Identify services mentioned by name (e.g., "Google", "Facebook", "Amazon") or by full domain (e.g., "google.com")
+2. For each identified service, convert the name to the corresponding full domain (e.g., "Google" → "google.com", "Gmail" → "gmail.com")
+3. If it is already a full domain, use it as is
+4. Respond ONLY with the full domains, one per line, in format: example.com
+5. Do not include explanations, bullet points, or additional text
+6. If you don't find any service or domain, respond "none"
 
-Ejemplos de conversión:
-    pass
+Conversion examples:
 - "Google" → google.com
 - "Facebook" → facebook.com
 - "Amazon AWS" → amazonaws.com
@@ -251,30 +246,29 @@ Ejemplos de conversión:
 - "Instagram" → instagram.com
 - "YouTube" → youtube.com
 
-Texto a analizar: "{text}"
+Text to analyze: "{text}"
 
-Responde con los dominios completos (uno por línea):
-    pass
+Respond with full domains (one per line):
 """
         response = llm.generate(prompt, max_tokens=200).strip()
         
-        if not response or response.lower() == "ninguno":
+        if not response or response.lower() == "none":
             return []
         
         domains = []
         for line in response.split('\n'):
             line = line.strip()
-            # Limpiar la línea de caracteres especiales y espacios
+            # Clean line of special characters and spaces
             line = re.sub(r'[^\w\.-]', '', line)
             
             if line and len(line) > 3:
-                # Verificar que tenga formato de dominio (contiene punto y extensión)
+                # Verify it has domain format (contains dot and extension)
                 if '.' in line and len(line.split('.')) >= 2:
-                    # Verificar que no sea solo una extensión
+                    # Verify it's not just an extension
                     parts = line.split('.')
-                    if len(parts[0]) > 1:  # El nombre del dominio debe tener al menos 2 caracteres
+                    if len(parts[0]) > 1:  # Domain name must have at least 2 characters
                         domain = line.lower()
-                        # Asegurar que termine con extensión válida
+                        # Ensure it ends with valid extension
                         if re.match(r'^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(\.[a-zA-Z]{2,})?$', domain):
                             if domain not in domains:
                                 domains.append(domain)
@@ -286,114 +280,111 @@ Responde con los dominios completos (uno por línea):
 
 def extract_hosts_from_text(text: str, validate_func) -> List[str]:
     """
-    Extrae hosts (IPs o dominios) del texto de manera inteligente.
-    Usa regex primero, luego LLM para identificar servicios mencionados por nombre.
+    Extracts hosts (IPs or domains) from text intelligently.
+    Uses regex first, then LLM to identify services mentioned by name.
     
     Args:
-        text: Texto a analizar
-        validate_func: Función para validar si un token es un host válido
+        text: Text to analyze
+        validate_func: Function to validate if a token is a valid host
     
     Returns:
-        Lista de hosts encontrados (sin duplicados)
+        List of found hosts (without duplicates)
     """
-    # Extraer IPs y dominios explícitos del texto
+    # Extract explicit IPs and domains from text
     hosts = [p for p in text.split() if validate_func(p)]
     
-    # Extraer dominios (esto ya usa LLM internamente si no encuentra dominios explícitos)
+    # Extract domains (this already uses LLM internally if no explicit domains found)
     domain_matches = extract_domains_from_text(text)
     
-    # Combinar y eliminar duplicados
+    # Combine and remove duplicates
     for domain in domain_matches:
         if domain not in hosts and validate_func(domain):
             hosts.append(domain)
     
-    return list(dict.fromkeys(hosts))  # Eliminar duplicados manteniendo orden
+    return list(dict.fromkeys(hosts))  # Remove duplicates maintaining order
 
 
 def detect_dns_operation_type(step: str, prompt: str) -> Tuple[str, bool]:
     """
-    Detecta el tipo de operación DNS usando LLM para entender la intención real.
-    No depende de palabras clave, sino que analiza el significado.
+    Detects DNS operation type using LLM to understand real intent.
+    Does not depend on keywords, but analyzes meaning.
     
     Returns:
-        Tupla (operation_type, is_all_records)
-        operation_type: "reverse", "compare", "spf", "dmarc", "domain_info", "all", o tipo específico ("A", "MX", etc.)
-        is_all_records: True si se deben obtener todos los registros
+        Tuple (operation_type, is_all_records)
+        operation_type: "reverse", "compare", "spf", "dmarc", "domain_info", "all", or specific type ("A", "MX", etc.)
+        is_all_records: True if all records should be obtained
     """
     try:
         analysis_prompt = f"""
-Analiza la siguiente solicitud y determina qué tipo de operación DNS se necesita realizar.
+Analyze the following request and determine what type of DNS operation needs to be performed.
 
-Paso del plan: "{step}"
-Pregunta original: "{prompt}"
+Plan step: "{step}"
+Original question: "{prompt}"
 
-Tipos de operación DNS disponibles:
-    pass
-- "reverse": Búsqueda inversa DNS (PTR) - obtener dominio desde una IP
-- "compare": Comparar registros DNS entre dos o más dominios
-- "spf": Verificar configuración SPF de un dominio
-- "dmarc": Verificar configuración DMARC de un dominio
-- "domain_info": Obtener información completa del dominio (IPs, email, seguridad, etc.)
-- "all": Obtener TODOS los registros DNS de un dominio (A, AAAA, MX, TXT, NS, CNAME)
-- Tipos específicos: "A", "AAAA", "MX", "TXT", "NS", "CNAME" - cuando se solicita un tipo específico
+Available DNS operation types:
+- "reverse": Reverse DNS lookup (PTR) - get domain from an IP
+- "compare": Compare DNS records between two or more domains
+- "spf": Verify SPF configuration of a domain
+- "dmarc": Verify DMARC configuration of a domain
+- "domain_info": Get complete domain information (IPs, email, security, etc.)
+- "all": Get ALL DNS records of a domain (A, AAAA, MX, TXT, NS, CNAME)
+- Specific types: "A", "AAAA", "MX", "TXT", "NS", "CNAME" - when a specific type is requested
 
-INSTRUCCIONES:
-    pass
-1. Analiza la INTENCIÓN real, no solo palabras clave
-2. Si menciona "todos", "all", "completo", "todos los registros" sin especificar tipo → ("A", True)
-3. Si menciona un tipo específico (MX, TXT, NS, etc.) → (tipo, False)
-4. Si menciona comparar dominios → ("compare", False)
-5. Si menciona SPF o verificar SPF → ("spf", False)
-6. Si menciona DMARC o verificar DMARC → ("dmarc", False)
-7. Si menciona información completa, resumen, o info del dominio → ("domain_info", False)
-8. Si menciona búsqueda inversa, PTR, o obtener dominio de IP → ("reverse", False)
+INSTRUCTIONS:
+1. Analyze the real INTENT, not just keywords
+2. If it mentions "all", "complete", "all records" without specifying type → ("A", True)
+3. If it mentions a specific type (MX, TXT, NS, etc.) → (type, False)
+4. If it mentions comparing domains → ("compare", False)
+5. If it mentions SPF or verify SPF → ("spf", False)
+6. If it mentions DMARC or verify DMARC → ("dmarc", False)
+7. If it mentions complete information, summary, or domain info → ("domain_info", False)
+8. If it mentions reverse lookup, PTR, or getting domain from IP → ("reverse", False)
 
-Ejemplos:
-    pass
-- "Consulta los registros DNS de google.com" → ("A", True) - todos los registros
-- "MX de gmail.com" → ("MX", False) - solo MX
-- "Compara DNS de google y facebook" → ("compare", False)
-- "Verifica SPF de gmail.com" → ("spf", False)
-- "Información completa de google.com" → ("domain_info", False)
+Examples:
+- "View DNS records for google.com" → ("A", True) - all records
+- "MX for gmail.com" → ("MX", False) - only MX
+- "Compare DNS for google and facebook" → ("compare", False)
+- "Verify SPF for gmail.com" → ("spf", False)
+- "Complete information for google.com" → ("domain_info", False)
 
-Responde SOLO con el tipo de operación en formato: "tipo,is_all"
-Donde tipo es uno de: reverse, compare, spf, dmarc, domain_info, all, A, AAAA, MX, TXT, NS, CNAME
-Y is_all es: true o false
+Respond ONLY with the operation type in format: "type,is_all"
+Where type is one of: reverse, compare, spf, dmarc, domain_info, all, A, AAAA, MX, TXT, NS, CNAME
+And is_all is: true or false
 
-Ejemplo de respuesta: "A,true" o "MX,false" o "compare,false"
+Example response: "A,true" or "MX,false" or "compare,false"
 """
         response = llm.generate(analysis_prompt, max_tokens=100).strip().lower()
         
-        # Parsear respuesta
+        # Parse response
         if "," in response:
             parts = response.split(",")
             op_type = parts[0].strip()
             is_all = "true" in parts[1].strip() if len(parts) > 1 else False
         else:
-            # Si no tiene formato esperado, intentar extraer
+            # If not in expected format, try to extract
             op_type = response.strip()
-            is_all = "all" in op_type or "todos" in op_type or "completo" in op_type
+            is_all = "all" in op_type or "complete" in op_type
         
-        # Normalizar tipos
-        if op_type in ["reverse", "ptr", "inversa"]:
+        # Normalize types
+        if op_type in ["reverse", "ptr"]:
             return ("reverse", False)
-        elif op_type in ["compare", "comparar"]:
+        elif op_type in ["compare"]:
             return ("compare", False)
         elif op_type in ["spf"]:
             return ("spf", False)
         elif op_type in ["dmarc"]:
             return ("dmarc", False)
-        elif op_type in ["domain_info", "domain info", "info", "información completa", "resumen"]:
+        elif op_type in ["domain_info", "domain info", "info", "complete info", "summary"]:
             return ("domain_info", False)
-        elif op_type in ["all", "todos", "completo"] or is_all:
+        elif op_type in ["all", "complete"] or is_all:
             return ("A", True)
         elif op_type.upper() in ["A", "AAAA", "MX", "TXT", "NS", "CNAME"]:
             return (op_type.upper(), False)
         else:
-            # Por defecto: todos los registros
+            # Default: all records
             return ("A", True)
     except Exception as e:
-        # Fallback simple solo en caso de error
+        # Simple fallback in case of error
         step_lower = (step or "").lower()
         prompt_lower = prompt.lower()
         if "reverse" in step_lower or "ptr" in step_lower or "reverse" in prompt_lower:
@@ -404,7 +395,7 @@ Ejemplo de respuesta: "A,true" o "MX,false" o "compare,false"
             return ("spf", False)
         if "dmarc" in prompt_lower:
             return ("dmarc", False)
-        if "all" in step_lower or "todos" in step_lower or "completo" in prompt_lower:
+        if "all" in step_lower or "complete" in prompt_lower:
             return ("A", True)
-        return ("A", True)  # Por defecto: todos los registros
+        return ("A", True)  # Default: all records
 

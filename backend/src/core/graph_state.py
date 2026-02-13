@@ -1,6 +1,6 @@
 """
-Gestor de estado centralizado para el grafo de agentes.
-Implementa el patrón State para compartir estado entre todos los nodos.
+Centralized state manager for the agent graph.
+Implements the State pattern to share state among all nodes.
 """
 from typing import Dict, Any, List, Optional, Callable
 from pydantic import BaseModel
@@ -13,65 +13,70 @@ import time
 
 class GraphState(BaseModel):
     """
-    Estado compartido del grafo que se propaga entre todos los nodos.
-    Implementa el patrón State para que cualquier nodo pueda leer y actualizar el estado,
-    y todos los demás nodos observen los cambios automáticamente.
+    Shared graph state that propagates between all nodes.
+    Implements the State pattern so any node can read and update the state,
+    and all other nodes observe the changes automatically.
     
-    LangGraph maneja automáticamente la propagación del estado usando los canales:
-        pass
-    - add_messages: Para mensajes (acumula)
-    - LastValue: Para valores simples (reemplaza)
+    LangGraph automatically handles state propagation using channels:
+    - add_messages: For messages (accumulates)
+    - LastValue: For simple values (replaces)
     """
-    # Mensajes de la conversación (acumulativo)
+    # Conversation messages (cumulative)
     messages: Annotated[List[AnyMessage], add_messages] = []
     
-    # Plan de ejecución (lista de pasos)
+    # Execution plan (list of steps)
     plan_steps: Annotated[List[str], LastValue(list)] = []
     
-    # Resultados de las herramientas ejecutadas
+    # Results of executed tools
     results: Annotated[List[Any], LastValue(list)] = []
     
-    # Salida final del sintetizador
+    # Final output from synthesizer
     final_output: Annotated[Optional[str], LastValue(str)] = None
     
-    # Componente siguiente (decisión del orquestador)
+    # Next component (orchestrator decision)
     next_component: Annotated[Optional[str], LastValue(str)] = None
     
-    # Salida supervisada (validada por el supervisor)
+    # Supervised output (validated by supervisor)
     supervised_output: Annotated[Optional[str], LastValue(str)] = None
     
-    # Puntuación de calidad
+    # Quality score
     quality_score: Annotated[Optional[float], LastValue(float)] = None
     
-    # Historial de herramientas ejecutadas
+    # History of executed tools
     executed_tools: Annotated[List[str], LastValue(list)] = []
     
-    # Historial de pasos ejecutados
+    # History of executed steps
     executed_steps: Annotated[List[str], LastValue(list)] = []
     
-    # Cadena de pensamiento (razonamiento del agente)
+    # Thought chain (agent reasoning)
     thought_chain: Annotated[List[Dict[str, Any]], LastValue(list)] = []
     
-    # Campos temporales (no se persisten en el estado final)
+    # Temporary fields (not persisted in final state)
     tool_name: Annotated[Optional[str], LastValue(str)] = None
     current_step: Annotated[Optional[str], LastValue(str)] = None
     
-    # Mensaje de rechazo (cuando una pregunta está fuera de tema)
+    # Rejection message (when a question is off-topic)
     rejection_message: Annotated[Optional[str], LastValue(str)] = None
 
-    # ID del reporte actual (cuando el chat está en contexto de un reporte)
+    # Current report ID (when chat is in context of a report)
     report_id: Annotated[Optional[str], LastValue(str)] = None
     
-    # Texto seleccionado por el usuario en el frontend (fragmento del reporte)
+    # Text selected by user in frontend (report fragment)
     selected_text: Annotated[Optional[str], LastValue(str)] = None
     
-    # Session ID para observabilidad
+    # Session ID for observability
     session_id: Annotated[Optional[str], LastValue(str)] = None
+
+    # Trace ID for distributed observability (Langfuse)
+    trace_id: Annotated[Optional[str], LastValue(str)] = None
+    
+    # User ID for context
+    user_id: Annotated[Optional[str], LastValue(str)] = None
     
     def get_state_snapshot(self) -> Dict[str, Any]:
         """
-        Obtiene una instantánea del estado actual.
-        Útil para logging y debugging.
+        Gets a snapshot of the current state.
+        Useful for logging and debugging.
         """
         return {
             "messages_count": len(self.messages),
@@ -93,17 +98,17 @@ class GraphState(BaseModel):
         status: str = "success"
     ) -> List[Dict[str, Any]]:
         """
-        Agrega un paso de pensamiento a la cadena.
-        Este método actualiza thought_chain que es observable por todos los nodos.
+        Adds a thought step to the chain.
+        This method updates thought_chain which is observable by all nodes.
         
         Args:
-            node_name: Nombre del nodo que está ejecutando la acción
-            action: Acción que se está realizando
-            details: Detalles adicionales de la acción
-            status: Estado de la acción ("success", "error", "info")
+            node_name: Name of the node executing the action
+            action: Action being performed
+            details: Additional details of the action
+            status: Action status ("success", "error", "info")
         
         Returns:
-            Lista actualizada de pensamientos
+            Updated thought chain list
         """
         thought = {
             "node": node_name,
@@ -115,7 +120,7 @@ class GraphState(BaseModel):
         current_chain = self.thought_chain or []
         current_chain.append(thought)
         
-        # OPTIMIZACIÓN: Limitar el tamaño de thought_chain para evitar problemas de memoria
+        # OPTIMIZATION: Limit thought_chain size to avoid memory issues
         MAX_THOUGHT_CHAIN = 50
         if len(current_chain) > MAX_THOUGHT_CHAIN:
             current_chain = current_chain[-MAX_THOUGHT_CHAIN:]
@@ -124,35 +129,35 @@ class GraphState(BaseModel):
     
     def cleanup_old_messages(self, max_messages: int = 30):
         """
-        Limpia mensajes antiguos para evitar acumulación excesiva de memoria.
-        Mantiene solo los últimos max_messages mensajes.
+        Cleans up old messages to avoid excessive memory accumulation.
+        Keeps only the last max_messages messages.
         
-        IMPORTANTE: Solo limpia si hay más del doble del límite para evitar limpiezas frecuentes.
+        IMPORTANT: Only cleans up if there are more than double the limit to avoid frequent cleanups.
         
         Args:
-            max_messages: Número máximo de mensajes a mantener
+            max_messages: Maximum number of messages to keep
         """
-        if len(self.messages) > max_messages * 2:  # Solo limpiar si hay más del doble
-            # Mantener solo los últimos max_messages
+        if len(self.messages) > max_messages * 2:  # Only clean if more than double
+            # Keep only the last max_messages
             self.messages = self.messages[-max_messages:]
     
     def cleanup_large_results(self, max_results: int = 10):
         """
-        Limpia resultados antiguos para evitar acumulación excesiva de memoria.
-        Solo limpia si hay más del doble del límite.
+        Cleans up old results to avoid excessive memory accumulation.
+        Only cleans up if there are more than double the limit.
         
         Args:
-            max_results: Número máximo de resultados a mantener
+            max_results: Maximum number of results to keep
         """
-        if self.results and len(self.results) > max_results * 2:  # Solo limpiar si hay más del doble
-            # Mantener solo los últimos max_results
+        if self.results and len(self.results) > max_results * 2:  # Only clean if more than double
+            # Keep only the last max_results
             self.results = self.results[-max_results:]
 
 
 class StateObserver:
     """
-    Observador del estado para notificar cambios.
-    Implementa el patrón Observer para que otros componentes puedan observar cambios de estado.
+    State observer to notify of changes.
+    Implements the Observer pattern so other components can observe state changes.
     """
     
     def __init__(self):
@@ -160,20 +165,20 @@ class StateObserver:
     
     def subscribe(self, callback: Callable[[GraphState, Dict[str, Any]], None]):
         """
-        Suscribe un observador que será notificado cuando el estado cambie.
+        Subscribes an observer that will be notified when the state changes.
         
         Args:
-            callback: Función que recibe (state, changes) cuando hay cambios
+            callback: Function that receives (state, changes) when changes occur
         """
         self._observers.append(callback)
     
     def notify(self, state: GraphState, changes: Dict[str, Any]):
         """
-        Notifica a todos los observadores sobre cambios en el estado.
+        Notifies all observers of changes in the state.
         
         Args:
-            state: Estado actual
-            changes: Diccionario con los campos que cambiaron
+            state: Current state
+            changes: Dictionary with fields that changed
         """
         for observer in self._observers:
             try:
@@ -182,11 +187,10 @@ class StateObserver:
                 pass
 
 
-# Instancia global del observador (opcional, para uso futuro)
+# Global observer instance (optional, for future use)
 _state_observer = StateObserver()
 
 
 def get_state_observer() -> StateObserver:
-    """Obtiene la instancia global del observador de estado."""
+    """Gets the global instance of the state observer."""
     return _state_observer
-

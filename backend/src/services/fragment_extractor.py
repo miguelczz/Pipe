@@ -1,7 +1,7 @@
 """
-Servicio especializado para la extracción de fragmentos relevantes de archivos PCAP.
-Su única responsabilidad es aislar rangos temporales usando tshark para que otros
-componentes puedan consumirlos.
+Specialized service for extracting relevant fragments from PCAP files.
+Its sole responsibility is to isolate time ranges using tshark so other
+components can consume them.
 """
 import os
 import subprocess
@@ -13,20 +13,20 @@ from ..models.btm_schemas import CaptureFragment
 
 class FragmentExtractor:
     """
-    Extrae fragmentos de captura de red usando tshark.
-    Permite visualizar eventos específicos sin tener que abrir capturas de 100MB+.
+    Extracts network capture fragments using tshark.
+    Allows visualizing specific events without having to open 100MB+ captures.
     """
 
     def __init__(self, output_base_dir: str = "data/fragments"):
-        # Asegurar que el directorio base sea absoluto
+        # Ensure the base directory is absolute
         base_path = Path(output_base_dir)
         if not base_path.is_absolute():
-            # Si es relativo, resolverlo desde el directorio de trabajo actual
+            # If relative, resolve it from the current working directory
             base_path = Path(output_base_dir).resolve()
         self.output_base_dir = base_path
         self.tshark_path = shutil.which("tshark")
         
-        # Asegurar que el directorio de salida existe
+        # Ensure the output directory exists
         self.output_base_dir.mkdir(parents=True, exist_ok=True)
         
         if not self.tshark_path:
@@ -42,13 +42,13 @@ class FragmentExtractor:
         padding_seconds: float = 1.0
     ) -> Optional[CaptureFragment]:
         """
-        Extrae un rango de tiempo específico de una captura.
-        Agrega un margen (padding) antes y después para contexto.
+        Extracts a specific time range from a capture.
+        Adds a margin (padding) before and after for context.
         """
         if not self.tshark_path:
             return None
 
-        # Configurar rutas
+        # Configure paths
         input_path = Path(input_file)
         if not input_path.exists():
             return None
@@ -56,11 +56,11 @@ class FragmentExtractor:
         output_filename = f"{output_name}_{int(start_time)}.pcap"
         output_path = self.output_base_dir / output_filename
 
-        # Ajustar tiempos con padding
+        # Adjust times with padding
         t_start = start_time - padding_seconds
         t_end = end_time + padding_seconds
 
-        # Comando tshark para filtrar por tiempo
+        # tshark command to filter by time
         # -Y (display filter) usando frame.time_epoch
         filter_str = f"frame.time_epoch >= {t_start} && frame.time_epoch <= {t_end}"
         
@@ -74,7 +74,7 @@ class FragmentExtractor:
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             
-            # Obtener conteo de paquetes del fragmento
+            # Get packet count from the fragment
             count_cmd = [self.tshark_path, "-r", str(output_path), "-T", "fields", "-e", "frame.number"]
             count_result = subprocess.run(count_cmd, capture_output=True, text=True)
             packet_count = len(count_result.stdout.splitlines())
@@ -97,26 +97,26 @@ class FragmentExtractor:
 
     def extract_btm_sequence(self, input_file: str, client_mac: str, request_time: float) -> Optional[CaptureFragment]:
         """
-        Extrae específicamente una secuencia BTM (Request -> Response -> Association).
+        Extracts specifically a BTM sequence (Request -> Response -> Association).
         """
         return self.extract_time_range(
             input_file=input_file,
             start_time=request_time,
-            end_time=request_time + 3.0, # Asumimos 3 segundos para la secuencia completa
+            end_time=request_time + 3.0, # We assume 3 seconds for the complete sequence
             output_name=f"btm_{client_mac.replace(':', '')}",
-            description=f"Secuencia BTM para cliente {client_mac}",
+            description=f"BTM sequence for client {client_mac}",
             padding_seconds=0.5
         )
 
     def extract_channel_transition(self, input_file: str, client_mac: str, transition_time: float) -> Optional[CaptureFragment]:
         """
-        Extrae el fragmento donde se ve el cambio de canal/banda.
+        Extracts the fragment where the channel/band change is seen.
         """
         return self.extract_time_range(
             input_file=input_file,
             start_time=transition_time,
             end_time=transition_time + 1.0,
             output_name=f"steer_{client_mac.replace(':', '')}",
-            description=f"Cambio de canal/banda para cliente {client_mac}",
-            padding_seconds=1.5 # Más margen para ver el tráfico antes y después
+            description=f"Channel/band change for client {client_mac}",
+            padding_seconds=1.5 # More margin to see traffic before and after
         )

@@ -1,7 +1,7 @@
 """
-Herramienta para la clasificación e identificación de dispositivos.
-Utiliza OUILookup y heurísticas para determinar fabricante y categoría,
-sin responsabilidades de logging.
+Tool for classification and identification of devices.
+Uses OUILookup and heuristics to determine vendor and category,
+without logging responsibilities.
 """
 import re
 from typing import List, Dict, Optional
@@ -10,9 +10,9 @@ from ..utils.oui_lookup import oui_lookup
 from ..models.btm_schemas import DeviceInfo, DeviceCategory
 
 class DeviceClassifier:
-    """Clasificador de dispositivos basado en MAC Address."""
+    """Device classifier based on MAC Address."""
 
-    # Keywords para categorización
+    # Categorization keywords
     MOBILE_VENDORS = ["apple", "samsung", "huawei", "xiaomi", "oppo", "vivo", "oneplus", "google", "motorola", "moto", "lg", "iphone", "ipad"]
     LAPTOP_CHIPS = ["intel", "realtek", "killer", "atheros", "broadcom", "qualcomm"]
     NETWORK_VENDORS = ["cisco", "aruba", "ubiquiti", "tp-link", "netgear", "d-link", "asus", "meraki", "ruckus"]
@@ -20,13 +20,13 @@ class DeviceClassifier:
 
     @staticmethod
     def _is_valid_mac(mac_address: str) -> bool:
-        """Valida si una cadena es una MAC address válida."""
+        """Validates if a string is a valid MAC address."""
         if not mac_address or not isinstance(mac_address, str):
             return False
-        # Remover separadores comunes (: - .)
-        # IMPORTANTE: El guion debe ir al final o escapado para evitar que se interprete como rango
+        # Remove common separators (: - .)
+        # IMPORTANT: The hyphen must go at the end or escaped to avoid range interpretation
         mac_clean = re.sub(r'[:.\s-]', '', mac_address.lower())
-        # Debe tener exactamente 12 caracteres hexadecimales
+        # Must have exactly 12 hexadecimal characters
         return len(mac_clean) == 12 and all(c in '0123456789abcdef' for c in mac_clean)
 
     def classify_device(
@@ -36,14 +36,14 @@ class DeviceClassifier:
         filename: Optional[str] = None
     ) -> DeviceInfo:
         """
-        Clasifica un dispositivo singular.
-        Si se provee manual_info o filename, se usa para enriquecer.
+        Classifies a single device.
+        If manual_info or filename is provided, it is used for enrichment.
         """
-        # 1. Identificar fabricante por OUI
+        # 1. Identify vendor by OUI
         vendor = oui_lookup.lookup_vendor(mac_address)
         oui = oui_lookup.get_oui(mac_address)
         
-        # 2. Heurística basada en nombre de archivo (Súper útil para el usuario)
+        # 2. Heuristic based on filename (super useful for the user)
         model = None
         if filename:
             vendor, model = self._infer_from_filename(
@@ -51,22 +51,22 @@ class DeviceClassifier:
                 current_vendor=vendor,
             )
         
-        # 3. Enriquecer con información manual (usuario/API)
+        # 3. Enrich with manual information (user/API)
         vendor, model = self._enrich_with_manual_info(
             manual_info=manual_info,
             current_vendor=vendor,
             current_model=model,
         )
-
-        # 4. Categorizar
+ 
+        # 4. Categorize
         category = self._categorize_device(vendor, mac_address)
         
-        # 5. Detectar si es virtual/random
+        # 5. Detect if virtual/random
         is_local_admin = self._is_local_admin_mac(mac_address)
         
         is_virtual = category == DeviceCategory.VIRTUAL_MACHINE or is_local_admin
-
-        # Calcular confianza
+ 
+        # Calculate confidence
         confidence = 0.9 if vendor != "Unknown" else 0.1
         if manual_info or (filename and vendor != "Unknown"): 
             confidence = 1.0
@@ -87,11 +87,11 @@ class DeviceClassifier:
         current_vendor: str,
     ) -> (str, Optional[str]):
         """
-        Extrae pistas de vendor/model a partir del nombre del archivo de captura.
+        Extracts vendor/model hints from the capture filename.
         
-        - Limpia UUIDs y prefijos numéricos.
-        - Intenta mapear marcas móviles conocidas.
-        - Si el vendor es Unknown, usa el nombre limpio como modelo.
+        - Cleans UUIDs and numerical prefixes.
+        - Tries to map known mobile brands.
+        - If vendor is Unknown, uses the clean name as model.
         """
         vendor = current_vendor
         model = None
@@ -124,10 +124,10 @@ class DeviceClassifier:
         current_model: Optional[str],
     ) -> (str, Optional[str]):
         """
-        Aplica información manual del usuario/API sobre vendor/model.
+        Applies manual information from user/API on vendor/model.
         
-        - Permite override explícito de marca.
-        - Usa campos comunes como `device_model` o `model`.
+        - Allows explicit brand override.
+        - Uses common fields like `device_model` or `model`.
         """
         vendor = current_vendor
         model = current_model
@@ -145,7 +145,7 @@ class DeviceClassifier:
 
     def _is_local_admin_mac(self, mac_address: str) -> bool:
         """
-        Detecta si una MAC tiene el bit de administración local (random/virtual).
+        Detects if a MAC has the local administration bit (random/virtual).
         """
         if not self._is_valid_mac(mac_address):
             return False
@@ -157,7 +157,7 @@ class DeviceClassifier:
             return False
 
     def _categorize_device(self, vendor: str, mac_address: str) -> DeviceCategory:
-        """Heurística simple para categorizar dispositivos."""
+        """Simple heuristic to categorize devices."""
         v_lower = vendor.lower()
         
         if any(x in v_lower for x in self.VM_VENDORS):

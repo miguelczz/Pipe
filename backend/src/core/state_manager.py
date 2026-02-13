@@ -5,17 +5,17 @@ import threading
 from ..settings import settings
 
 
-# GlobalState eliminado - no se usaba en ningún lugar del código
-# El estado se maneja ahora a través de GraphState en src/core/graph_state.py
-# que implementa el patrón State correctamente para compartir estado entre nodos
+# GlobalState removed - not used anywhere in the code
+# State is now managed through GraphState in src/core/graph_state.py
+# which implements the State pattern correctly for sharing state between nodes
 
 class SessionManager:
     """
-    Gestor de sesiones que mantiene el estado por session_id.
-    Thread-safe y permite persistencia de sesiones.
+    Session manager that maintains state by session_id.
+    Thread-safe and allows session persistence.
     
-    Nota: FastAPI manejará la instancia única mediante Dependency Injection.
-    No es necesario usar Singleton - FastAPI crea la instancia una vez y la reutiliza.
+    Note: FastAPI will handle the single instance via Dependency Injection.
+    No need to use Singleton - FastAPI creates the instance once and reuses it.
     """
     _lock = threading.Lock()
     
@@ -26,7 +26,7 @@ class SessionManager:
     
     def get_session(self, session_id: str, user_id: Optional[str] = None) -> AgentState:
         """
-        Obtiene o crea una sesión. Si la sesión no existe, se crea una nueva.
+        Gets or creates a session. If the session does not exist, a new one is created.
         """
         with self._lock:
             if session_id not in self._sessions:
@@ -37,7 +37,7 @@ class SessionManager:
     
     def update_session(self, session_id: str, state: AgentState):
         """
-        Actualiza el estado de una sesión existente.
+        Updates the state of an existing session.
         """
         with self._lock:
             if session_id not in self._sessions:
@@ -47,20 +47,20 @@ class SessionManager:
                 self._sessions[session_id] = state
     
     def get_session_lock(self, session_id: str) -> threading.Lock:
-        """Obtiene el lock de una sesión específica."""
+        """Gets the lock for a specific session."""
         with self._lock:
             if session_id not in self._session_locks:
                 self._session_locks[session_id] = threading.Lock()
             return self._session_locks[session_id]
     
     def clear_session(self, session_id: str):
-        """Limpia una sesión específica."""
+        """Clears a specific session."""
         with self._lock:
             if session_id in self._sessions:
                 self._sessions[session_id].context_window = []
     
     def delete_session(self, session_id: str):
-        """Elimina completamente una sesión."""
+        """Completely deletes a session."""
         with self._lock:
             if session_id in self._sessions:
                 del self._sessions[session_id]
@@ -69,26 +69,25 @@ class SessionManager:
 
 
 # ============================================================================
-# Instancias únicas para Dependency Injection de FastAPI
+# Single instances for FastAPI Dependency Injection
 # ============================================================================
 
-# Instancias únicas que se reutilizan (equivalente a Singleton pero más explícito)
+# Single instances that are reused (equivalent to Singleton but more explicit)
 _session_manager_instance: Optional[SessionManager] = None
 _instance_lock = threading.Lock()
 
 
 def get_session_manager():
     """
-    Dependency para FastAPI que proporciona una instancia única de SessionManager.
-    Intenta usar RedisSessionManager si Redis está disponible, sino usa SessionManager en memoria.
+    FastAPI Dependency that provides a single instance of SessionManager.
+    Attempts to use RedisSessionManager if Redis is available, otherwise uses in-memory SessionManager.
     
-    Ventajas:
-        pass
-    - Persistencia entre reinicios si Redis está disponible
-    - Fallback automático a memoria si Redis no está disponible
-    - Thread-safe y testeable
+    Advantages:
+    - Persistence between restarts if Redis is available
+    - Automatic fallback to memory if Redis is not available
+    - Thread-safe and testable
     
-    Uso:
+    Usage:
         @router.post("/endpoint")
         def endpoint(session_mgr = Depends(get_session_manager)):
             ...
@@ -97,11 +96,11 @@ def get_session_manager():
     if _session_manager_instance is None:
         with _instance_lock:
             if _session_manager_instance is None:
-                # Intentar usar Redis si está configurado
+                # Attempt to use Redis if configured
                 try:
                     from .redis_session_manager import RedisSessionManager
                     _session_manager_instance = RedisSessionManager()
-                    # Si Redis no está disponible, RedisSessionManager usa fallback automático
+                    # If Redis is not available, RedisSessionManager uses automatic fallback
                 except Exception as e:
                     _session_manager_instance = SessionManager()
     return _session_manager_instance

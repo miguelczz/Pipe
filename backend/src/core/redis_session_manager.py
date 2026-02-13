@@ -1,6 +1,6 @@
 """
-Gestor de sesiones con persistencia en Redis.
-Permite que las sesiones sobrevivan reinicios del servidor y funcionen con múltiples instancias.
+Session manager with persistence in Redis.
+Allows sessions to survive server restarts and work with multiple instances.
 """
 import json
 from typing import Optional, Dict, Any
@@ -13,25 +13,25 @@ from ..settings import settings
 
 class RedisSessionManager:
     """
-    Gestor de sesiones que usa Redis para persistencia.
-    Thread-safe y permite persistencia entre reinicios del servidor.
+    Session manager that uses Redis for persistence.
+    Thread-safe and allowed persistence between server restarts.
     """
     
     def __init__(self, redis_url: Optional[str] = None, ttl_seconds: int = 86400):
         """
-        Inicializa el gestor de sesiones con Redis.
+        Initializes the session manager with Redis.
         
         Args:
-            redis_url: URL de conexión a Redis (por defecto: settings.redis_url)
-            ttl_seconds: Tiempo de vida de las sesiones en segundos (por defecto: 24 horas)
+            redis_url: Redis connection URL (default: settings.redis_url)
+            ttl_seconds: Life time of sessions in seconds (default: 24 hours)
         """
         self.redis_url = redis_url or settings.redis_url
         self.ttl_seconds = ttl_seconds
         
-        # Construir URL de Redis (soporta formato Upstash)
+        # Build Redis URL (supports Upstash format)
         redis_connection_url = self._build_redis_url(self.redis_url, settings.redis_token)
         
-        # Si no hay URL de Redis, usar fallback en memoria directamente
+        # If no Redis URL, use in-memory fallback directly
         if not redis_connection_url:
             self.redis_available = False
             self.redis_client = None
@@ -39,13 +39,13 @@ class RedisSessionManager:
             return
         
         try:
-            # Intentar conectar a Redis
+            # Attempt to connect to Redis
             
-            # Configurar SSL si es rediss:// (Redis con SSL)
-            # Para Heroku Redis y otros servicios con certificados autofirmados
+            # Configure SSL if it is rediss:// (Redis with SSL)
+            # For Heroku Redis and other services with self-signed certificates
             ssl_params = {}
             if redis_connection_url.startswith('rediss://'):
-                # Deshabilitar verificación de certificados para certificados autofirmados
+                # Disable certificate verification for self-signed certificates
                 ssl_params = {
                     'ssl_cert_reqs': ssl.CERT_NONE,
                     'ssl_check_hostname': False
@@ -58,55 +58,54 @@ class RedisSessionManager:
                 socket_timeout=5,
                 **ssl_params
             )
-            # Probar conexión
+            # Test connection
             self.redis_client.ping()
             self.redis_available = True
         except Exception as e:
             self.redis_available = False
             self.redis_client = None
-            # Fallback: usar diccionario en memoria
+            # Fallback: use in-memory dictionary
             self._fallback_sessions: Dict[str, AgentState] = {}
     
     def _build_redis_url(self, redis_url: Optional[str], redis_token: Optional[str]) -> Optional[str]:
         """
-        Construye la URL de conexión a Redis.
-        Soporta formato estándar y formato Upstash (REST URL + Token).
+        Builds the Redis connection URL.
+        Supports standard format and Upstash format (REST URL + Token).
         
-        Upstash proporciona:
-            pass
-        - REST URL: https://xxx.upstash.io (para REST API)
-        - Redis URL: redis://xxx.upstash.io:6379 (para Redis protocol)
-        - Token: para autenticación
+        Upstash provides:
+        - REST URL: https://xxx.upstash.io (for REST API)
+        - Redis URL: redis://xxx.upstash.io:6379 (for Redis protocol)
+        - Token: for authentication
         """
         if not redis_url:
             return None
         
-        # Si ya es una URL de Redis válida (redis:// o rediss://), usarla directamente
+        # If it's already a valid Redis URL (redis:// or rediss://), use it directly
         if redis_url.startswith('redis://') or redis_url.startswith('rediss://'):
             return redis_url
         
-        # Si es una URL HTTPS (formato Upstash REST), construir URL de Redis
+        # If it's an HTTPS URL (Upstash REST format), build Redis URL
         if redis_url.startswith('https://') and redis_token:
-            # Extraer el host de la URL REST
+            # Extract host from REST URL
             from urllib.parse import urlparse
             parsed = urlparse(redis_url)
             host = parsed.hostname
             
-            # Upstash requiere SSL para Redis protocol
-            # Construir URL: rediss://default:TOKEN@HOST:6379
+            # Upstash requires SSL for Redis protocol
+            # Build URL: rediss://default:TOKEN@HOST:6379
             redis_protocol_url = f"rediss://default:{redis_token}@{host}:6379"
             return redis_protocol_url
         
-        # Si no se puede determinar el formato, retornar None
+        # If format cannot be determined, return None
         return None
     
     def _mask_redis_url(self, url: str) -> str:
-        """Enmascara la contraseña en la URL de Redis para logging seguro."""
+        """Masks the password in the Redis URL for secure logging."""
         try:
             from urllib.parse import urlparse, urlunparse
             parsed = urlparse(url)
             if parsed.password:
-                # Reemplazar contraseña con asteriscos
+                # Replace password with asterisks
                 masked_netloc = f"{parsed.username}:{'*' * len(parsed.password)}@{parsed.hostname}"
                 if parsed.port:
                     masked_netloc += f":{parsed.port}"
@@ -114,7 +113,7 @@ class RedisSessionManager:
                 return urlunparse(masked_parsed)
             return url
         except Exception:
-            # Si hay error al parsear, retornar URL parcialmente enmascarada
+            # If error parsing, return partially masked URL
             if "@" in url:
                 parts = url.split("@")
                 if len(parts) == 2:
@@ -122,7 +121,7 @@ class RedisSessionManager:
             return url
     
     def _serialize_state(self, state: AgentState) -> str:
-        """Serializa un AgentState a JSON."""
+        """Serializes an AgentState to JSON."""
         return json.dumps({
             "session_id": state.session_id,
             "user_id": state.user_id,
@@ -135,7 +134,7 @@ class RedisSessionManager:
         })
     
     def _deserialize_state(self, data: str, session_id: str) -> AgentState:
-        """Deserializa JSON a AgentState."""
+        """Deserializes JSON to AgentState."""
         obj = json.loads(data)
         return AgentState(
             session_id=obj.get("session_id", session_id),
@@ -150,15 +149,15 @@ class RedisSessionManager:
     
     def get_session(self, session_id: str, user_id: Optional[str] = None) -> AgentState:
         """
-        Obtiene o crea una sesión. Si la sesión no existe, se crea una nueva.
+        Gets or creates a session. If the session does not exist, a new one is created.
         """
         if self.redis_available and self.redis_client:
             try:
-                # Intentar obtener de Redis
+                # Attempt to get from Redis
                 cached_data = self.redis_client.get(f"session:{session_id}")
                 if cached_data:
                     state = self._deserialize_state(cached_data, session_id)
-                    # Actualizar user_id si se proporciona
+                    # Update user_id if provided
                     if user_id:
                         state.user_id = user_id
                         self.update_session(session_id, state)
@@ -166,75 +165,74 @@ class RedisSessionManager:
             except Exception as e:
                 pass
         
-        # Crear nueva sesión (Redis no disponible o sesión no existe)
+        # Create new session (Redis not available or session doesn't exist)
         new_state = AgentState(session_id=session_id, user_id=user_id)
         
-        # Guardar en Redis si está disponible
+        # Save in Redis if available
         if self.redis_available and self.redis_client:
             try:
                 self.update_session(session_id, new_state)
             except Exception as e:
                 pass
         else:
-            # Fallback: guardar en memoria
+            # Fallback: save in memory
             self._fallback_sessions[session_id] = new_state
         
         return new_state
     
     def update_session(self, session_id: str, state: AgentState):
         """
-        Actualiza el estado de una sesión existente.
+        Updates the state of an existing session.
         """
         if self.redis_available and self.redis_client:
             try:
                 serialized = self._serialize_state(state)
-                # Guardar en Redis con TTL
+                # Save in Redis with TTL
                 self.redis_client.setex(
                     f"session:{session_id}",
                     self.ttl_seconds,
                     serialized
                 )
             except Exception as e:
-                # Fallback: guardar en memoria
+                # Fallback: save in memory
                 self._fallback_sessions[session_id] = state
         else:
-            # Fallback: guardar en memoria
+            # Fallback: save in memory
             self._fallback_sessions[session_id] = state
     
     def clear_session(self, session_id: str):
-        """Limpia una sesión específica."""
+        """Clears a specific session."""
         if self.redis_available and self.redis_client:
             try:
                 self.redis_client.delete(f"session:{session_id}")
             except Exception as e:
-                # Fallback: limpiar de memoria
+                # Fallback: clear from memory
                 if session_id in self._fallback_sessions:
                     self._fallback_sessions[session_id].context_window = []
         else:
-            # Fallback: limpiar de memoria
+            # Fallback: clear from memory
             if session_id in self._fallback_sessions:
                 self._fallback_sessions[session_id].context_window = []
     
     def delete_session(self, session_id: str):
-        """Elimina completamente una sesión."""
+        """Completely deletes a session."""
         if self.redis_available and self.redis_client:
             try:
                 self.redis_client.delete(f"session:{session_id}")
             except Exception as e:
-                # Fallback: eliminar de memoria
+                # Fallback: delete from memory
                 self._fallback_sessions.pop(session_id, None)
         else:
-            # Fallback: eliminar de memoria
+            # Fallback: delete from memory
             self._fallback_sessions.pop(session_id, None)
     
     def get_all_sessions(self) -> Dict[str, AgentState]:
         """
-        Obtiene todas las sesiones (útil para debugging).
-        Solo funciona con fallback en memoria, Redis requiere scan.
+        Gets all sessions (useful for debugging).
+        Only works with in-memory fallback, Redis requires scan.
         """
         if not self.redis_available:
             return self._fallback_sessions.copy()
         
-        # Para Redis, sería necesario hacer SCAN, pero no es crítico
+        # For Redis, SCAN would be necessary, but it's not critical
         return {}
-

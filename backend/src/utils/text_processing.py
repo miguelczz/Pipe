@@ -1,5 +1,5 @@
 """
-Utilidades para procesamiento de texto
+Text processing utilities
 """
 from typing import List
 from PyPDF2 import PdfReader
@@ -7,15 +7,15 @@ from PyPDF2 import PdfReader
 
 def text_splitter(text: str, chunk_size: int = 200, overlap: int = 20) -> List[str]:
     """
-    Divide el texto en fragmentos (chunks) con superposición.
+    Splits text into chunks with overlap.
     
     Args:
-        text: Texto a dividir
-        chunk_size: Tamaño de cada chunk en tokens/palabras
-        overlap: Número de palabras que se superponen entre chunks
+        text: Text to split
+        chunk_size: Size of each chunk in tokens/words
+        overlap: Number of words that overlap between chunks
     
     Returns:
-        Lista de chunks de texto
+        List of text chunks
     """
     tokens = text.split()
     chunks = []
@@ -29,13 +29,13 @@ def text_splitter(text: str, chunk_size: int = 200, overlap: int = 20) -> List[s
 
 def process_pdf_to_text(path: str) -> str:
     """
-    Extrae texto de un archivo PDF.
+    Extracts text from a PDF file.
     
     Args:
-        path: Ruta al archivo PDF
+        path: Path to the PDF file
     
     Returns:
-        Texto extraído del PDF concatenado
+        Concatenated extracted text from the PDF
     """
     reader = PdfReader(path)
     texts = []
@@ -46,4 +46,3 @@ def process_pdf_to_text(path: str) -> str:
         except Exception:
             continue
     return "\n".join(texts)
-

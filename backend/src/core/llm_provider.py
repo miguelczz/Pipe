@@ -99,8 +99,17 @@ class MSPProvider:
         # Configure LiteLLM settings
         litellm.drop_params = True  # Drop unsupported params instead of erroring
         litellm.set_verbose = settings.debug  # Enable verbose logging in debug mode
+        litellm.suppress_debug_info = True  # Suppress internal debug info to avoid background worker noise
+        litellm.use_client = False # Disable client usage tracking if possible
         
-        # Langfuse observability removed as per user request
+        # Hide LiteLLM logs to avoid console noise
+        logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+        
+        # REACTIVATE LANGFUSE (Critical for observability)
+        # LiteLLM will automatically send logs to Langfuse if environment variables are set
+        # (LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST)
+        litellm.success_callback = ["langfuse"]
+        litellm.failure_callback = ["langfuse"]
     
     def _get_models_for_tier(self, model_tier: str) -> tuple[str, str]:
         """

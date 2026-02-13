@@ -18,8 +18,8 @@ class PipeAgent:
 
     def decide(self, user_input: str, state: AgentState, selected_text: str | None = None) -> dict:
         """
-        Decide qué herramienta usar según la intención del usuario.
-        Solo RAG está disponible (get_report se añadirá en Fase 4).
+        Decides which tool to use based on user intent.
+        Only RAG is available (get_report will be added in Phase 4).
         """
         context_for_cache = ""
         context_messages_str = ""
@@ -55,7 +55,7 @@ class PipeAgent:
         selected_text: str = "",
     ) -> dict:
         if context_text:
-            context_text = "\n\nContexto de conversación previa:\n" + context_text
+            context_text = "\n\nPrevious conversation context:\n" + context_text
 
         report_instruction = ""
         if report_id:
@@ -103,7 +103,7 @@ Context (last messages):
 
 RELEVANCE RULES (STEP 1):
 - CORE DOMAIN: Wireshark capture analysis, Band Steering, 802.11k/v/r, and interpretation of capture results.
-- MANDATORY RELEVANCE: "La prueba", "el análisis", "la guía", "el procedimiento", or "con qué me guío" ALWAYS refer to the Band Steering / capture documentation. Mark RELEVANT.
+- MANDATORY RELEVANCE: "The test", "the analysis", "the guide", "the procedure", or "what should I use as a guide" ALWAYS refer to the Band Steering / capture documentation. Mark RELEVANT.
 - Any request about network behavior, WiFi standards (BTM, KVR), or "how to interpret results" is RELEVANT.
 - FOLLOW-UP: Ambiguous questions like "what are the states?", "and the difference?" MUST be marked RELEVANT if the previous context is technical (Wireshark, BTM, WiFi).
 
@@ -143,14 +143,14 @@ Respond ONLY in JSON format. No extra text or markdown.
             try:
                 data = json.loads(text)
             except json.JSONDecodeError:
-                data = {"is_relevant": False, "tool": "none", "reason": "parse_fail", "plan_steps": [], "rejection_message": "Error al procesar la solicitud."}
+                data = {"is_relevant": False, "tool": "none", "reason": "parse_fail", "plan_steps": [], "rejection_message": "Error processing the request."}
 
         except Exception as e:
-            data = {"is_relevant": False, "tool": "none", "reason": f"llm_error: {str(e)}", "plan_steps": [], "rejection_message": "Error al procesar la solicitud."}
+            data = {"is_relevant": False, "tool": "none", "reason": f"llm_error: {str(e)}", "plan_steps": [], "rejection_message": "Error processing the request."}
 
         is_relevant = data.get("is_relevant", True)
         if not is_relevant:
-            rejection_msg = data.get("rejection_message", "Lo siento, como asistente de Pipe mi especialidad es el análisis de capturas Wireshark, Band Steering y protocolos de red. Tu pregunta parece estar fuera de este ámbito técnico.")
+            rejection_msg = data.get("rejection_message", "I'm sorry, as a Pipe assistant my specialty is Wireshark capture analysis, Band Steering, and network protocols. Your question seems to be outside this technical scope.")
             return {"tool": "none", "reason": "out_of_topic", "plan_steps": [], "rejection_message": rejection_msg}
 
         tool = data.get("tool", "").lower().strip()
@@ -178,7 +178,7 @@ Respond ONLY in JSON format. No extra text or markdown.
         return data
 
     def handle(self, user_input: str, state: AgentState) -> dict:
-        """Ejecuta la herramienta correspondiente. Solo RAG."""
+        """Executes the corresponding tool. Only RAG."""
         decision = self.decide(user_input, state)
         tool = decision.get("tool")
         plan_steps = decision.get("plan_steps", [])

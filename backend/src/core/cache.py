@@ -1,6 +1,6 @@
 """
-Sistema de cache con Redis para mejorar el rendimiento.
-Proporciona utilidades de cacheado sin gestionar logging.
+Redis-based caching system to improve performance.
+Provides caching utilities without managing logging.
 """
 import json
 import hashlib
@@ -13,7 +13,7 @@ try:
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
-    # Crear un stub para que el código funcione sin redis
+    # Create a stub so code works without redis
     class RedisStub:
         class Redis:
             pass
@@ -25,21 +25,21 @@ except ImportError:
             pass
         @staticmethod
         def from_url(*args, **kwargs):
-            raise ImportError("Redis no está instalado")
+            raise ImportError("Redis is not installed")
     redis = RedisStub()  # type: ignore
 
 if TYPE_CHECKING:
     from redis import Redis
 
-# Instancia global del cliente Redis
+# Global instance of Redis client
 _redis_client: Optional[Any] = None
 _cache_enabled = True
 
 
 def get_redis_client() -> Optional[Any]:
     """
-    Obtiene o crea la instancia del cliente Redis.
-    Retorna None si Redis no está disponible o está deshabilitado.
+    Gets or creates the Redis client instance.
+    Returns None if Redis is not available or is disabled.
     """
     global _redis_client, _cache_enabled
     
@@ -50,10 +50,10 @@ def get_redis_client() -> Optional[Any]:
     if not settings.cache_enabled:
         return None
     
-    # Construir URL de Redis (soporta formato Upstash)
+    # Build Redis URL (supports Upstash format)
     redis_connection_url = _build_redis_url(settings.redis_url, settings.redis_token)
     
-    # Si no hay URL de Redis, deshabilitar cache
+    # If no Redis URL, disable cache
     if not redis_connection_url:
         _cache_enabled = False
         return None
@@ -61,12 +61,12 @@ def get_redis_client() -> Optional[Any]:
     if _redis_client is None:
         try:
             
-            # Configurar SSL si es rediss:// (Redis con SSL)
-            # Para Heroku Redis y otros servicios con certificados autofirmados
+            # Configure SSL if it is rediss:// (Redis with SSL)
+            # For Heroku Redis and other services with self-signed certificates
             import ssl
             ssl_params = {}
             if redis_connection_url.startswith('rediss://'):
-                # Deshabilitar verificación de certificados para certificados autofirmados
+                # Disable certificate verification for self-signed certificates
                 ssl_params = {
                     'ssl_cert_reqs': ssl.CERT_NONE,
                     'ssl_check_hostname': False
@@ -79,49 +79,51 @@ def get_redis_client() -> Optional[Any]:
                 socket_timeout=5,
                 **ssl_params
             )
-            # Probar conexión
+            # Test connection
             _redis_client.ping()
             _cache_enabled = True
         except (redis.ConnectionError, redis.TimeoutError, Exception) as e:
             _cache_enabled = False
             _redis_client = None
+    
+    return _redis_client
 
 
 def _build_redis_url(redis_url: Optional[str], redis_token: Optional[str]) -> Optional[str]:
     """
-    Construye la URL de conexión a Redis.
-    Soporta formato estándar y formato Upstash (REST URL + Token).
+    Builds the Redis connection URL.
+    Supports standard format and Upstash format (REST URL + Token).
     """
     if not redis_url:
         return None
     
-    # Si ya es una URL de Redis válida (redis:// o rediss://), usarla directamente
+    # If it is already a valid Redis URL (redis:// or rediss://), use it directly
     if redis_url.startswith('redis://') or redis_url.startswith('rediss://'):
         return redis_url
     
-    # Si es una URL HTTPS (formato Upstash REST), construir URL de Redis
+    # If it is an HTTPS URL (Upstash REST format), build Redis URL
     if redis_url.startswith('https://') and redis_token:
-        # Extraer el host de la URL REST
+        # Extract host from REST URL
         from urllib.parse import urlparse
         parsed = urlparse(redis_url)
         host = parsed.hostname
         
-        # Upstash usa el puerto 6379 por defecto para Redis protocol
-        # Construir URL: rediss://default:TOKEN@HOST:6379
+        # Upstash uses port 6379 by default for Redis protocol
+        # Build URL: rediss://default:TOKEN@HOST:6379
         redis_protocol_url = f"rediss://default:{redis_token}@{host}:6379"
         return redis_protocol_url
     
-    # Si no se puede determinar el formato, retornar None
+    # If format cannot be determined, return None
     return None
 
 
 def _mask_redis_url(url: str) -> str:
-    """Enmascara la contraseña en la URL de Redis para logging seguro."""
+    """Masks password in Redis URL for secure logging."""
     try:
         from urllib.parse import urlparse, urlunparse
         parsed = urlparse(url)
         if parsed.password:
-            # Reemplazar contraseña con asteriscos
+            # Replace password with asterisks
             masked_netloc = f"{parsed.username}:{'*' * len(parsed.password)}@{parsed.hostname}"
             if parsed.port:
                 masked_netloc += f":{parsed.port}"
@@ -129,7 +131,7 @@ def _mask_redis_url(url: str) -> str:
             return urlunparse(masked_parsed)
         return url
     except Exception:
-        # Si hay error al parsear, retornar URL parcialmente enmascarada
+        # If error parsing, return partially masked URL
         if "@" in url:
             parts = url.split("@")
             if len(parts) == 2:
@@ -139,36 +141,36 @@ def _mask_redis_url(url: str) -> str:
 
 class CacheManager:
     """
-    Gestor de cache que proporciona métodos para almacenar y recuperar datos.
+    Cache manager that provides methods to store and retrieve data.
     """
     
     def __init__(self, redis_client: Optional[Any] = None):
         """
-        Inicializa el gestor de cache.
+        Initializes the cache manager.
         
         Args:
-            redis_client: Cliente Redis (opcional, se obtiene automáticamente si no se proporciona)
+            redis_client: Redis client (optional, automatically obtained if not provided)
         """
         self.redis_client = redis_client or get_redis_client()
         self.enabled = self.redis_client is not None
     
     def get_cache_key(self, prefix: str, *args, **kwargs) -> str:
         """
-        Genera una clave de cache única basada en los argumentos.
+        Generates a unique cache key based on arguments.
         
         Args:
-            prefix: Prefijo para la clave (ej: "rag", "ip", "dns")
-            *args: Argumentos posicionales
-            **kwargs: Argumentos con nombre
+            prefix: Prefix for the key (e.g., "rag", "ip", "dns")
+            *args: Positional arguments
+            **kwargs: Keyword arguments
         
         Returns:
-            Clave de cache única
+            Unique cache key
         
-        Nota: Si conversation_context está en kwargs, se incluye en el hash
-        para que consultas con diferente contexto tengan claves diferentes.
+        Note: If conversation_context is in kwargs, it is included in the hash
+        so queries with different context have different keys.
         """
-        # Crear un hash de los argumentos
-        # IMPORTANTE: conversation_context se incluye en el hash para diferenciar consultas
+        # Create a hash of arguments
+        # IMPORTANT: conversation_context is included in the hash to differentiate queries
         key_data = json.dumps(
             {"args": args, "kwargs": kwargs},
             sort_keys=True,
@@ -179,13 +181,13 @@ class CacheManager:
     
     def get(self, key: str) -> Optional[Any]:
         """
-        Obtiene un valor del cache.
+        Gets a value from cache.
         
         Args:
-            key: Clave del cache
+            key: Cache key
         
         Returns:
-            Valor almacenado o None si no existe o hay error
+            Stored value or None if it doesn't exist or error occurs
         """
         if not self.enabled:
             return None
@@ -204,12 +206,12 @@ class CacheManager:
     
     def set(self, key: str, value: Any, ttl: int = 3600):
         """
-        Almacena un valor en el cache con un TTL (Time To Live).
+        Stores a value in cache with a TTL (Time To Live).
         
         Args:
-            key: Clave del cache
-            value: Valor a almacenar (debe ser serializable a JSON)
-            ttl: Tiempo de vida en segundos (default: 3600 = 1 hora)
+            key: Cache key
+            value: Value to store (must be JSON serializable)
+            ttl: Time to live in seconds (default: 3600 = 1 hour)
         """
         if not self.enabled:
             return
@@ -225,10 +227,10 @@ class CacheManager:
     
     def delete(self, key: str):
         """
-        Elimina una clave del cache.
+        Deletes a key from cache.
         
         Args:
-            key: Clave a eliminar
+            key: Key to delete
         """
         if not self.enabled:
             return
@@ -241,10 +243,10 @@ class CacheManager:
     
     def clear_prefix(self, prefix: str):
         """
-        Elimina todas las claves que comienzan con un prefijo.
+        Deletes all keys starting with a prefix.
         
         Args:
-            prefix: Prefijo de las claves a eliminar
+            prefix: Prefix of keys to delete
         """
         if not self.enabled:
             return
@@ -259,16 +261,16 @@ class CacheManager:
                 pass
 
 
-# Instancia global del gestor de cache
+# Global instance of cache manager
 _cache_manager: Optional[CacheManager] = None
 
 
 def get_cache_manager() -> CacheManager:
     """
-    Obtiene la instancia global del gestor de cache.
+    Gets the global instance of the cache manager.
     
     Returns:
-        Instancia de CacheManager
+        CacheManager instance
     """
     global _cache_manager
     if _cache_manager is None:
@@ -278,16 +280,16 @@ def get_cache_manager() -> CacheManager:
 
 def cache_result(prefix: str, ttl: int = 3600):
     """
-    Decorador para cachear resultados de funciones.
+    Decorator to cache function results.
     
     Args:
-        prefix: Prefijo para las claves de cache
-        ttl: Tiempo de vida en segundos
+        prefix: Prefix for cache keys
+        ttl: Time to live in seconds
     
-    Ejemplo:
+    Example:
         @cache_result("rag", ttl=3600)
         def query(text: str):
-            # ... lógica ...
+            # ... logic ...
             return result
     """
     def decorator(func: Callable) -> Callable:
@@ -295,26 +297,26 @@ def cache_result(prefix: str, ttl: int = 3600):
         def wrapper(*args, **kwargs):
             cache_manager = get_cache_manager()
             
-            # Si el cache está deshabilitado, ejecutar función directamente
+            # If cache is disabled, execute function directly
             if not cache_manager.enabled:
                 return func(*args, **kwargs)
             
-            # Para métodos de instancia, excluir 'self' de los argumentos para la clave de cache
-            # Solo usar los argumentos reales de la función (sin self)
+            # For instance methods, exclude 'self' from arguments for cache key
+            # Only use real function arguments (without self)
             cache_args = args[1:] if args and hasattr(args[0], '__class__') else args
             
-            # Generar clave de cache
+            # Generate cache key
             cache_key = cache_manager.get_cache_key(prefix, *cache_args, **kwargs)
             
-            # Intentar obtener del cache
+            # Attempt to get from cache
             cached = cache_manager.get(cache_key)
             if cached is not None:
                 return cached
             
-            # Cache miss: ejecutar función y almacenar resultado
+            # Cache miss: execute function and store result
             result = func(*args, **kwargs)
             
-            # Almacenar en cache (solo si no hay error)
+            # Store in cache (only if no error)
             if result and not (isinstance(result, dict) and result.get("error")):
                 cache_manager.set(cache_key, result, ttl)
             
@@ -322,4 +324,3 @@ def cache_result(prefix: str, ttl: int = 3600):
         
         return wrapper
     return decorator
-

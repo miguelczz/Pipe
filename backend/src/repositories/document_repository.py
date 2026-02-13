@@ -1,5 +1,5 @@
 """
-Repositorio para gestión de documentos (archivos y metadatos)
+Repository for document management (files and metadata)
 """
 import uuid
 import os
@@ -13,8 +13,8 @@ from datetime import datetime
 
 class DocumentRepository:
     """
-    Repositorio para gestionar documentos.
-    Maneja tanto el almacenamiento de archivos como metadatos en BD.
+    Repository for managing documents.
+    Handles both file storage and metadata in DB.
     """
     
     def __init__(self, upload_dir: str = "databases/uploads"):
@@ -28,15 +28,15 @@ class DocumentRepository:
         document_id: Optional[str] = None
     ) -> Tuple[str, str]:
         """
-        Guarda un archivo en el sistema de archivos.
+        Saves a file in the file system.
         
         Args:
-            file_content: Contenido del archivo en bytes
-            filename: Nombre original del archivo
-            document_id: ID del documento (se genera si no se proporciona)
+            file_content: File content in bytes
+            filename: Original filename
+            document_id: Document ID (generated if not provided)
         
         Returns:
-            Tupla (document_id, file_path) con el ID y ruta del archivo guardado
+            Tuple (document_id, file_path) with the ID and path of the saved file
         """
         if document_id is None:
             document_id = str(uuid.uuid4())
@@ -50,28 +50,28 @@ class DocumentRepository:
     
     def get_file_path(self, document_id: str) -> Optional[Path]:
         """
-        Obtiene la ruta de un archivo por su document_id.
+        Gets the path of a file by its document_id.
         
         Args:
-            document_id: ID del documento
+            document_id: Document ID
         
         Returns:
-            Path del archivo o None si no existe
+            Path of the file or None if it doesn't exist
         """
-        # Buscar archivo que comience con document_id
+        # Search for file starting with document_id
         for file_path in self.upload_dir.glob(f"{document_id}_*"):
             return file_path
         return None
     
     def delete_file(self, document_id: str) -> bool:
         """
-        Elimina un archivo del sistema de archivos.
+        Deletes a file from the file system.
         
         Args:
-            document_id: ID del documento a eliminar
+            document_id: ID of the document to delete
         
         Returns:
-            True si se eliminó correctamente
+            True if deleted successfully
         """
         file_path = self.get_file_path(document_id)
         if file_path and file_path.exists():
@@ -90,19 +90,19 @@ class DocumentRepository:
         metadata_json: Optional[str] = None
     ) -> Document:
         """
-        Crea un registro de documento en la base de datos.
+        Creates a document record in the database.
         
         Args:
-            db: Sesión de base de datos
-            document_id: ID único del documento
-            filename: Nombre del archivo
-            file_path: Ruta del archivo
-            chunk_count: Número de chunks generados
-            source: Fuente del documento
-            metadata_json: Metadatos adicionales en JSON
+            db: Database session
+            document_id: Unique document ID
+            filename: Filename
+            file_path: File path
+            chunk_count: Number of generated chunks
+            source: Document source
+            metadata_json: Additional metadata in JSON
         
         Returns:
-            Instancia de Document creada
+            Created Document instance
         """
         doc = Document(
             id=str(uuid.uuid4()),
@@ -124,14 +124,14 @@ class DocumentRepository:
         document_id: str
     ) -> Optional[Document]:
         """
-        Obtiene un documento por su document_id.
+        Gets a document by its document_id.
         
         Args:
-            db: Sesión de base de datos
-            document_id: ID del documento
+            db: Database session
+            document_id: Document ID
         
         Returns:
-            Instancia de Document o None
+            Document instance or None
         """
         return db.query(Document).filter(
             Document.document_id == document_id
@@ -144,15 +144,15 @@ class DocumentRepository:
         limit: int = 100
     ) -> List[Document]:
         """
-        Lista todos los documentos.
+        Lists all documents.
         
         Args:
-            db: Sesión de base de datos
-            skip: Número de documentos a saltar
-            limit: Número máximo de documentos a retornar
+            db: Database session
+            skip: Number of documents to skip
+            limit: Maximum number of documents to return
         
         Returns:
-            Lista de documentos
+            List of documents
         """
         return db.query(Document).offset(skip).limit(limit).all()
     
@@ -162,14 +162,14 @@ class DocumentRepository:
         document_id: str
     ) -> bool:
         """
-        Elimina un documento de la base de datos.
+        Deletes a document from the database.
         
         Args:
-            db: Sesión de base de datos
-            document_id: ID del documento
+            db: Database session
+            document_id: Document ID
         
         Returns:
-            True si se eliminó correctamente
+            True if deleted successfully
         """
         doc = self.get_document_by_id(db, document_id)
         if doc:
@@ -180,13 +180,13 @@ class DocumentRepository:
     
     def to_schema(self, doc: Document) -> DocumentMetadata:
         """
-        Convierte un modelo Document a schema DocumentMetadata.
+        Converts a Document model to DocumentMetadata schema.
         
         Args:
-            doc: Instancia de Document
+            doc: Document instance
         
         Returns:
-            Instancia de DocumentMetadata
+            DocumentMetadata instance
         """
         return DocumentMetadata(
             document_id=doc.document_id,

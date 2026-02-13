@@ -1,5 +1,5 @@
 """
-Observability API - Métricas y datos de Langfuse
+Observability API - Langfuse metrics and data
 """
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any, List
@@ -19,12 +19,12 @@ router = APIRouter(prefix="/observability", tags=["observability"])
 
 
 def get_langfuse_client() -> Langfuse:
-    """Obtiene cliente de Langfuse si está configurado."""
+    """Gets Langfuse client if configured."""
     if not LANGFUSE_AVAILABLE:
-        raise HTTPException(status_code=503, detail="Langfuse no está instalado")
+        raise HTTPException(status_code=503, detail="Langfuse is not installed")
     
     if not all([settings.langfuse_host, settings.langfuse_public_key, settings.langfuse_secret_key]):
-        raise HTTPException(status_code=503, detail="Langfuse no está configurado")
+        raise HTTPException(status_code=503, detail="Langfuse is not configured")
     
     return Langfuse(
         host=settings.langfuse_host,
@@ -36,23 +36,23 @@ def get_langfuse_client() -> Langfuse:
 @router.get("/metrics")
 async def get_metrics() -> Dict[str, Any]:
     """
-    Obtiene métricas agregadas de Langfuse.
+    Gets aggregated metrics from Langfuse.
     
     Returns:
-        Diccionario con métricas de uso, costos y rendimiento
+        Dictionary with usage, cost and performance metrics
     """
     try:
         client = get_langfuse_client()
         
-        # Obtener trazas recientes (últimas 24 horas)
-        # Nota: La API de Langfuse puede variar según la versión
-        # Aquí usamos un enfoque genérico que funciona con la mayoría de versiones
+        # Get recent traces (last 24 hours)
+        # Note: Langfuse API may vary depending on the version
+        # Here we use a generic approach that works with most versions
         
-        # Calcular timestamp de hace 24 horas
+        # Calculate timestamp from 24 hours ago
         yesterday = datetime.utcnow() - timedelta(days=1)
         
-        # Intentar obtener datos usando el cliente de Langfuse
-        # Como la API puede variar, usamos try/except para cada llamada
+        # Try to get data using Langfuse client
+        # Since the API can vary, we use try/except for each call
         metrics = {
             "status": "ok",
             "timestamp": datetime.utcnow().isoformat(),
@@ -68,18 +68,18 @@ async def get_metrics() -> Dict[str, Any]:
         }
         
         try:
-            # 1. Obtener Observaciones (Generaciones) PRIMERO para datos ricos
-            # Esto nos da el costo real y el modelo por trace_id
+            # 1. Get Observations (Generations) FIRST for rich data
+            # This gives us the actual cost and model per trace_id
             observations = client.fetch_observations(limit=100, type="GENERATION")
             
             obs_list = []
             if observations and hasattr(observations, 'data'):
                 obs_list = observations.data
             
-            # Agrupar datos por trace_id
+            # Group data by trace_id
             trace_map = {} # { trace_id: { cost: 0.0, tokens: 0, models: set() } }
-            models_usage = {} # Para métricas globales
-            tags_usage = {} # Para métricas de tags (routing vs rag vs synthesis)
+            models_usage = {} # For global metrics
+            tags_usage = {} # For tag metrics (routing vs rag vs synthesis)
             
             total_cost_obs = 0.0
             total_tokens_obs = 0
@@ -98,14 +98,14 @@ async def get_metrics() -> Dict[str, Any]:
                      o_tokens = getattr(usage, 'total', 0) or 0
                      total_tokens_obs += o_tokens
 
-                # Agrupar Modelos Global
+                # Group Models Global
                 if o_model not in models_usage:
                     models_usage[o_model] = {"count": 0, "cost": 0.0, "tokens": 0}
                 models_usage[o_model]["count"] += 1
                 models_usage[o_model]["cost"] += o_cost
                 models_usage[o_model]["tokens"] += o_tokens
 
-                # Agrupar por Traza (solo costo, modelo, tokens - los tags están en la traza)
+                # Group by Trace (only cost, model, tokens - tags are in the trace)
                 if t_id:
                     if t_id not in trace_map:
                         trace_map[t_id] = {"cost": 0.0, "models": set(), "tokens": 0}
@@ -114,8 +114,8 @@ async def get_metrics() -> Dict[str, Any]:
                     if o_model:
                         trace_map[t_id]["models"].add(o_model)
 
-            # 2. Obtener Trazas (para tiempo, estado, tags y sessionId)
-            # IMPORTANTE: Langfuse almacena tags y sessionId a nivel de TRAZA, no de observación
+            # 2. Get Traces (for time, status, tags and sessionId)
+            # IMPORTANT: Langfuse stores tags and sessionId at TRACE level, not observation
             traces = client.fetch_traces(limit=50)
             trace_list = []
             if traces and hasattr(traces, 'data'):
@@ -123,19 +123,19 @@ async def get_metrics() -> Dict[str, Any]:
 
             metrics["total_traces"] = len(trace_list)
             
-            # Variables acumuladoras para trazas
+            # Accumulator variables for traces
             total_latency = 0
             errors = 0
             recent_traces_data = []
             
-            # Procesar trazas enriquecidas
+            # Process enriched traces
             for trace in trace_list:
                 t_id = getattr(trace, 'id', 'unknown')
                 
-                # Datos básicos
+                # Basic data
                 t_latency = getattr(trace, 'latency', 0) or 0
                 
-                # Costo y modelo: desde observaciones (más preciso)
+                # Cost and model: from observations (more precise)
                 t_cost = 0.0
                 t_tokens = 0
                 t_models_str = "Unknown"
@@ -152,26 +152,26 @@ async def get_metrics() -> Dict[str, Any]:
                     t_cost = getattr(trace, 'calculated_total_cost', 0) or 0
 
                 t_name = getattr(trace, 'name', 'Interaction')
-                # Si el nombre es genérico y tenemos modelo, usar modelo
+                # If the name is generic and we have a model, use the model
                 if "litellm" in t_name.lower() and t_models_str != "Unknown":
                     t_name = t_models_str
                 
-                # Session ID: Langfuse almacena como sessionId (camelCase)
-                # El SDK de Python puede mapearlo a session_id o sessionId
+                # Session ID: Langfuse stores as sessionId (camelCase)
+                # The Python SDK may map it to session_id or sessionId
                 t_session_id = (
                     getattr(trace, 'session_id', None)
                     or getattr(trace, 'sessionId', None)
                 )
                 if not t_session_id:
-                    # Fallback: buscar en metadata
+                    # Fallback: search in metadata
                     t_metadata = getattr(trace, 'metadata', {}) or {}
                     if isinstance(t_metadata, dict):
                         t_session_id = t_metadata.get('session_id') or t_metadata.get('sessionId')
 
-                # Tags: Langfuse almacena a nivel de TRAZA (no observación)
+                # Tags: Langfuse stores at TRACE level (not observation)
                 t_tags = getattr(trace, 'tags', []) or []
                 
-                # Agregar tags al tags_usage global (con datos de costo de la traza)
+                # Add tags to global tags_usage (with trace cost data)
                 for tag in t_tags:
                     if tag not in tags_usage:
                         tags_usage[tag] = {"count": 0, "cost": 0.0, "tokens": 0}
@@ -188,7 +188,7 @@ async def get_metrics() -> Dict[str, Any]:
 
                 total_latency += t_latency
                 
-                # Detectar errores
+                # Detect errors
                 status = "success"
                 if hasattr(trace, 'level') and trace.level == 'ERROR':
                     errors += 1
@@ -209,22 +209,22 @@ async def get_metrics() -> Dict[str, Any]:
 
             metrics["recent_traces"] = recent_traces_data
             
-            # Asignar contadores globales calculados desde observaciones (los más precisos)
+            # Assign global counters calculated from observations (most precise)
             metrics["total_cost_usd"] = round(total_cost_obs, 6)
             metrics["total_tokens"] = total_tokens_obs
             metrics["models_used"] = models_usage
             metrics["tags_usage"] = tags_usage
 
-            # Calcular promedios finales
+            # Calculate final averages
             if metrics["total_traces"] > 0:
                 avg_lat = total_latency / metrics["total_traces"]
                 metrics["avg_latency_ms"] = round(avg_lat * 1000, 2) if avg_lat < 100 else round(avg_lat, 2)
                 metrics["error_rate"] = round((errors / metrics["total_traces"]) * 100, 2)
 
         except Exception as e:
-            logger.warning(f"Error al obtener métricas de Langfuse: {e}")
+            logger.warning(f"Error fetching Langfuse metrics: {e}")
             metrics["error"] = str(e)
-            # Asegurar estructura válida
+            # Ensure valid structure
             metrics["models_used"] = {}
             metrics["tags_usage"] = {}
         
@@ -233,24 +233,24 @@ async def get_metrics() -> Dict[str, Any]:
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error al obtener métricas de observabilidad: {e}")
-        raise HTTPException(status_code=500, detail=f"Error al obtener métricas: {str(e)}")
+        logger.error(f"Error fetching observability metrics: {e}")
+        raise HTTPException(status_code=500, detail=f"Error fetching metrics: {str(e)}")
 
 
 @router.get("/health")
 async def health_check() -> Dict[str, Any]:
     """
-    Verifica si Langfuse está accesible.
+    Checks if Langfuse is accessible.
     
     Returns:
-        Estado de la conexión con Langfuse
+        Connection status with Langfuse
     """
     try:
         client = get_langfuse_client()
         
-        # Intentar hacer una llamada simple para verificar conectividad
+        # Try to make a simple call to verify connectivity
         try:
-            # Verificar que el cliente esté inicializado
+            # Check that the client is initialized
             health_status = {
                 "status": "healthy",
                 "langfuse_host": settings.langfuse_host,

@@ -1,6 +1,6 @@
 """
-Módulo para streaming de respuestas usando Server-Sent Events (SSE).
-Se limita a exponer el flujo del grafo del agente vía SSE.
+Module for response streaming using Server-Sent Events (SSE).
+Limited to exposing the agent graph flow via SSE.
 """
 import json
 from typing import AsyncIterator, Dict, Any
@@ -21,21 +21,21 @@ async def stream_graph_execution(
     session_id: str
 ) -> AsyncIterator[str]:
     """
-    Ejecuta el grafo y stream los resultados usando SSE (Streaming REAL).
+    Executes the graph and streams results using SSE (REAL Streaming).
     
     Args:
-        initial_state: Estado inicial del grafo
-        session_id: ID de sesión para logging
+        initial_state: Initial graph state
+        session_id: Session ID for logging
     
     Yields:
-        Chunks de datos en formato SSE
+        Data chunks in SSE format
     """
     import asyncio
     
-    # Cola para comunicar eventos desde el grafo (thread/task de fondo) hacia el generador SSE
+    # Queue to communicate events from the graph (background thread/task) to the SSE generator
     event_queue = asyncio.Queue()
     
-    # Callback para streaming de tokens desde el LLM
+    # Callback for token streaming from the LLM
     def stream_callback(token):
         if token:
             event_queue.put_nowait({
@@ -43,21 +43,21 @@ async def stream_graph_execution(
                 "content": token
             })
     
-    # Función wrapper para ejecutar el grafo en background
+    # Wrapper function to execute the graph in background
     async def run_graph():
         try:
-            # Configurar callback para que los nodos (Synthesizer/Supervisor) puedan usarlo
+            # Configure callback so nodes (Synthesizer/Supervisor) can use it
             config = {
                 "configurable": {
                     "stream_callback": stream_callback
                 }
             }
             
-            # Ejecutar el grafo (esto puede tomar tiempo)
-            # Usamos ainvoke con config para pasar el callback
+            # Execute the graph (this may take time)
+            # Use ainvoke with config to pass the callback
             final_state = await graph.ainvoke(initial_state, config=config)
             
-            # Al terminar, enviar el estado final
+            # Upon completion, send the final state
             event_queue.put_nowait({
                 "type": "final_state",
                 "state": final_state
@@ -70,22 +70,22 @@ async def stream_graph_execution(
                 "error_type": type(e).__name__
             })
         finally:
-            # Señal de finalización
+            # Completion signal
             event_queue.put_nowait({"type": "done"})
 
-    # Iniciar la tarea en background
+    # Start task in background
     graph_task = asyncio.create_task(run_graph())
     
     try:
         while True:
-            # Esperar el siguiente evento de la cola
-            # Usamos wait_for para detectar si la tarea murió silenciosamente (timeout opcional)
+            # Wait for next event from queue
+            # Use wait_for to detect if task died silently (optional timeout)
             event = await event_queue.get()
             
             event_type = event.get("type")
             
             if event_type == "token":
-                # Enviar token inmediatamente
+                # Send token immediately
                 token_data = {
                     "type": "token",
                     "data": {
@@ -95,17 +95,17 @@ async def stream_graph_execution(
                 yield f"data: {json.dumps(token_data)}\n\n"
                 
             elif event_type == "node_update":
-                # (Opcional) Si implementamos callbacks de nodos en el futuro
+                # (Optional) If we implement node callbacks in the future
                 pass
                 
             elif event_type == "final_state":
-                # Procesar estado final
+                # Process final state
                 final_state = event.get("state")
                 if final_state:
-                    # Nuevo flujo: Supervisor → Sintetizador → END
-                    # final_output es la respuesta definitiva del Sintetizador (último nodo)
+                    # New flow: Supervisor → Synthesizer → END
+                    # final_output is the definitive response from the Synthesizer (last node)
                     final_output = final_state.get('final_output')
-                    assistant_response = final_output or "No se pudo generar una respuesta."
+                    assistant_response = final_output or "Could not generate a response."
                     
                     response_data = {
                         "type": "final_response",
@@ -130,7 +130,7 @@ async def stream_graph_execution(
                     import traceback
                     error_data["data"]["traceback"] = traceback.format_exc()
                 yield f"data: {json.dumps(error_data)}\n\n"
-                # Salir del loop en caso de error
+                # Exit loop on error
                 break
                 
             elif event_type == "done":
@@ -140,7 +140,7 @@ async def stream_graph_execution(
             event_queue.task_done()
             
     except Exception as e:
-        # Intentar cancelar la tarea de fondo
+        # Try to cancel background task
         graph_task.cancel()
         yield f"data: {json.dumps({'type': 'error', 'data': {'message': str(e)}})}\n\n"
 
@@ -151,30 +151,30 @@ async def agent_query_stream(
     session_manager: SessionManager = Depends(get_session_manager)
 ):
     """
-    Endpoint para consultas con streaming de respuestas usando Server-Sent Events.
+    Endpoint for queries with response streaming using Server-Sent Events.
     
-    La respuesta se envía en tiempo real a medida que el agente procesa la consulta.
-    CORREGIDO: Guarda el contexto de ventana después del streaming.
+    The response is sent in real-time as the agent processes the query.
+    CORRECTED: Saves window context after streaming.
     """
     try:
-        # Validación: verificar que haya mensajes
+        # Validation: verify that there are messages
         if not query.messages:
-            raise HTTPException(status_code=400, detail="La lista de mensajes no puede estar vacía")
+            raise HTTPException(status_code=400, detail="Message list cannot be empty")
         
-        # Validación: verificar que haya al menos un mensaje del usuario
+        # Validation: verify that there is at least one user message
         user_messages = [m for m in query.messages if m.role == "user"]
         if not user_messages:
-            raise HTTPException(status_code=400, detail="Debe haber al menos un mensaje con role='user'")
+            raise HTTPException(status_code=400, detail="There must be at least one message with role='user'")
         
-        # Obtener o crear sesión (persistencia de estado)
+        # Get or create session (state persistence)
         session_state = session_manager.get_session(query.session_id, query.user_id)
         
-        # Extraer último mensaje del usuario
+        # Extract last user message
         user_message = user_messages[-1].content
         if not user_message or not user_message.strip():
-            raise HTTPException(status_code=400, detail="El último mensaje del usuario no puede estar vacío")
+            raise HTTPException(status_code=400, detail="Last user message cannot be empty")
 
-        # Agregar el nuevo mensaje del usuario al contexto de la sesión
+        # Add new user message to session context
         last_user_msg_in_state = None
         if session_state.context_window:
             for msg in reversed(session_state.context_window):
@@ -182,17 +182,17 @@ async def agent_query_stream(
                     last_user_msg_in_state = msg.content
                     break
         
-        # Solo agregar si es un mensaje nuevo
+        # Only add if it's a new message
         if last_user_msg_in_state != user_message:
             session_state.add_message("user", user_message)
-            # Persistir mensaje del usuario inmediatamente
+            # Persist user message immediately
             session_manager.update_session(query.session_id, session_state)
         
-        # Actualizar user_id si se proporciona
+        # Update user_id if provided
         if query.user_id:
             session_state.user_id = query.user_id
 
-        # Convertir mensajes de AgentState a mensajes de LangChain para el grafo
+        # Convert AgentState messages to LangChain messages for the graph
         graph_messages = []
         for msg in session_state.context_window:
             if msg.role == "user":
@@ -200,23 +200,23 @@ async def agent_query_stream(
             elif msg.role == "assistant":
                 graph_messages.append(AIMessage(content=msg.content))
 
-        # Crear estado inicial del grafo (incluir report_id y selected_text si el chat es sobre un reporte)
+        # Create initial graph state (include report_id and selected_text if chat is about a report)
         initial_state = GraphState(
             messages=graph_messages,
             report_id=query.report_id if getattr(query, "report_id", None) else None,
             selected_text=query.selected_text if getattr(query, "selected_text", None) else None
         )
 
-        # Wrapper para capturar la respuesta final y guardarla en el contexto
+        # Wrapper to capture final response and save it to context
         async def stream_with_context_save():
-            """Wrapper que captura la respuesta final y la guarda en el contexto"""
+            """Wrapper that captures the final response and saves it to the context"""
             assistant_response = None
             
             async for chunk in stream_graph_execution(initial_state, query.session_id):
-                # Capturar la respuesta final del streaming
+                # Capture final response from streaming
                 if '"type": "final_response"' in chunk:
                     try:
-                        # Extraer el contenido de la respuesta final
+                        # Extract final response content
                         import json
                         data_str = chunk.replace("data: ", "").strip()
                         data = json.loads(data_str)
@@ -225,23 +225,23 @@ async def agent_query_stream(
                     except Exception:
                         pass
                 
-                # Enviar el chunk al cliente
+                # Send chunk to client
                 yield chunk
             
-            # Guardar la respuesta del asistente en el contexto de ventana y PERSISTIR EN REDIS
+            # Save assistant response in window context and PERSIST IN REDIS
             if assistant_response:
                 session_state.add_message("assistant", assistant_response)
-                # IMPORTANTE: Persistir el cambio en Redis/Base de datos
+                # IMPORTANT: Persist change in Redis/Database
                 session_manager.update_session(query.session_id, session_state)
 
-        # Crear respuesta de streaming
+        # Create streaming response
         return StreamingResponse(
             stream_with_context_save(),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",  # Deshabilitar buffering en nginx
+                "X-Accel-Buffering": "no",  # Disable buffering in nginx
             }
         )
         
@@ -250,7 +250,7 @@ async def agent_query_stream(
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error interno del servidor: {str(e)}"
+            detail=f"Internal server error: {str(e)}"
         )
 
 

@@ -11,12 +11,12 @@ import pytz
 from ..services.band_steering_service import BandSteeringService
 from ..agent.llm_client import LLMClient
 
-# WeasyPrint se importará de forma lazy solo cuando se necesite
+# WeasyPrint will be imported lazily only when needed
 WEASYPRINT_AVAILABLE = None
 HTML = None
 
 def _check_weasyprint():
-    """Verifica si WeasyPrint está disponible e importa el módulo."""
+    """Verifies if WeasyPrint is available and imports the module."""
     global WEASYPRINT_AVAILABLE, HTML
     if WEASYPRINT_AVAILABLE is not None:
         return WEASYPRINT_AVAILABLE
@@ -37,12 +37,12 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 service = BandSteeringService()
 llm_client = LLMClient()
 
-# Manejar tanto /reports como /reports/
+# Handle both /reports and /reports/
 @router.get("", include_in_schema=True)
 @router.get("/", include_in_schema=True)
 async def list_reports():
     """
-    Lista todos los análisis guardados organizados por marca.
+    Lists all saved analyses organized by brand.
     """
     reports = []
     base_dir = service.base_dir
@@ -52,7 +52,7 @@ async def list_reports():
         return []
         
     try:
-        # Recorrer Marca / Dispositivo / Analisis.json
+        # Traverse Brand / Device / Analysis.json
         for vendor_dir in base_dir.iterdir():
             if not vendor_dir.is_dir():
                 continue
@@ -65,30 +65,30 @@ async def list_reports():
                     try:
                         with open(analysis_file, "r", encoding="utf-8") as f:
                             data = json.load(f)
-                            # Extraer info del dispositivo
+                            # Extract device info
                             devices = data.get("devices", [])
                             if not devices or len(devices) == 0:
                                 continue
                             
                             device = devices[0]
                             
-                            # Obtener datos para calcular tiempos por banda
+                            # Get data to calculate band times
                             transitions = []
                             signal_samples = []
                             
-                            # Intentar obtener desde la estructura band_steering (nueva estructura)
+                            # Try to get from band_steering structure (new structure)
                             band_steering = data.get("band_steering", {})
                             if isinstance(band_steering, dict):
                                 transitions = band_steering.get("transitions", [])
                                 signal_samples = band_steering.get("signal_samples", [])
                             
-                            # Fallback: intentar desde el nivel raíz (estructura antigua)
+                            # Fallback: try from root level (old structure)
                             if not transitions:
                                 transitions = data.get("transitions", [])
                             if not signal_samples:
                                 signal_samples = data.get("signal_samples", [])
                             
-                            # Calcular tiempos por banda
+                            # Calculate band times
                             time_2_4ghz, time_5ghz, transition_times_list = _calculate_band_times(
                                 transitions, signal_samples
                             )
@@ -98,7 +98,7 @@ async def list_reports():
                             
                             reports.append({
                                 "id": analysis_id,
-                                "filename": data.get("filename"), # Nombre original del pcap
+                                "filename": data.get("filename"), # Original pcap name
                                 "timestamp": data.get("analysis_timestamp"),
                                 "vendor": device.get("vendor", "Unknown"),
                                 "model": device.get("device_model", "Unknown"),
@@ -110,7 +110,7 @@ async def list_reports():
                     except (json.JSONDecodeError, Exception):
                         pass
         
-        # Ordenar por fecha descendente
+        # Sort by timestamp descending
         reports.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
         return reports
     except Exception as e:
@@ -119,12 +119,12 @@ async def list_reports():
 @router.get("/{analysis_id}/download")
 async def download_capture(analysis_id: str):
     """
-    Descarga el archivo pcap original de un análisis.
+    Downloads the original pcap file for an analysis.
     """
     base_dir = service.base_dir
     
     try:
-        # Buscar el archivo JSON del análisis
+        # Find the analysis JSON file
         analysis_file = None
         json_files = list(base_dir.glob(f"**/{analysis_id}.json"))
         for json_file in json_files:
@@ -132,34 +132,34 @@ async def download_capture(analysis_id: str):
             break
         
         if not analysis_file:
-            raise HTTPException(status_code=404, detail="Reporte no encontrado")
+            raise HTTPException(status_code=404, detail="Report not found")
         
         
-        # Leer el JSON para obtener la ruta del archivo pcap
+        # Read JSON to get pcap file path
         with open(analysis_file, "r", encoding="utf-8") as f:
             analysis_data = json.load(f)
         
         
-        # Obtener la ruta del archivo pcap
+        # Get pcap file path
         pcap_path = analysis_data.get("original_file_path")
         
         if not pcap_path:
-            # Reporte antiguo sin archivo guardado
+            # Old report without saved file
             raise HTTPException(
                 status_code=404, 
-                detail="Este reporte fue creado antes de implementar la descarga de archivos. Solo los análisis nuevos guardan el archivo pcap original."
+                detail="This report was created before pcap file saving was implemented. Only new analyses save the original pcap file."
             )
         
         pcap_file = Path(pcap_path)
         
         if not pcap_file.exists():
-            raise HTTPException(status_code=404, detail="El archivo pcap ya no existe en el servidor")
+            raise HTTPException(status_code=404, detail="The pcap file no longer exists on the server")
         
-        # Obtener el nombre original del archivo desde el JSON
+        # Get original filename from JSON
         original_filename = analysis_data.get("filename", "capture.pcap")
         
         if not original_filename.endswith((".pcap", ".pcapng")):
-            # Asegurar extensión correcta
+            # Ensure correct extension
             if pcap_file.suffix:
                 original_filename = original_filename.rsplit(".", 1)[0] + pcap_file.suffix
             else:
@@ -173,32 +173,32 @@ async def download_capture(analysis_id: str):
     except HTTPException as e:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al descargar el archivo: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error downloading file: {str(e)}")
 
-# IMPORTANTE: Las rutas específicas deben ir ANTES de las rutas genéricas con parámetros
-# FastAPI evalúa las rutas en orden, así que /batch debe ir antes de /{analysis_id}
+# IMPORTANT: Specific routes must go BEFORE generic routes with parameters
+# FastAPI evaluates routes in order, so /batch must go before /{analysis_id}
 
 @router.delete("/batch")
 async def delete_batch_reports(request: Dict[str, List[str]]):
     """
-    Elimina múltiples reportes por sus IDs.
+    Deletes multiple reports by their IDs.
     Body: {"ids": ["id1", "id2", "id3"]}
     """
     base_dir = service.base_dir
     ids = request.get("ids", [])
     
     if not ids:
-        raise HTTPException(status_code=400, detail="Se requiere al menos un ID en el array 'ids'")
+        raise HTTPException(status_code=400, detail="At least one ID is required in the 'ids' array")
     
     deleted_count = 0
     not_found = []
     
     try:
-        # Si el directorio base no existe, todos los reportes están "no encontrados"
+        # If the base directory does not exist, all reports are "not found"
         if not base_dir.exists():
             return {
                 "status": "success",
-                "message": f"No se encontraron reportes para eliminar. El directorio base no existe.",
+                "message": f"No reports found to delete. The base directory does not exist.",
                 "deleted": 0,
                 "not_found": ids
             }
@@ -217,7 +217,7 @@ async def delete_batch_reports(request: Dict[str, List[str]]):
             if not found:
                 not_found.append(analysis_id)
         
-        # Limpiar directorios vacíos
+        # Clean up empty directories
         for vendor_dir in base_dir.iterdir():
             if vendor_dir.is_dir():
                 for device_dir in vendor_dir.iterdir():
@@ -226,9 +226,9 @@ async def delete_batch_reports(request: Dict[str, List[str]]):
                 if not any(vendor_dir.iterdir()):
                     vendor_dir.rmdir()
         
-        message = f"Se eliminaron {deleted_count} reportes"
+        message = f"Deleted {deleted_count} reports"
         if not_found:
-            message += f". No se encontraron {len(not_found)} reportes: {', '.join(not_found)}"
+            message += f". {len(not_found)} reports not found: {', '.join(not_found)}"
         
         return {
             "status": "success",
@@ -239,21 +239,21 @@ async def delete_batch_reports(request: Dict[str, List[str]]):
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
-        raise HTTPException(status_code=500, detail=f"Error al eliminar reportes: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error deleting reports: {str(e)}")
 
 @router.delete("/all")
 async def delete_all_reports():
     """
-    Elimina todos los reportes del sistema.
+    Deletes all reports from the system.
     """
     base_dir = service.base_dir
     deleted_count = 0
     
     try:
         if not base_dir.exists():
-            return {"status": "success", "message": "No hay reportes para eliminar", "deleted": 0}
+            return {"status": "success", "message": "No reports to delete", "deleted": 0}
         
-        # Buscar todos los archivos JSON de análisis
+        # Find all analysis JSON files
         for analysis_file in base_dir.glob("**/*.json"):
             try:
                 analysis_file.unlink()
@@ -261,7 +261,7 @@ async def delete_all_reports():
             except Exception:
                 pass
         
-        # Limpiar directorios vacíos
+        # Clean up empty directories
         for vendor_dir in base_dir.iterdir():
             if vendor_dir.is_dir():
                 for device_dir in vendor_dir.iterdir():
@@ -270,18 +270,18 @@ async def delete_all_reports():
                 if not any(vendor_dir.iterdir()):
                     vendor_dir.rmdir()
         
-        return {"status": "success", "message": f"Se eliminaron {deleted_count} reportes", "deleted": deleted_count}
+        return {"status": "success", "message": f"Deleted {deleted_count} reports", "deleted": deleted_count}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al eliminar todos los reportes: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error deleting all reports: {str(e)}")
 
 @router.delete("/{analysis_id}")
 async def delete_report(analysis_id: str):
     """
-    Elimina un reporte específico por su ID.
+    Deletes a specific report by its ID.
     """
     base_dir = service.base_dir
     try:
-        # Buscar el archivo en la estructura de carpetas
+        # Find the file in the folder structure
         found = False
         for analysis_file in base_dir.glob(f"**/{analysis_id}.json"):
             analysis_file.unlink()
@@ -289,9 +289,9 @@ async def delete_report(analysis_id: str):
             break
             
         if not found:
-            raise HTTPException(status_code=404, detail="Reporte no encontrado")
+            raise HTTPException(status_code=404, detail="Report not found")
             
-        return {"status": "success", "message": f"Reporte {analysis_id} eliminado"}
+        return {"status": "success", "message": f"Report {analysis_id} deleted"}
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
@@ -300,13 +300,13 @@ async def delete_report(analysis_id: str):
 @router.post("/{analysis_id}/pdf")
 async def save_pdf(analysis_id: str, html_content: str = Body(..., media_type="text/plain")):
     """
-    Persiste el PDF del reporte de análisis desde el HTML proporcionado por el frontend.
-    Se llama cuando el usuario hace clic en "Exportar PDF" en NetworkAnalysisPage.
+    Persists the analysis report PDF from the HTML provided by the frontend.
+    Called when the user clicks "Export PDF" in NetworkAnalysisPage.
     """
     base_dir = service.base_dir
     
     try:
-        # Buscar el archivo JSON del análisis para obtener la ruta del directorio
+        # Find the analysis JSON file to get the directory path
         analysis_file = None
         json_files = list(base_dir.glob(f"**/{analysis_id}.json"))
         for json_file in json_files:
@@ -314,30 +314,30 @@ async def save_pdf(analysis_id: str, html_content: str = Body(..., media_type="t
             break
         
         if not analysis_file:
-            raise HTTPException(status_code=404, detail="Reporte no encontrado")
+            raise HTTPException(status_code=404, detail="Report not found")
         
         
-        # El PDF se guarda en el mismo directorio que el JSON
+        # The PDF is saved in the same directory as the JSON
         pdf_path = analysis_file.parent / f"{analysis_id}.pdf"
         
-        # Verificar WeasyPrint de forma lazy
+        # Check WeasyPrint lazily
         if not _check_weasyprint():
             raise HTTPException(
                 status_code=500, 
-                detail="WeasyPrint no está disponible. Instala las dependencias del sistema: libpango-1.0-0 libpangoft2-1.0-0 libcairo2 libgdk-pixbuf2.0-0 libffi-dev shared-mime-info"
+                detail="WeasyPrint is not available. Install system dependencies: libpango-1.0-0 libpangoft2-1.0-0 libcairo2 libgdk-pixbuf2.0-0 libffi-dev shared-mime-info"
             )
         
         
-        # Validar que el HTML no esté vacío
+        # Validate that HTML content is not empty
         if not html_content or not html_content.strip():
             raise HTTPException(
                 status_code=400,
-                detail="El contenido HTML está vacío"
+                detail="HTML content is empty"
             )
         
         html_length = len(html_content)
         
-        # Verificar si hay un PDF anterior y eliminarlo
+        # Check if there is a previous PDF and delete it
         if pdf_path.exists():
             old_size = pdf_path.stat().st_size
             try:
@@ -345,22 +345,22 @@ async def save_pdf(analysis_id: str, html_content: str = Body(..., media_type="t
             except Exception:
                 pass
         
-        # Convertir HTML a PDF usando WeasyPrint
+        # Convert HTML to PDF using WeasyPrint
         try:
             
-            # Crear el documento HTML
+            # Create the HTML document
             html_doc = HTML(string=html_content, base_url=None)
             
-            # Generar el PDF con configuraciones apropiadas
+            # Generate PDF with appropriate settings
             html_doc.write_pdf(
                 pdf_path,
-                stylesheets=None,  # Los estilos ya están en el HTML
+                stylesheets=None,  # Styles are already in the HTML
                 presentational_hints=True
             )
             
-            # Verificar que el PDF se creó correctamente
+            # Verify that PDF was created correctly
             if not pdf_path.exists():
-                raise Exception("El PDF no se creó")
+                raise Exception("The PDF was not created")
             
             pdf_size = pdf_path.stat().st_size
             
@@ -369,9 +369,9 @@ async def save_pdf(analysis_id: str, html_content: str = Body(..., media_type="t
                     pdf_path.unlink()
                 except Exception:
                     pass
-                raise Exception("El PDF generado está vacío")
+                raise Exception("The generated PDF is empty")
             
-            # Validar que el PDF tenga el header correcto (debe empezar con %PDF)
+            # Validate that PDF has correct header (must start with %PDF)
             try:
                 with open(pdf_path, 'rb') as f:
                     header = f.read(4)
@@ -380,7 +380,7 @@ async def save_pdf(analysis_id: str, html_content: str = Body(..., media_type="t
                             pdf_path.unlink()
                         except Exception:
                             pass
-                        raise Exception(f"El archivo generado no es un PDF válido (header: {header})")
+                        raise Exception(f"The generated file is not a valid PDF (header: {header})")
             except Exception as header_error:
                 if pdf_path.exists():
                     try:
@@ -391,7 +391,7 @@ async def save_pdf(analysis_id: str, html_content: str = Body(..., media_type="t
             
             return {
                 "status": "success", 
-                "message": "PDF guardado correctamente", 
+                "message": "PDF saved successfully", 
                 "path": str(pdf_path),
                 "size": pdf_size
             }
@@ -399,7 +399,7 @@ async def save_pdf(analysis_id: str, html_content: str = Body(..., media_type="t
             error_msg = str(pdf_error)
             error_type = type(pdf_error).__name__
             
-            # Limpiar archivo corrupto si existe
+            # Clean up corrupt file if exists
             if pdf_path.exists():
                 try:
                     corrupt_size = pdf_path.stat().st_size
@@ -409,7 +409,7 @@ async def save_pdf(analysis_id: str, html_content: str = Body(..., media_type="t
             
             raise HTTPException(
                 status_code=500, 
-                detail=f"Error al convertir HTML a PDF: {error_msg}"
+                detail=f"Error converting HTML to PDF: {error_msg}"
             )
             
     except HTTPException as e:
@@ -417,57 +417,57 @@ async def save_pdf(analysis_id: str, html_content: str = Body(..., media_type="t
     except Exception as e:
         error_type = type(e).__name__
         error_msg = str(e)
-        raise HTTPException(status_code=500, detail=f"Error al guardar el PDF: {error_msg}")
+        raise HTTPException(status_code=500, detail=f"Error saving PDF: {error_msg}")
 
 @router.get("/{analysis_id}/pdf")
 async def download_pdf(analysis_id: str):
     """
-    Descarga el PDF persistido del reporte de análisis.
-    Si el PDF no existe, lo genera automáticamente desde los datos del análisis.
+    Downloads the persisted analysis report PDF.
+    If the PDF does not exist, it generates it automatically from the analysis data.
     """
     base_dir = service.base_dir
     
     try:
-        # Buscar el archivo PDF persistido
+        # Find the persisted PDF file
         pdf_files = list(base_dir.glob(f"**/{analysis_id}.pdf"))
         
-        # Si el PDF no existe, generarlo automáticamente
+        # If the PDF does not exist, generate it automatically
         if not pdf_files:
             
-            # Buscar el archivo JSON del análisis
+            # Find the analysis JSON file
             json_files = list(base_dir.glob(f"**/{analysis_id}.json"))
             if not json_files:
                 raise HTTPException(
                     status_code=404,
-                    detail="Análisis no encontrado"
+                    detail="Analysis not found"
                 )
             
             analysis_file = json_files[0]
             
-            # Leer el JSON del análisis
+            # Read analysis JSON
             try:
                 with open(analysis_file, "r", encoding="utf-8") as f:
                     analysis_data = json.load(f)
             except Exception as e:
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Error al leer los datos del análisis: {str(e)}"
+                    detail=f"Error reading analysis data: {str(e)}"
                 )
             
-            # Verificar WeasyPrint
+            # Verify WeasyPrint
             if not _check_weasyprint():
                 raise HTTPException(
                     status_code=500,
-                    detail="WeasyPrint no está disponible. No se puede generar el PDF automáticamente."
+                    detail="WeasyPrint is not available. Automatic PDF generation is not possible."
                 )
             
-            # Generar HTML desde los datos del análisis
+            # Generate HTML from analysis data
             html_content = _generate_pdf_html(analysis_data)
             
-            # Ruta donde se guardará el PDF
+            # Path where PDF will be saved
             pdf_path = analysis_file.parent / f"{analysis_id}.pdf"
             
-            # Convertir HTML a PDF
+            # Convert HTML to PDF
             try:
                 html_doc = HTML(string=html_content, base_url=None)
                 html_doc.write_pdf(
@@ -476,18 +476,18 @@ async def download_pdf(analysis_id: str):
                     presentational_hints=True
                 )
                 
-                # Verificar que se creó correctamente
+                # Check that it was created correctly
                 if not pdf_path.exists() or pdf_path.stat().st_size == 0:
-                    raise Exception("El PDF generado está vacío")
+                    raise Exception("The generated PDF is empty")
                 
                 pdf_size = pdf_path.stat().st_size
                 
-                # Validar header
+                # Validate header
                 with open(pdf_path, 'rb') as f:
                     header = f.read(4)
                     if header != b'%PDF':
                         pdf_path.unlink()
-                        raise Exception(f"PDF inválido (header: {header})")
+                        raise Exception(f"Invalid PDF (header: {header})")
                 
                 
             except Exception as pdf_error:
@@ -498,17 +498,17 @@ async def download_pdf(analysis_id: str):
                         pass
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Error al generar el PDF: {str(pdf_error)}"
+                    detail=f"Error generating PDF: {str(pdf_error)}"
                 )
         else:
-            # El PDF ya existe, usar el encontrado
+            # The PDF already exists, use the one found
             pdf_path = pdf_files[0]
         
-        # Validar que el PDF existe y tiene contenido
+        # Validate that PDF exists and has content
         if not pdf_path.exists():
             raise HTTPException(
                 status_code=404,
-                detail="El archivo PDF no existe"
+                detail="PDF file not found"
             )
         
         pdf_size = pdf_path.stat().st_size
@@ -516,20 +516,20 @@ async def download_pdf(analysis_id: str):
         if pdf_size == 0:
             raise HTTPException(
                 status_code=500,
-                detail="El PDF está corrupto (archivo vacío). Por favor, exporta el PDF nuevamente."
+                detail="PDF is corrupt (empty file). Please export the PDF again."
             )
         
-        # Validar header del PDF (debe empezar con %PDF)
+        # Validate PDF header (must start with %PDF)
         try:
             with open(pdf_path, 'rb') as f:
                 header = f.read(4)
                 if header != b'%PDF':
                     raise HTTPException(
                         status_code=500,
-                        detail=f"El PDF está corrupto (header inválido: {header}). Por favor, exporta el PDF nuevamente."
+                        detail=f"PDF is corrupt (invalid header: {header}). Please export the PDF again."
                     )
                 
-                # Leer un poco más para verificar que es un PDF válido
+                # Read a bit more to verify it's a valid PDF
                 f.seek(0)
                 first_100 = f.read(100)
         except HTTPException:
@@ -537,30 +537,30 @@ async def download_pdf(analysis_id: str):
         except Exception as header_error:
             raise HTTPException(
                 status_code=500,
-                detail=f"Error al validar el PDF: {str(header_error)}"
+                detail=f"Error validating PDF: {str(header_error)}"
             )
         
-        # Obtener el nombre del archivo original del JSON para el nombre de descarga
+        # Get original filename from JSON for download name
         json_files = list(base_dir.glob(f"**/{analysis_id}.json"))
         filename = f"report_{analysis_id}.pdf"
         if json_files:
             try:
                 with open(json_files[0], "r", encoding="utf-8") as f:
                     analysis_data = json.load(f)
-                    # Intentar obtener el modelo del dispositivo primero
+                    # Try to get device model first
                     devices = analysis_data.get("devices", [])
                     if devices and len(devices) > 0:
                         model = devices[0].get("device_model", "")
-                        if model and model != "Unknown" and model != "Genérico":
+                        if model and model != "Unknown" and model != "Generic":
                             filename = f"Pipe {model.upper()}.pdf"
                         else:
-                            # Fallback al nombre del archivo
+                            # Fallback to filename
                             original_filename = analysis_data.get("filename", "")
                             if original_filename:
                                 clean_name = original_filename.split('.')[0].replace('_', ' ').strip()
                                 filename = f"Pipe {clean_name.upper()}.pdf"
                     else:
-                        # Fallback al nombre del archivo
+                        # Fallback to filename
                         original_filename = analysis_data.get("filename", "")
                         if original_filename:
                             clean_name = original_filename.split('.')[0].replace('_', ' ').strip()
@@ -578,43 +578,43 @@ async def download_pdf(analysis_id: str):
     except Exception as e:
         error_type = type(e).__name__
         error_msg = str(e)
-        raise HTTPException(status_code=500, detail=f"Error al descargar el PDF: {error_msg}")
+        raise HTTPException(status_code=500, detail=f"Error downloading PDF: {error_msg}")
 
 def _generate_pdf_html(analysis_data: Dict[str, Any]) -> str:
-    """Genera HTML para el PDF del reporte con estilo mejorado."""
+    """Generates HTML for the report PDF with improved styling."""
     filename = analysis_data.get("filename", "Unknown")
     clean_name = filename.split('.')[0].replace('_', ' ').strip()
     verdict = analysis_data.get("verdict", "UNKNOWN")
-    analysis_text = analysis_data.get("analysis_text", "No hay análisis disponible")
+    analysis_text = analysis_data.get("analysis_text", "No analysis available")
     
-    # Información del dispositivo
+    # Device information
     devices = analysis_data.get("devices", [])
     device = devices[0] if devices else {}
     vendor = device.get("vendor", "Unknown")
     model = device.get("device_model", "Unknown")
     category = device.get("device_category", "N/A").replace('_', ' ')
     
-    # Generar nombre del PDF en el estilo "Pipe [MODELO]"
-    if model and model != "Unknown" and model != "Genérico":
+    # Generate PDF title in "Pipe [MODEL]" style
+    if model and model != "Unknown" and model != "Generic":
         pdf_title = f"Pipe {model.upper()}"
     else:
         pdf_title = f"Pipe {clean_name.upper()}"
     
-    # Obtener métricas BTM
+    # Get BTM metrics
     btm_requests = analysis_data.get("btm_requests", 0)
     btm_responses = analysis_data.get("btm_responses", 0)
     btm_events = analysis_data.get("btm_events", [])
     btm_accept = len([e for e in btm_events if e.get("status_code") == 0])
     
-    # Obtener métricas de steering
+    # Get steering metrics
     successful_transitions = analysis_data.get("successful_transitions", 0)
     failed_transitions = analysis_data.get("failed_transitions", 0)
     transitions = analysis_data.get("transitions", [])
     
-    # Calcular cambios de banda
+    # Calculate band changes
     band_change_count = len([t for t in transitions if t.get("is_successful") and t.get("is_band_change")])
     
-    # Obtener soporte KVR
+    # Get KVR support
     kvr_support = analysis_data.get("kvr_support", {})
     k_support = kvr_support.get("k", False)
     v_support = kvr_support.get("v", False)
@@ -628,7 +628,7 @@ def _generate_pdf_html(analysis_data: Dict[str, Any]) -> str:
     if r_support:
         kvr_detected.append("11r")
     
-    # Obtener raw_stats si está disponible
+    # Get raw_stats if available
     raw_stats = analysis_data.get("raw_stats", {})
     diagnostics = raw_stats.get("diagnostics", {})
     band_counters = diagnostics.get("band_counters", {})
@@ -638,22 +638,22 @@ def _generate_pdf_html(analysis_data: Dict[str, Any]) -> str:
     disassoc_count = band_counters.get("disassoc_count", 0)
     deauth_count = band_counters.get("deauth_count", 0)
     
-    # Obtener MACs
-    client_mac = diagnostics.get("user_provided_client_mac") or diagnostics.get("client_mac", "Desconocido")
+    # Get MACs
+    client_mac = diagnostics.get("user_provided_client_mac") or diagnostics.get("client_mac", "Unknown")
     bssid_info = diagnostics.get("bssid_info", {})
     import re
     mac_regex = re.compile(r'^([0-9a-f]{2}:){5}[0-9a-f]{2}$', re.IGNORECASE)
     bssids = [key for key in bssid_info.keys() if mac_regex.match(key)]
     
-    # Obtener compliance checks
+    # Get compliance checks
     compliance_checks = analysis_data.get("compliance_checks", [])
     
-    # Obtener SSID si está disponible
+    # Get SSID if available
     ssid = ""
     if diagnostics.get("user_metadata"):
         ssid = diagnostics.get("user_metadata", {}).get("ssid", "")
     
-    # Calcular tiempo medido (simplificado)
+    # Calculate measured time (simplified)
     measured_time = "N/A"
     wireshark_raw = diagnostics.get("wireshark_raw", {})
     if wireshark_raw.get("sample"):
@@ -672,7 +672,7 @@ def _generate_pdf_html(analysis_data: Dict[str, Any]) -> str:
                         seconds = time_diff % 60
                         measured_time = f"{minutes}m {seconds:.3f}s"
     
-    # Formatear análisis markdown mejorado
+    # Format improved markdown analysis
     def format_analysis(text):
         if not text:
             return ""
@@ -712,7 +712,7 @@ def _generate_pdf_html(analysis_data: Dict[str, Any]) -> str:
                 close_list()
                 continue
             
-            # Títulos markdown
+            # Markdown titles
             if re.match(r'^#+\s', line):
                 close_list()
                 level = len(line) - len(line.lstrip("#"))
@@ -722,7 +722,7 @@ def _generate_pdf_html(analysis_data: Dict[str, Any]) -> str:
                 html += f'<h{min(level + 1, 4)} style="margin-top: {margin_top}; margin-bottom: 8px; font-size: {font_size}; font-weight: 600; color: #374151; page-break-after: avoid;">{content}</h{min(level + 1, 4)}>'
                 continue
             
-            # Listas ordenadas (1., 2., etc.)
+            # Ordered lists (1., 2., etc.)
             ordered_match = re.match(r'^(\d+)\.\s+(.+)$', line)
             if ordered_match:
                 close_list()
@@ -731,7 +731,7 @@ def _generate_pdf_html(analysis_data: Dict[str, Any]) -> str:
                 list_items.append(ordered_match.group(2))
                 continue
             
-            # Listas no ordenadas (-, *, •)
+            # Unordered lists (-, *, •)
             if re.match(r'^[-*•]\s+(.+)$', line):
                 close_list()
                 if not in_list:
@@ -740,16 +740,16 @@ def _generate_pdf_html(analysis_data: Dict[str, Any]) -> str:
                 list_items.append(item_text)
                 continue
             
-            # Cerrar lista si hay una abierta
+            # Close list if any is open
             close_list()
             
-            # Párrafo normal
+            # Normal paragraph
             para_text = line
-            # Procesar negritas
+            # Process bold
             para_text = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', para_text)
-            # Procesar cursivas
+            # Process italics
             para_text = re.sub(r'\*(.*?)\*', r'<em>\1</em>', para_text)
-            # Procesar código inline
+            # Process inline code
             para_text = re.sub(r'`([^`]+)`', r'<code style="background: #f3f4f6; padding: 2px 4px; border-radius: 3px; font-family: monospace; font-size: 7pt;">\1</code>', para_text)
             
             html += f'<p style="margin-bottom: 8px; font-size: 8pt; line-height: 1.6; text-align: justify;">{para_text}</p>'
@@ -761,7 +761,7 @@ def _generate_pdf_html(analysis_data: Dict[str, Any]) -> str:
     
     html = f"""
     <!DOCTYPE html>
-    <html lang="es">
+    <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -1090,67 +1090,67 @@ def _generate_pdf_html(analysis_data: Dict[str, Any]) -> str:
             <h1>{pdf_title}</h1>
         </div>
         
-        <!-- Cards de Información del Dispositivo -->
+        <!-- Device Information Cards -->
         <div class="info-card-grid">
             <div class="info-card">
-                <div class="info-card-title">Dispositivo Identificado</div>
+                <div class="info-card-title">Identified Device</div>
                 <div style="font-size: 10pt;">
-                    {f'<div style="margin-bottom: 8px;"><span style="font-size: 9pt; color: #6b7280;">Red (SSID):</span><br><span style="font-size: 11pt; font-weight: 500; color: #1a1a1a;">{ssid}</span></div>' if ssid else ''}
-                    <div style="margin-bottom: 8px;"><span style="font-size: 9pt; color: #6b7280;">Marca:</span><br><span style="font-size: 11pt; font-weight: 500; color: #1a1a1a;">{vendor}</span></div>
-                    <div style="margin-bottom: 8px;"><span style="font-size: 9pt; color: #6b7280;">Modelo:</span><br><span style="font-size: 11pt; font-weight: 500; color: #1a1a1a;">{model}</span></div>
-                    <div><span style="font-size: 9pt; color: #6b7280;">Categoría:</span><br><span style="font-size: 11pt; font-weight: 500; color: #1a1a1a;">{category}</span></div>
+                    {f'<div style="margin-bottom: 8px;"><span style="font-size: 9pt; color: #6b7280;">Network (SSID):</span><br><span style="font-size: 11pt; font-weight: 500; color: #1a1a1a;">{ssid}</span></div>' if ssid else ''}
+                    <div style="margin-bottom: 8px;"><span style="font-size: 9pt; color: #6b7280;">Brand:</span><br><span style="font-size: 11pt; font-weight: 500; color: #1a1a1a;">{vendor}</span></div>
+                    <div style="margin-bottom: 8px;"><span style="font-size: 9pt; color: #6b7280;">Model:</span><br><span style="font-size: 11pt; font-weight: 500; color: #1a1a1a;">{model}</span></div>
+                    <div><span style="font-size: 9pt; color: #6b7280;">Category:</span><br><span style="font-size: 11pt; font-weight: 500; color: #1a1a1a;">{category}</span></div>
                 </div>
             </div>
             
             <div class="info-card">
-                <div class="info-card-title">MACs de Negociación</div>
+                <div class="info-card-title">Negotiation MACs</div>
                 <div style="font-size: 10pt;">
                     <div style="margin-bottom: 12px;">
-                        <span style="font-size: 9pt; color: #6b7280; text-transform: uppercase;">Cliente</span><br>
+                        <span style="font-size: 9pt; color: #6b7280; text-transform: uppercase;">Client</span><br>
                         <span class="mac-address" style="font-weight: 700; font-size: 11pt;">{client_mac}</span>
                     </div>
                     <div>
                         <span style="font-size: 9pt; color: #6b7280; text-transform: uppercase;">BSSIDS ({len(bssids)})</span><br>
-                        {'<br>'.join([f'<div class="mac-address" style="margin-top: 4px; font-size: 10pt;">{bssid}</div>' for bssid in bssids]) if bssids else '<span style="font-size: 10pt; color: #6b7280; font-style: italic;">No detectados</span>'}
+                        {'<br>'.join([f'<div class="mac-address" style="margin-top: 4px; font-size: 10pt;">{bssid}</div>' for bssid in bssids]) if bssids else '<span style="font-size: 10pt; color: #6b7280; font-style: italic;">Not detected</span>'}
                     </div>
                 </div>
             </div>
             
             <div class="info-card">
-                <div class="info-card-title">Métricas de Steering</div>
+                <div class="info-card-title">Steering Metrics</div>
                 <div style="font-size: 10pt;">
                     <div class="metric-item">
-                        <div class="metric-item-label">Estándares KVR Identificados</div>
+                        <div class="metric-item-label">Identified KVR Standards</div>
                         <div class="metric-item-value" style="font-size: 12pt;">
-                            {' '.join([f'<span class="kvr-badge">{k}</span>' for k in kvr_detected]) if kvr_detected else 'Ninguno'}
+                            {' '.join([f'<span class="kvr-badge">{k}</span>' for k in kvr_detected]) if kvr_detected else 'None'}
                         </div>
                     </div>
                     <div class="metric-item">
-                        <div class="metric-item-label">Intentos de steering</div>
+                        <div class="metric-item-label">Steering attempts</div>
                         <div class="metric-item-value">{successful_transitions}/{successful_transitions + failed_transitions}</div>
-                        <div class="metric-item-sub">EXITOSAS</div>
-                        {f'<div class="metric-item-sub" style="margin-top: 6px;"><span style="color: #10b981; font-weight: 600;">{band_change_count} cambio{"s" if band_change_count != 1 else ""} de banda</span></div>' if band_change_count > 0 else ''}
+                        <div class="metric-item-sub">SUCCESSFUL</div>
+                        {f'<div class="metric-item-sub" style="margin-top: 6px;"><span style="color: #10b981; font-weight: 600;">{band_change_count} band change{"s" if band_change_count != 1 else ""}</span></div>' if band_change_count > 0 else ''}
                     </div>
                     <div class="metric-item">
-                        <div class="metric-item-label">Tiempo medido</div>
+                        <div class="metric-item-label">Measured time</div>
                         <div class="metric-item-value" style="font-size: 14pt;">{measured_time}</div>
                     </div>
                 </div>
             </div>
         </div>
         
-        <!-- Sección Análisis de Band Steering -->
+        <!-- Band Steering Analysis Section -->
         <div class="section-header">
             <div>
-                <h2 class="section-title">Análisis de Band Steering</h2>
-                <p class="section-description">Evaluación técnica de capacidades 802.11k/v/r basada directamente en la captura real de Wireshark/tshark</p>
+                <h2 class="section-title">Band Steering Analysis</h2>
+                <p class="section-description">Technical evaluation of 802.11k/v/r capabilities based directly on real Wireshark/tshark capture</p>
             </div>
             <span class="success-badge-large">✓ SUCCESS</span>
         </div>
         
-        <!-- Detalle de Cumplimiento Técnico -->
+        <!-- Technical Compliance Detail -->
         <div class="card" style="background: #eff6ff; border-left: 4px solid #3b82f6;">
-            <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 13pt; font-weight: 700;">DETALLE DE CUMPLIMIENTO TÉCNICO</h3>
+            <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 13pt; font-weight: 700;">TECHNICAL COMPLIANCE DETAIL</h3>
             {''.join([f'''
             <div class="compliance-check">
                 <div style="flex: 1;">
@@ -1159,48 +1159,48 @@ def _generate_pdf_html(analysis_data: Dict[str, Any]) -> str:
                 </div>
                 <div class="compliance-badge-pdf {'compliance-badge-pass' if check.get('passed', False) else 'compliance-badge-fail'}">
                     <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: {'#10b981' if check.get('passed', False) else '#ef4444'};"></span>
-                    <span>{'PASÓ' if check.get('passed', False) else 'FALLÓ'}</span>
+                    <span>{'PASSED' if check.get('passed', False) else 'FAILED'}</span>
                 </div>
             </div>
             ''' for check in compliance_checks]) if compliance_checks else f'''
             <div class="compliance-check">
                 <div style="flex: 1;">
-                    <div class="compliance-check-title">Soporte BTM (802.11v)</div>
+                    <div class="compliance-check-title">BTM Support (802.11v)</div>
                     <div class="compliance-check-details">REQUESTS: {btm_requests}, RESPONSES: {btm_responses}, ACCEPT: {btm_accept}<br>CODE: 0 (ACCEPT)</div>
                 </div>
                 <div class="compliance-badge-pdf compliance-badge-pass">
                     <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #10b981;"></span>
-                    <span>PASÓ</span>
+                    <span>PASSED</span>
                 </div>
             </div>
             <div class="compliance-check">
                 <div style="flex: 1;">
-                    <div class="compliance-check-title">Asociación y Reasociación</div>
-                    <div class="compliance-check-details">ASSOC: {assoc_count}, REASSOC: {reassoc_count}<br>DISASSOC: {disassoc_count} (FORZADOS: 0), DEAUTH: {deauth_count} (FORZADOS: 0)</div>
+                    <div class="compliance-check-title">Association and Reassociation</div>
+                    <div class="compliance-check-details">ASSOC: {assoc_count}, REASSOC: {reassoc_count}<br>DISASSOC: {disassoc_count} (FORCED: 0), DEAUTH: {deauth_count} (FORCED: 0)</div>
                 </div>
                 <div class="compliance-badge-pdf compliance-badge-pass">
                     <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #10b981;"></span>
-                    <span>PASÓ</span>
+                    <span>PASSED</span>
                 </div>
             </div>
             <div class="compliance-check">
                 <div style="flex: 1;">
-                    <div class="compliance-check-title">Steering Efectivo</div>
-                    <div class="compliance-check-details">TRANSICIONES CON CAMBIO DE BANDA: {band_change_count} | TRANSICIONES TOTALES: {successful_transitions} | BTM ACCEPT: {btm_accept}</div>
+                    <div class="compliance-check-title">Effective Steering</div>
+                    <div class="compliance-check-details">TRANSITIONS WITH BAND CHANGE: {band_change_count} | TOTAL TRANSITIONS: {successful_transitions} | BTM ACCEPT: {btm_accept}</div>
                 </div>
                 <div class="compliance-badge-pdf compliance-badge-pass">
                     <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #10b981;"></span>
-                    <span>PASÓ</span>
+                    <span>PASSED</span>
                 </div>
             </div>
             <div class="compliance-check">
                 <div style="flex: 1;">
-                    <div class="compliance-check-title">Estándares KVR</div>
+                    <div class="compliance-check-title">KVR Standards</div>
                     <div class="compliance-check-details">K={'TRUE' if k_support else 'FALSE'}, V={'TRUE' if v_support else 'FALSE'}, R={'TRUE' if r_support else 'FALSE'}</div>
                 </div>
                 <div class="compliance-badge-pdf compliance-badge-pass">
                     <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #10b981;"></span>
-                    <span>PASÓ</span>
+                    <span>PASSED</span>
                 </div>
             </div>
             '''}
@@ -1208,26 +1208,27 @@ def _generate_pdf_html(analysis_data: Dict[str, Any]) -> str:
         
         <div class="section-divider"></div>
         
-        <h2 style="font-size: 22pt; font-weight: 700; text-transform: uppercase; margin-top: 40px; margin-bottom: 20px;">INFORME TÉCNICO DE AUDITORÍA DE BAND STEERING</h2>
+        <h2 style="font-size: 22pt; font-weight: 700; text-transform: uppercase; margin-top: 40px; margin-bottom: 20px;">TECHNICAL BAND STEERING AUDIT REPORT</h2>
         <div class="analysis-content">
             {format_analysis(analysis_text)}
         </div>
         
         <div class="footer">
-            Generado por Pipe - Análisis inteligente de capturas Wireshark
+            Generated by Pipe - Intelligent Wireshark capture analysis
         </div>
     </body>
     </html>
     """
     return html
 
-# IMPORTANTE: Las rutas específicas (/export, /stats) deben ir ANTES de las rutas con parámetros dinámicos (/{analysis_id})
-# para que FastAPI pueda hacer match correctamente
+# IMPORTANT: Specific routes (/export, /stats) must come BEFORE routes with dynamic parameters (/{analysis_id})
+# IMPORTANT: Specific routes (/export, /stats) must come BEFORE dynamic parameter routes (/{analysis_id})
+# for FastAPI to match correctly
 
 @router.get("/stats")
 async def get_reports_stats():
     """
-    Obtiene estadísticas agregadas de todos los reportes.
+    Gets aggregate statistics for all reports.
     """
     base_dir = service.base_dir
     reports = []
@@ -1242,7 +1243,7 @@ async def get_reports_stats():
                 "success_rate": 0.0
             }
         
-        # Recopilar todos los reportes (similar a list_reports)
+        # Collect all reports (similar to list_reports)
         for vendor_dir in base_dir.iterdir():
             if not vendor_dir.is_dir():
                 continue
@@ -1280,22 +1281,22 @@ async def get_reports_stats():
                 "success_rate": 0.0
             }
         
-        # Calcular estadísticas
+        # Calculate statistics
         total = len(reports)
         verdict_counter = Counter([r.get("verdict", "UNKNOWN") for r in reports])
         vendor_counter = Counter([r.get("vendor", "Unknown") for r in reports])
         
-        # Distribución de veredictos
+        # Verdict distribution
         verdict_distribution = dict(verdict_counter)
         
-        # Top 3 marcas
+        # Top 3 vendors
         top_vendors = [{"vendor": vendor, "count": count} for vendor, count in vendor_counter.most_common(3)]
         
-        # Última captura
+        # Last capture
         sorted_reports = sorted(reports, key=lambda x: x.get("timestamp", ""), reverse=True)
         last_capture = sorted_reports[0].get("timestamp") if sorted_reports else None
         
-        # Tasa de éxito (SUCCESS, EXCELLENT, GOOD)
+        # Success rate (SUCCESS, EXCELLENT, GOOD)
         success_verdicts = ["SUCCESS", "EXCELLENT", "GOOD"]
         success_count = sum(1 for r in reports if r.get("verdict", "").upper() in success_verdicts)
         success_rate = (success_count / total * 100) if total > 0 else 0.0
@@ -1308,51 +1309,51 @@ async def get_reports_stats():
             "success_rate": round(success_rate, 2)
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al calcular estadísticas: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error calculating statistics: {str(e)}")
 
 def _calculate_band_times(transitions: List[Dict[str, Any]], signal_samples: List[Dict[str, Any]]) -> tuple:
     """
-    Calcula el tiempo total acumulado en cada banda y lista de tiempos de transición individuales.
-    Extrae los datos directamente de Wireshark, excluyendo explícitamente los períodos de transición.
+    Calculates the total accumulated time in each band and a list of individual transition times.
+    Extracts data directly from Wireshark, explicitly excluding transition periods.
     
-    FILOSOFÍA:
-    - El tiempo en banda se calcula usando las muestras de señal de Wireshark
-    - Los períodos de transición (entre start_time y end_time) se EXCLUYEN del tiempo en banda
-    - El tiempo de transición es simplemente la duración de cada transición (end_time - start_time)
+    PHILOSOPHY:
+    - Time in band is calculated using Wireshark signal samples
+    - Transition periods (between start_time and end_time) are EXCLUDED from time in band
+    - Transition time is simply the duration of each transition (end_time - start_time)
     
     Args:
-        transitions: Lista de transiciones con start_time, end_time, from_band, to_band, duration
-        signal_samples: Lista de muestras de señal con timestamp y band (fuente de verdad de Wireshark)
+        transitions: List of transitions with start_time, end_time, from_band, to_band, duration
+        signal_samples: List of signal samples with timestamp and band (Wireshark's source of truth)
         
     Returns:
-        Tupla (tiempo_2_4ghz, tiempo_5ghz, lista_tiempos_transicion) donde lista_tiempos_transicion es una lista de duraciones
+        Tuple (time_2_4ghz, time_5ghz, transition_times_list) where transition_times_list is a list of durations
     """
     time_2_4ghz = 0.0
     time_5ghz = 0.0
-    transition_times = []  # Lista de tiempos individuales de cada transición
+    transition_times = []  # List of individual times for each transition
     
     if not transitions and not signal_samples:
         return (0.0, 0.0, [])
     
-    # 1. Extraer duraciones individuales de cada transición exitosa con cambio de banda
-    # Solo nos interesan las transiciones que realmente implican un cambio de banda
+    # 1. Extract individual durations for each successful transition with band change
+    # We only care about transitions that actually involve a band change
     valid_transitions = []
     for trans in transitions:
         if not trans.get("start_time") or not trans.get("is_successful"):
             continue
         
-        # Solo contar transiciones con cambio de banda físico
+        # Only count transitions with physical band change
         if not trans.get("is_band_change"):
             continue
             
         from_band = _normalize_band(trans.get("from_band", ""))
         to_band = _normalize_band(trans.get("to_band", ""))
         
-        # Verificar que realmente hay cambio de banda
+        # Verify that there's a real band change
         if from_band and to_band and from_band != to_band:
             valid_transitions.append(trans)
             
-            # Calcular duración de la transición (tiempo que tarda en soltar una banda para coger otra)
+            # Calculate transition duration (time it takes to drop one band and pick up another)
             start_time = float(trans.get("start_time", 0))
             end_time = float(trans.get("end_time", start_time))
             duration = end_time - start_time
@@ -1360,13 +1361,13 @@ def _calculate_band_times(transitions: List[Dict[str, Any]], signal_samples: Lis
             if duration > 0:
                 transition_times.append(duration)
     
-    # Ordenar transiciones por tiempo
+    # Sort transitions by time
     valid_transitions = sorted(valid_transitions, key=lambda x: float(x.get("start_time", 0)))
     
-    # 2. Obtener todos los timestamps para calcular tiempo total
+    # 2. Get all timestamps to calculate total time
     all_timestamps = []
     
-    # Agregar timestamps de transiciones
+    # Add transition timestamps
     for trans in valid_transitions:
         start = trans.get("start_time")
         end = trans.get("end_time")
@@ -1381,7 +1382,7 @@ def _calculate_band_times(transitions: List[Dict[str, Any]], signal_samples: Lis
             except (ValueError, TypeError):
                 pass
     
-    # Agregar timestamps de muestras de señal (fuente de verdad de Wireshark)
+    # Add signal sample timestamps (Wireshark's source of truth)
     if signal_samples:
         for sample in signal_samples:
             ts = sample.get("timestamp")
@@ -1401,7 +1402,7 @@ def _calculate_band_times(transitions: List[Dict[str, Any]], signal_samples: Lis
     if total_time <= 0:
         return (0.0, 0.0, transition_times)
     
-    # 3. Construir lista de períodos de transición para excluirlos
+    # 3. Build list of transition periods to exclude them
     transition_periods = []
     for trans in valid_transitions:
         start_time = float(trans.get("start_time", 0))
@@ -1409,8 +1410,8 @@ def _calculate_band_times(transitions: List[Dict[str, Any]], signal_samples: Lis
         if end_time > start_time:
             transition_periods.append((start_time, end_time))
     
-    # 4. Calcular tiempo en cada banda usando muestras de señal (fuente de verdad de Wireshark)
-    # Filtrar y ordenar muestras de señal válidas
+    # 4. Calculate time in each band using signal samples (Wireshark's source of truth)
+    # Filter and sort valid signal samples
     valid_samples = []
     for sample in (signal_samples or []):
         band = sample.get("band", "")
@@ -1428,7 +1429,7 @@ def _calculate_band_times(transitions: List[Dict[str, Any]], signal_samples: Lis
                 pass
     
     if not valid_samples:
-        # Si no hay muestras de señal, usar método basado en transiciones (menos preciso)
+        # If no signal samples, use transition-based method (less precise)
         if valid_transitions:
             current_band = None
             last_time = min_time
@@ -1438,11 +1439,11 @@ def _calculate_band_times(transitions: List[Dict[str, Any]], signal_samples: Lis
                 from_band = _normalize_band(trans.get("from_band", ""))
                 to_band = _normalize_band(trans.get("to_band", ""))
                 
-                # Determinar banda inicial si es la primera transición
+                # Determine initial band if it's the first transition
                 if current_band is None:
                     current_band = from_band if from_band else to_band
                 
-                # Tiempo en la banda actual hasta el inicio de la transición (EXCLUYENDO la transición)
+                # Time in current band until transition starts (EXCLUDING transition)
                 if current_band and start_time > last_time:
                     period = start_time - last_time
                     if current_band == "2.4 GHz":
@@ -1450,11 +1451,11 @@ def _calculate_band_times(transitions: List[Dict[str, Any]], signal_samples: Lis
                     elif current_band == "5 GHz":
                         time_5ghz += period
                 
-                # Actualizar banda y tiempo (después de la transición)
+                # Update band and time (after transition)
                 current_band = to_band if to_band else from_band
                 last_time = float(trans.get("end_time", start_time))
             
-            # Tiempo final después de la última transición
+            # Final time after last transition
             if current_band and last_time < max_time:
                 period = max_time - last_time
                 if current_band == "2.4 GHz":
@@ -1462,55 +1463,55 @@ def _calculate_band_times(transitions: List[Dict[str, Any]], signal_samples: Lis
                 elif current_band == "5 GHz":
                     time_5ghz += period
     else:
-        # Método preciso: usar muestras de señal y excluir períodos de transición
+        # Precise method: use signal samples and exclude transition periods
         valid_samples = sorted(valid_samples, key=lambda x: x["timestamp"])
         
-        # Agrupar muestras consecutivas de la misma banda
+        # Group consecutive samples of the same band
         i = 0
         while i < len(valid_samples):
             current_band = valid_samples[i]["band"]
             period_start = valid_samples[i]["timestamp"]
             period_end = period_start
             
-            # Encontrar el final del período continuo en la misma banda
+            # Find the end of the continuous period in the same band
             j = i + 1
             while j < len(valid_samples):
                 next_sample = valid_samples[j]
                 next_ts = next_sample["timestamp"]
                 next_band = next_sample["band"]
                 
-                # Verificar si estamos en un período de transición
+                # Check if we are in a transition period
                 in_transition = False
                 for trans_start, trans_end in transition_periods:
                     if trans_start <= next_ts <= trans_end:
                         in_transition = True
                         break
                 
-                # Si cambió de banda o estamos en transición, terminar el período
+                # If band changed or we are in transition, end period
                 if next_band != current_band or in_transition:
                     break
                 
-                # Si el intervalo es razonable (máximo 5 segundos), continuar el período
+                # If interval is reasonable (max 5 seconds), continue period
                 if next_ts - period_end <= 5.0:
                     period_end = next_ts
                     j += 1
                 else:
-                    # Intervalo muy grande, terminar el período
+                    # Interval too large, end period
                     break
             
-            # Calcular duración del período (excluyendo cualquier parte que esté en transición)
+            # Calculate period duration (excluding any part that is in transition)
             period_duration = period_end - period_start
             
-            # Verificar si el período se superpone con alguna transición
+            # Check if period overlaps with any transition
             for trans_start, trans_end in transition_periods:
-                # Si hay superposición, reducir la duración
+                # If overlap, reduce duration
                 if period_start < trans_end and period_end > trans_start:
                     overlap_start = max(period_start, trans_start)
                     overlap_end = min(period_end, trans_end)
                     overlap_duration = overlap_end - overlap_start
                     period_duration -= overlap_duration
             
-            # Solo agregar si la duración es positiva y no está completamente en transición
+            # Only add if duration is positive and not completely in transition
             if period_duration > 0:
                 if current_band == "2.4 GHz":
                     time_2_4ghz += period_duration
@@ -1519,12 +1520,12 @@ def _calculate_band_times(transitions: List[Dict[str, Any]], signal_samples: Lis
             
             i = j
     
-    # 5. Verificar coherencia: tiempo en bandas + tiempo en transiciones no debe exceder tiempo total
+    # 5. Consistency check: time in bands + time in transitions should not exceed total time
     total_transition_time = sum(transition_times)
     total_band_time = time_2_4ghz + time_5ghz
     expected_total = total_time - total_transition_time
     
-    # Si hay una discrepancia significativa, ajustar proporcionalmente
+    # If substantial discrepancy, adjust proportionally
     if expected_total > 0 and total_band_time > expected_total * 1.1:
         scale = expected_total / total_band_time
         time_2_4ghz *= scale
@@ -1533,7 +1534,7 @@ def _calculate_band_times(transitions: List[Dict[str, Any]], signal_samples: Lis
     return (round(time_2_4ghz, 2), round(time_5ghz, 2), transition_times)
 
 def _normalize_band(band: str) -> str:
-    """Normaliza el nombre de la banda a formato estándar."""
+    """Normalizes band name to standard format."""
     if not band:
         return ""
     band_lower = band.lower()
@@ -1545,19 +1546,19 @@ def _normalize_band(band: str) -> str:
 
 def _generate_summary_pdf_html(reports: List[Dict[str, Any]], ai_summary_text: str = "") -> str:
     """
-    Genera HTML profesional para el PDF de resumen de reportes con estilos mejorados.
+    Generates professional HTML for reports summary PDF with improved styles.
     
     Args:
-        reports: Lista de diccionarios con los datos de los reportes
-        ai_summary_text: Texto de resumen generado por IA (formato Markdown)
+        reports: List of dictionaries with report data
+        ai_summary_text: AI generated summary text (Markdown format)
         
     Returns:
-        HTML completo con el reporte de resumen
+        Full HTML with the summary report
     """
     if not reports:
         return ""
     
-    # Calcular estadísticas agregadas
+    # Calculate aggregate statistics
     total_reports = len(reports)
     verdicts = [r.get('verdict', 'UNKNOWN') for r in reports]
     success_count = sum(1 for v in verdicts if v in ['SUCCESS', 'EXCELLENT', 'GOOD'])
@@ -1571,17 +1572,17 @@ def _generate_summary_pdf_html(reports: List[Dict[str, Any]], ai_summary_text: s
     total_packets = sum(r.get('total_packets', 0) for r in reports)
     avg_packets = total_packets / total_reports if total_reports > 0 else 0
     
-    # Distribución de veredictos
+    # Verdict distribution
     verdict_dist = {}
     for v in verdicts:
         verdict_dist[v] = verdict_dist.get(v, 0) + 1
     
-    # Obtener fecha y hora actual en zona horaria de Colombia
+    # Get current date and time in Colombia timezone
     colombia_tz = pytz.timezone('America/Bogota')
     current_time_colombia = datetime.now(colombia_tz)
-    formatted_date_time = current_time_colombia.strftime('%d/%m/%Y a las %I:%M %p')
+    formatted_date_time = current_time_colombia.strftime('%m/%d/%Y at %I:%M %p')
     
-    # Formatear análisis markdown (similar a _generate_pdf_html)
+    # Format markdown analysis (similar to _generate_pdf_html)
     def format_analysis(text):
         if not text:
             return ""
@@ -1664,7 +1665,7 @@ def _generate_summary_pdf_html(reports: List[Dict[str, Any]], ai_summary_text: s
         close_list_html()
         return "".join(html_parts)
     
-    # Formatear fecha
+    # Format date
     def format_report_date(date_str):
         if not date_str:
             return 'N/A'
@@ -1674,7 +1675,7 @@ def _generate_summary_pdf_html(reports: List[Dict[str, Any]], ai_summary_text: s
         except Exception:
             return date_str
     
-    # Formatear tiempo
+    # Format time
     def format_time(seconds):
         if not seconds or seconds == 0:
             return '0s'
@@ -1686,14 +1687,14 @@ def _generate_summary_pdf_html(reports: List[Dict[str, Any]], ai_summary_text: s
         secs = seconds % 60
         return f'{minutes}m {secs:.1f}s'
     
-    # Formatear lista de tiempos de transición
+    # Format transition times list
     def format_transition_times(times_list):
         if not times_list or len(times_list) == 0:
             return 'N/A'
         formatted_times = [format_time(t) for t in times_list]
         return ', '.join(formatted_times)
     
-    # Generar HTML de gráficas fuera del f-string principal para evitar problemas con corchetes
+    # Generate chart HTML outside main f-string to avoid bracket issues
     verdict_chart_items = []
     for verdict, count in sorted(verdict_dist.items(), key=lambda x: x[1], reverse=True):
         percentage = (count / total_reports * 100) if total_reports > 0 else 0
@@ -1710,7 +1711,7 @@ def _generate_summary_pdf_html(reports: List[Dict[str, Any]], ai_summary_text: s
                     ''')
     verdict_chart_html = ''.join(verdict_chart_items)
     
-    # Generar HTML de gráfica de marcas
+    # Generate vendor chart HTML
     vendor_chart_html = ''
     if top_vendors:
         vendor_chart_items = []
@@ -1721,14 +1722,14 @@ def _generate_summary_pdf_html(reports: List[Dict[str, Any]], ai_summary_text: s
                         <div class="bar-label">{vendor}</div>
                         <div class="bar-wrapper">
                             <div class="bar-fill" style="width: {percentage:.1f}%; background: #3b82f6;">
-                                {count} reportes ({percentage:.1f}%)
+                                {count} reports ({percentage:.1f}%)
                             </div>
                         </div>
                     </div>
                     ''')
         vendor_chart_items_joined = ''.join(vendor_chart_items)
         vendor_chart_html = f'''
-            <h3 style="margin-top: 30px; margin-bottom: 15px;">Top {len(top_vendors)} Marcas</h3>
+            <h3 style="margin-top: 30px; margin-bottom: 15px;">Top {len(top_vendors)} Brands</h3>
             <div class="chart-container">
                 <div class="bar-chart">
                     {vendor_chart_items_joined}
@@ -1736,7 +1737,7 @@ def _generate_summary_pdf_html(reports: List[Dict[str, Any]], ai_summary_text: s
             </div>
             '''
     
-    # Generar HTML de tabla de reportes
+    # Generate reports table HTML
     reports_table_rows = []
     for report in reports:
         verdict = report.get('verdict', 'UNKNOWN')
@@ -1762,14 +1763,14 @@ def _generate_summary_pdf_html(reports: List[Dict[str, Any]], ai_summary_text: s
                 ''')
     reports_table_html = ''.join(reports_table_rows)
     
-    # Generar HTML
+    # Generate HTML
     html = f"""
     <!DOCTYPE html>
-    <html lang="es">
+    <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Resumen de Reportes - Pipe</title>
+        <title>Reports Summary - Pipe</title>
         <style>
             @page {{
                 margin: 1.5cm;
@@ -1964,65 +1965,65 @@ def _generate_summary_pdf_html(reports: List[Dict[str, Any]], ai_summary_text: s
     </head>
     <body>
         <div class="header">
-            <h1>Resumen de Reportes - Pipe</h1>
-            <p style="color: #6b7280; font-size: 10pt;">Generado el {formatted_date_time} (hora de Colombia, UTC-5)</p>
+            <h1>Reports Summary - Pipe</h1>
+            <p style="color: #6b7280; font-size: 10pt;">Generated on {formatted_date_time} (Colombia time, UTC-5)</p>
         </div>
         
-        <!-- Cards de Estadísticas Principales -->
+        <!-- Main Statistics Cards -->
         <div class="info-card-grid">
             <div class="info-card">
-                <div class="info-card-title">Total Reportes</div>
+                <div class="info-card-title">Total Reports</div>
                 <div class="info-card-value">{total_reports}</div>
-                <div class="info-card-sub">análisis realizados</div>
+                <div class="info-card-sub">analyses performed</div>
             </div>
             <div class="info-card">
-                <div class="info-card-title">Tasa de Éxito</div>
+                <div class="info-card-title">Success Rate</div>
                 <div class="info-card-value" style="color: #10b981;">{success_rate:.1f}%</div>
-                <div class="info-card-sub">{success_count} exitosos</div>
+                <div class="info-card-sub">{success_count} successful</div>
             </div>
             <div class="info-card">
-                <div class="info-card-title">Reportes Fallidos</div>
+                <div class="info-card-title">Failed Reports</div>
                 <div class="info-card-value" style="color: #ef4444;">{failed_count}</div>
-                <div class="info-card-sub">requieren atención</div>
+                <div class="info-card-sub">require attention</div>
             </div>
             <div class="info-card">
-                <div class="info-card-title">Total Paquetes</div>
+                <div class="info-card-title">Total Packets</div>
                 <div class="info-card-value">{total_packets:,}</div>
-                <div class="info-card-sub">promedio: {avg_packets:.0f}</div>
+                <div class="info-card-sub">average: {avg_packets:.0f}</div>
             </div>
         </div>
         
-        <!-- Sección de Estadísticas -->
+        <!-- Statistics Section -->
         <div class="stats-section">
-            <h2>Estadísticas Observadas</h2>
+            <h2>Observed Statistics</h2>
             
-            <!-- Distribución de Veredictos -->
-            <h3 style="margin-top: 20px; margin-bottom: 15px;">Distribución de Veredictos</h3>
+            <!-- Verdict Distribution -->
+            <h3 style="margin-top: 20px; margin-bottom: 15px;">Verdict Distribution</h3>
             <div class="chart-container">
                 <div class="bar-chart">
                     {verdict_chart_html}
                 </div>
             </div>
             
-            <!-- Top Marcas -->
+            <!-- Top Brands -->
             {vendor_chart_html}
         </div>
         
         <div class="section-divider"></div>
         
-        <!-- Tabla de Reportes -->
-        <h2>Tabla de Resultados</h2>
+        <!-- Results Table -->
+        <h2>Results Table</h2>
         <table class="reports-table">
             <thead>
                 <tr>
-                    <th>Marca</th>
-                    <th>Modelo</th>
-                    <th>Veredicto</th>
-                    <th>Paquetes</th>
-                    <th>Tiempo 2.4 GHz</th>
-                    <th>Tiempo 5 GHz</th>
-                    <th>Tiempo Transición</th>
-                    <th>Fecha</th>
+                    <th>Brand</th>
+                    <th>Model</th>
+                    <th>Verdict</th>
+                    <th>Packets</th>
+                    <th>2.4 GHz Time</th>
+                    <th>5 GHz Time</th>
+                    <th>Transition Time</th>
+                    <th>Date</th>
                 </tr>
             </thead>
             <tbody>
@@ -2032,23 +2033,23 @@ def _generate_summary_pdf_html(reports: List[Dict[str, Any]], ai_summary_text: s
         
         <div class="section-divider"></div>
         
-        <!-- Resumen Ejecutivo -->
-        <h2>Resumen Ejecutivo</h2>
+        <!-- Executive Summary -->
+        <h2>Executive Summary</h2>
         <div class="analysis-content">
             {format_analysis(ai_summary_text) if ai_summary_text else f'''
             <p style="margin-bottom: 8px; font-size: 8pt; line-height: 1.6; text-align: justify;">
-                Este resumen consolida {total_reports} análisis de Band Steering realizados mediante capturas Wireshark/tshark.
-                De estos, {success_count} reportes ({success_rate:.1f}%) fueron exitosos, mientras que {failed_count} reportes requieren atención.
+                This summary consolidates {total_reports} Band Steering analyses performed using Wireshark/tshark captures.
+                Of these, {success_count} reports ({success_rate:.1f}%) were successful, while {failed_count} reports require attention.
             </p>
             <p style="margin-bottom: 8px; font-size: 8pt; line-height: 1.6; text-align: justify;">
-                La marca más analizada es <strong>{top_vendors[0][0] if top_vendors else 'N/A'}</strong> con {top_vendors[0][1] if top_vendors else 0} reportes.
-                En total se analizaron {total_packets:,} paquetes de red, con un promedio de {avg_packets:.0f} paquetes por análisis.
+                The most analyzed brand is <strong>{top_vendors[0][0] if top_vendors else 'N/A'}</strong> with {top_vendors[0][1] if top_vendors else 0} reports.
+                In total, {total_packets:,} network packets were analyzed, with an average of {avg_packets:.0f} packets per analysis.
             </p>
             '''}
         </div>
         
         <div class="footer">
-            Generado por Pipe - Análisis inteligente de capturas Wireshark
+            Generated by Pipe - Intelligent Wireshark capture analysis
         </div>
     </body>
     </html>
@@ -2057,45 +2058,45 @@ def _generate_summary_pdf_html(reports: List[Dict[str, Any]], ai_summary_text: s
 
 async def generate_ai_report(reports: List[Dict[str, Any]]) -> str:
     """
-    Genera un reporte profesional en HTML usando IA basado en los reportes proporcionados.
+    Generates a professional report in HTML using AI based on the provided reports.
     
-    Esta función utiliza el LLMClient del proyecto para generar un reporte consolidado
-    que incluye análisis agregado, estadísticas y conclusiones sobre múltiples reportes
-    de análisis de Band Steering.
+    This function uses the project's LLMClient to generate a consolidated report
+    that includes aggregate analysis, statistics, and conclusions on multiple
+    Band Steering analysis reports.
     
     Args:
-        reports: Lista de diccionarios con los datos de los reportes. Cada diccionario
-                 debe contener: id, filename, timestamp, vendor, model, verdict, 
+        reports: List of dictionaries with report data. Each dictionary
+                 must contain: id, filename, timestamp, vendor, model, verdict, 
                  analysis_text, total_packets.
         
     Returns:
-        HTML completo con el reporte generado por IA, listo para descargar.
+        Full HTML with the AI-generated report, ready for download.
         
     Raises:
-        HTTPException: Si ocurre un error al generar el reporte con IA.
+        HTTPException: If an error occurs during AI report generation.
     """
     
     if not reports:
-        raise HTTPException(status_code=400, detail="No se proporcionaron reportes para generar el resumen")
+        raise HTTPException(status_code=400, detail="No reports provided to generate the summary")
     
-    # Construir el prompt con todos los datos de los reportes
+    # Build the prompt with all reports data
     reports_data = []
     for i, report in enumerate(reports, 1):
         reports_data.append(f"""
-REPORTE {i}:
+REPORT {i}:
 - ID: {report.get('id', 'N/A')}
-- Archivo: {report.get('filename', 'N/A')}
-- Fecha: {report.get('timestamp', 'N/A')}
-- Marca: {report.get('vendor', 'Unknown')}
-- Modelo: {report.get('model', 'Unknown')}
-- Veredicto: {report.get('verdict', 'UNKNOWN')}
-- Total Paquetes: {report.get('total_packets', 0)}
-- Análisis: {report.get('analysis_text', 'No disponible')}
+- File: {report.get('filename', 'N/A')}
+- Date: {report.get('timestamp', 'N/A')}
+- Brand: {report.get('vendor', 'Unknown')}
+- Model: {report.get('model', 'Unknown')}
+- Verdict: {report.get('verdict', 'UNKNOWN')}
+- Total Packets: {report.get('total_packets', 0)}
+- Analysis: {report.get('analysis_text', 'Not available')}
 """)
     
     reports_text = "\n".join(reports_data)
     
-    # Calcular estadísticas agregadas
+    # Calculate aggregate statistics
     total_reports = len(reports)
     verdicts = [r.get('verdict', 'UNKNOWN') for r in reports]
     success_count = sum(1 for v in verdicts if v in ['SUCCESS', 'EXCELLENT', 'GOOD'])
@@ -2108,103 +2109,103 @@ REPORTE {i}:
     
     total_packets = sum(r.get('total_packets', 0) for r in reports)
     
-    # Obtener fecha y hora actual en zona horaria de Colombia
+    # Get current date and time in Colombia timezone
     colombia_tz = pytz.timezone('America/Bogota')
     current_time_colombia = datetime.now(colombia_tz)
-    formatted_date_time = current_time_colombia.strftime('%d/%m/%Y a las %I:%M %p')
+    formatted_date_time = current_time_colombia.strftime('%m/%d/%Y at %I:%M %p')
     
-    # Generar solo el texto de resumen ejecutivo con IA (no el HTML completo)
-    prompt = f"""Genera un resumen ejecutivo profesional en formato Markdown sobre los siguientes análisis de Band Steering.
+    # Generate executive summary text with AI only (not full HTML)
+    prompt = f"""Generate a professional executive summary in Markdown format about the following Band Steering analyses.
 
-DATOS DE LOS REPORTES:
+REPORTS DATA:
 
 {reports_text}
 
-ESTADÍSTICAS AGREGADAS:
-- Total de reportes analizados: {total_reports}
-- Reportes exitosos: {success_count} ({success_rate:.1f}%)
-- Reportes fallidos: {failed_count}
-- Marca más común: {top_vendor}
-- Total de paquetes analizados: {total_packets:,}
+AGGREGATE STATISTICS:
+- Total reports analyzed: {total_reports}
+- Successful reports: {success_count} ({success_rate:.1f}%)
+- Failed reports: {failed_count}
+- Most common brand: {top_vendor}
+- Total packets analyzed: {total_packets:,}
 
-INSTRUCCIONES:
+INSTRUCTIONS:
 
-Genera un resumen ejecutivo en formato Markdown que incluya:
+Generate an executive summary in Markdown format that includes:
 
-1. **Vista General**: Resumen consolidado de todos los reportes
-2. **Hallazgos Principales**: Patrones detectados y observaciones clave
-3. **Estado del Sistema**: Evaluación general del rendimiento de Band Steering
-4. **Recomendaciones**: Sugerencias específicas basadas en los hallazgos
-5. **Conclusiones**: Evaluación final y próximos pasos sugeridos
+1. **Overview**: Consolidated summary of all reports
+2. **Main Findings**: Detected patterns and key observations
+3. **System Status**: General evaluation of Band Steering performance
+4. **Recommendations**: Specific suggestions based on findings
+5. **Conclusions**: Final evaluation and suggested next steps
 
-FORMATO:
-- Usa Markdown con títulos (#, ##, ###)
-- Usa listas con viñetas (-) o numeradas (1., 2., 3.)
-- Usa **negritas** para énfasis
-- Mantén el texto claro, conciso y profesional
-- No inventes información que no esté en los datos proporcionados
-- El resumen debe tener entre 300-500 palabras
+FORMAT:
+- Use Markdown with titles (#, ##, ###)
+- Use bullet lists (-) or numbered lists (1., 2., 3.)
+- Use **bold** for emphasis
+- Keep text clear, concise, and professional
+- Do not invent information not in the provided data
+- Summary should be between 300-500 words
 """
     
     try:
-        # Generar solo el texto de resumen (no HTML completo)
+        # Generate summary text only (not full HTML)
         max_tokens = min(2000 + len(reports) * 200, 4000)
         ai_summary_text = await llm_client.agenerate(prompt, max_tokens=max_tokens)
         
         if not ai_summary_text or len(ai_summary_text.strip()) == 0:
-            ai_summary_text = ""  # Usar resumen por defecto si falla
+            ai_summary_text = ""  # Use default summary if fails
         
-        # Generar HTML completo con estructura y estilos profesionales
+        # Generate full HTML with professional structure and styles
         html_content = _generate_summary_pdf_html(reports, ai_summary_text)
         
         if not html_content or len(html_content.strip()) == 0:
             raise HTTPException(
                 status_code=500,
-                detail="Error al generar el HTML del reporte"
+                detail="Error generating report HTML"
             )
         
         return html_content
         
     except HTTPException:
-        # Re-lanzar HTTPException sin modificar
+        # Re-throw HTTPException
         raise
     except RuntimeError as e:
-        # El LLMClient lanza RuntimeError cuando hay problemas con la API
+        # LLMClient throws RuntimeError on API issues
         raise HTTPException(
             status_code=500,
-            detail=f"Error al comunicarse con el servicio de IA: {str(e)}"
+            detail=f"Error communicating with AI service: {str(e)}"
         )
     except Exception as e:
-        # Capturar cualquier otro error inesperado
+        # Catch any other unexpected error
         raise HTTPException(
             status_code=500,
-            detail=f"Error inesperado al generar reporte con IA: {str(e)}"
+            detail=f"Unexpected error generating AI report: {str(e)}"
         )
 
 @router.get("/export")
 async def export_reports(
-    ids: Optional[str] = Query(None, description="IDs de reportes separados por comas"),
-    format: str = Query("html", description="Formato de exportación: html o summary (ambos generan reporte con IA)")
+    ids: Optional[str] = Query(None, description="Comma-separated report IDs"),
+    format: str = Query("html", description="Export format: html or summary (both generate AI report)")
 ):
     """
-    Exporta reportes en formato HTML generado con IA.
+    Exports reports in AI-generated HTML format.
     """
     base_dir = service.base_dir
     reports_to_export = []
     
     try:
         if not base_dir.exists():
-            raise HTTPException(status_code=404, detail="No se encontraron reportes")
+            raise HTTPException(status_code=404, detail="No reports found")
         
-        # Si se proporcionan IDs, exportar solo esos
+        # If IDs provided, export only those
         target_ids = None
         if ids and ids.strip():
-            # Limpiar y dividir IDs
+            # Clean and split IDs
             id_list = [id.strip() for id in ids.split(",") if id.strip()]
             if id_list:
                 target_ids = set(id_list)
         
-        # Recopilar reportes
+        # Collect reports
         for vendor_dir in base_dir.iterdir():
             if not vendor_dir.is_dir():
                 continue
@@ -2219,7 +2220,7 @@ async def export_reports(
                             data = json.load(f)
                             analysis_id = data.get("analysis_id")
                             
-                            # Filtrar por IDs si se especificaron
+                            # Filter by IDs if specified
                             if target_ids and analysis_id not in target_ids:
                                 continue
                             
@@ -2228,24 +2229,24 @@ async def export_reports(
                                 continue
                             
                             device = devices[0]
-                            # Obtener datos completos para calcular tiempos por banda
-                            # Los datos pueden estar en diferentes estructuras según la versión del análisis
+                            # Get full data to calculate band times
+                            # Data may be in different structures based on analysis version
                             transitions = []
                             signal_samples = []
                             
-                            # Intentar obtener desde la estructura band_steering (nueva estructura)
+                            # Try from band_steering structure (new structure)
                             band_steering = data.get("band_steering", {})
                             if isinstance(band_steering, dict):
                                 transitions = band_steering.get("transitions", [])
                                 signal_samples = band_steering.get("signal_samples", [])
                             
-                            # Fallback: intentar desde el nivel raíz (estructura antigua)
+                            # Fallback: try from root level (old structure)
                             if not transitions:
                                 transitions = data.get("transitions", [])
                             if not signal_samples:
                                 signal_samples = data.get("signal_samples", [])
                             
-                            # Calcular tiempos por banda
+                            # Calculate band times
                             time_2_4ghz, time_5ghz, transition_times_list = _calculate_band_times(
                                 transitions, signal_samples
                             )
@@ -2267,10 +2268,10 @@ async def export_reports(
                         pass
         
         if not reports_to_export:
-            raise HTTPException(status_code=404, detail="No se encontraron reportes para exportar")
+            raise HTTPException(status_code=404, detail="No reports found to export")
         
         
-        # Generar reporte con IA (format=html o format=summary)
+        # Generate AI report (format=html or format=summary)
         if format.lower() in ["html", "summary"]:
             html_content = await generate_ai_report(reports_to_export)
             html_bytes = html_content.encode('utf-8')
@@ -2285,34 +2286,34 @@ async def export_reports(
                 }
             )
         else:
-            # Formato no soportado
+            # Unsupported format
             raise HTTPException(
                 status_code=400, 
-                detail=f"Formato '{format}' no soportado. Use 'html' o 'summary'."
+                detail=f"Format '{format}' not supported. Use 'html' or 'summary'."
             )
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al exportar reportes: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error exporting reports: {str(e)}")
 
 @router.get("/{analysis_id}")
 async def get_report(analysis_id: str):
     """
-    Obtiene el detalle de un reporte específico por su ID.
+    Gets detail for a specific report by ID.
     """
     base_dir = service.base_dir
     
     try:
-        # Buscar el archivo en la estructura de carpetas
+        # Search for file in folder structure
         for analysis_file in base_dir.glob(f"**/{analysis_id}.json"):
             with open(analysis_file, "r", encoding="utf-8") as f:
                 return json.load(f)
                 
-        raise HTTPException(status_code=404, detail="Reporte no encontrado")
+        raise HTTPException(status_code=404, detail="Report not found")
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Esta función ya está definida arriba (línea 400), eliminando duplicado
+# This function is already defined above, removing duplicate

@@ -222,7 +222,7 @@ export default function ObservabilityPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Trazas recientes con Scroll */}
-          <div className="lg:col-span-2 bg-dark-bg-secondary/30 rounded-xl border border-dark-border-primary/50 flex flex-col h-[500px]">
+          <div className="lg:col-span-2 bg-dark-bg-secondary/30 rounded-xl border border-dark-border-primary/50 flex flex-col h-[520px]">
             <div className="p-6 border-b border-dark-border-primary/50 shrink-0">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-dark-text-primary flex items-center gap-2">

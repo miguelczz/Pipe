@@ -1,7 +1,7 @@
 """
-Endpoints para análisis de capturas de red (Wireshark / PCAP) asistido por IA.
-Expone el flujo orquestado por BandSteeringService sin responsabilidades
-de logging o de negocio adicionales.
+Endpoints for network capture analysis (Wireshark / PCAP) assisted by AI.
+Exposes the flow orchestrated by BandSteeringService without additional
+logging or business responsibilities.
 """
 
 import asyncio
@@ -18,10 +18,10 @@ from ..services.band_steering_service import BandSteeringService
 
 router = APIRouter(prefix="/network-analysis", tags=["network-analysis"])
 
-# Instanciar el servicio orquestador
+# Instantiate orchestrator service
 band_steering_service = BandSteeringService()
 
-# Thread pool executor para operaciones pesadas de tshark
+# Thread pool executor for heavy tshark operations
 _executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="wireshark_analysis")
 
 
@@ -31,19 +31,19 @@ async def analyze_network_capture(
     user_metadata: str | None = Form(None),
 ):
     """
-    Sube un archivo de captura y realiza el proceso completo de Band Steering.
+    Uploads a capture file and performs the full Band Steering process.
     """
     if not file.filename:
-        raise HTTPException(status_code=400, detail="Debe proporcionar un archivo de captura.")
+        raise HTTPException(status_code=400, detail="A capture file must be provided.")
 
     filename_lower = file.filename.lower()
     if not (filename_lower.endswith(".pcap") or filename_lower.endswith(".pcapng")):
         raise HTTPException(
             status_code=400,
-            detail="Solo se aceptan archivos de captura .pcap o .pcapng.",
+            detail="Only .pcap or .pcapng capture files are accepted.",
         )
 
-    # Directorio temporal para la subida
+    # Temporary directory for upload
     base_dir = Path(__file__).resolve().parents[2]
     uploads_dir = base_dir / "databases" / "uploads"
     uploads_dir.mkdir(parents=True, exist_ok=True)
@@ -56,7 +56,7 @@ async def analyze_network_capture(
         temp_path.write_bytes(content)
 
 
-        # Parsear metadata opcional del usuario (SSID, MAC cliente, etc.)
+        # Parse optional user metadata (SSID, client MAC, etc.)
         metadata_dict = None
         if user_metadata:
             try:
@@ -64,8 +64,8 @@ async def analyze_network_capture(
             except json.JSONDecodeError:
                 metadata_dict = None
 
-        # Ejecutar el servicio en un thread separado (tshark es bloqueante)
-        # Asegurar que temp_path sea absoluto antes de pasarlo al servicio
+        # Execute the service in a separate thread (tshark is blocking)
+        # Ensure temp_path is absolute before passing it to the service
         temp_path_abs = temp_path.resolve()
         loop = asyncio.get_event_loop()
         result_pkg = await loop.run_in_executor(
@@ -78,31 +78,31 @@ async def analyze_network_capture(
                 )
             )
         )
-        # CRÍTICO: El archivo temporal debe existir cuando se guarda el análisis
-        # Asegurar que el path sea absoluto y que el archivo exista
+        # CRITICAL: The temporary file must exist when the analysis is saved
+        # Ensure the path is absolute and the file exists
         if not temp_path_abs.exists():
             raise HTTPException(
                 status_code=500,
-                detail="El archivo temporal se perdió durante el procesamiento",
+                detail="Temporary file was lost during processing",
             )
 
         analysis = result_pkg["analysis"]
         raw_stats = result_pkg["raw_stats"]
 
-        # Formatear respuesta para compatibilidad TOTAL con el frontend actual
+        # Format response for FULL compatibility with the current frontend
         try:
-            # Serializar todos los objetos Pydantic de forma segura
+            # Safely serialize all Pydantic objects
             response_data = {
                 "file_name": analysis.filename,
                 "analysis": analysis.analysis_text,
-                "stats": raw_stats,  # Mantenemos la estructura de stats para el dashboard
+                "stats": raw_stats,  # Keep stats structure for the dashboard
                 "band_steering": {
                     "analysis_id": analysis.analysis_id,
                     "verdict": analysis.verdict,
                     "device": analysis.devices[0].model_dump() if analysis.devices and len(analysis.devices) > 0 else {},
                     "compliance_checks": [c.model_dump(mode='json') for c in analysis.compliance_checks] if analysis.compliance_checks else [],
                     "fragments_count": len(analysis.fragments) if analysis.fragments else 0,
-                    # Agregar datos para la gráfica de Band Steering
+                    # Add data for Band Steering chart
                     "btm_events": [e.model_dump(mode='json') for e in analysis.btm_events] if analysis.btm_events else [],
                     "transitions": [t.model_dump(mode='json') for t in analysis.transitions] if analysis.transitions else [],
                     "signal_samples": [s.model_dump(mode='json') for s in analysis.signal_samples] if analysis.signal_samples else []
@@ -110,41 +110,41 @@ async def analyze_network_capture(
             }
             return JSONResponse(content=response_data)
         except Exception as serialization_error:
-            # Intentar respuesta mínima
+            # Try minimal response
             try:
                 minimal_response = {
                     "file_name": analysis.filename if hasattr(analysis, 'filename') else "unknown",
-                    "analysis": analysis.analysis_text if hasattr(analysis, 'analysis_text') else "Error al generar análisis",
+                    "analysis": analysis.analysis_text if hasattr(analysis, 'analysis_text') else "Error generating analysis",
                     "stats": raw_stats,
                     "band_steering": {
                         "analysis_id": str(analysis.analysis_id) if hasattr(analysis, 'analysis_id') else "unknown",
                         "verdict": str(analysis.verdict) if hasattr(analysis, 'verdict') else "UNKNOWN",
-                        "error": f"Error de serialización: {str(serialization_error)}"
+                        "error": f"Serialization error: {str(serialization_error)}"
                     }
                 }
                 return JSONResponse(content=minimal_response)
             except Exception:
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Error crítico al serializar respuesta: {str(serialization_error)}"
+                    detail=f"Critical error serializing response: {str(serialization_error)}"
                 )
     except RuntimeError as e:
-        # Errores típicos de pyshark/tshark no instalado
+        # Typical errors from pyshark/tshark not installed
         raise HTTPException(
             status_code=500,
             detail=(
-                "No se pudo analizar la captura porque pyshark/tshark no están disponibles "
-                "en el servidor. Contacta al administrador para instalar estas dependencias."
+                "Capture could not be analyzed because pyshark/tshark are not available "
+                "on the server. Contact administrator to install these dependencies."
             ),
         )
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error al analizar la captura de red: {str(e)}",
+            detail=f"Error analyzing network capture: {str(e)}",
         )
     finally:
-        # NO eliminar el archivo - se guardará para descarga posterior
-        # El archivo se moverá a la carpeta del análisis en band_steering_service
+        # DO NOT delete the file - it will be saved for later download
+        # The file will be moved to the analysis folder in band_steering_service
         pass
 
 

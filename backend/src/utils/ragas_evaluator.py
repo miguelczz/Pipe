@@ -1,14 +1,14 @@
 """
-Evaluador RAGAS para medir la calidad de las respuestas del agente.
-Captura datos durante la ejecución y calcula métricas de evaluación,
-sin acoplarse a ningún mecanismo de logging específico.
+RAGAS evaluator to measure the quality of agent responses.
+Captures data during execution and calculates evaluation metrics,
+without being coupled to any specific logging mechanism.
 """
 import os
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 
-# Import opcional de ragas - si no está disponible, el evaluador funcionará en modo degradado
+# Optional ragas import - if not available, evaluator will work in degraded mode
 try:
     from ragas import evaluate
     from ragas.metrics import (
@@ -22,14 +22,14 @@ try:
         from langchain_openai import ChatOpenAI
         LANGCHAIN_OPENAI_AVAILABLE = True
     except ImportError:
-        # Fallback: intentar importar desde langchain.llms o langchain.chat_models
+        # Fallback: try to import from langchain.llms or langchain.chat_models
         try:
             from langchain.chat_models import ChatOpenAI
             LANGCHAIN_OPENAI_AVAILABLE = True
         except ImportError:
             LANGCHAIN_OPENAI_AVAILABLE = False
             ChatOpenAI = None
-    # Intentar importar LangchainLLMWrapper de RAGAS para envolver el LLM
+    # Try to import LangchainLLMWrapper from RAGAS to wrap the LLM
     try:
         from ragas.llms import LangchainLLMWrapper
         RAGAS_LLM_WRAPPER_AVAILABLE = True
@@ -51,7 +51,7 @@ except ImportError as e:
 
 @dataclass
 class EvaluationData:
-    """Estructura de datos para una evaluación individual"""
+    """Data structure for an individual evaluation"""
     question: str
     answer: str
     contexts: List[str] = field(default_factory=list)
@@ -62,16 +62,16 @@ class EvaluationData:
 
 class RAGASEvaluator:
     """
-    Evaluador que captura datos durante la ejecución del agente
-    y calcula métricas RAGAS para evaluar la calidad de las respuestas.
+    Evaluator that captures data during agent execution
+    and calculates RAGAS metrics to evaluate response quality.
     """
     
     def __init__(self, enabled: bool = True):
         """
-        Inicializa el evaluador.
+        Initializes the evaluator.
         
         Args:
-            enabled: Si está deshabilitado, no captura datos ni calcula métricas
+            enabled: If disabled, it doesn't capture data or calculate metrics
         """
         self.enabled = enabled and RAGAS_AVAILABLE
         self.evaluation_data: List[EvaluationData] = []
@@ -86,14 +86,14 @@ class RAGASEvaluator:
         metadata: Optional[Dict[str, Any]] = None
     ):
         """
-        Captura datos de una evaluación individual.
+        Captures data from an individual evaluation.
         
         Args:
-            question: Pregunta del usuario
-            answer: Respuesta generada por el agente
-            contexts: Contextos utilizados para generar la respuesta
-            ground_truth: Respuesta esperada (opcional, para evaluación)
-            metadata: Metadatos adicionales (herramienta usada, tiempo, etc.)
+            question: User question
+            answer: Agent generated answer
+            contexts: Contexts used to generate the answer
+            ground_truth: Expected answer (optional, for evaluation)
+            metadata: Additional metadata (tool used, time, etc.)
         """
         if not self.enabled:
             return
@@ -108,10 +108,10 @@ class RAGASEvaluator:
         
         self.evaluation_data.append(eval_data)
         
-        # OPTIMIZACIÓN: Limitar el tamaño de evaluation_data para evitar problemas de memoria
-        MAX_EVALUATION_DATA = 50  # Mantener solo las últimas 50 evaluaciones
+        # OPTIMIZATION: Limit the size of evaluation_data to avoid memory issues
+        MAX_EVALUATION_DATA = 50  # Keep only the last 50 evaluations
         if len(self.evaluation_data) > MAX_EVALUATION_DATA:
-            # Eliminar las evaluaciones más antiguas
+            # Remove oldest evaluations
             self.evaluation_data = self.evaluation_data[-MAX_EVALUATION_DATA:]
     
     def evaluate_batch(
@@ -122,168 +122,168 @@ class RAGASEvaluator:
         ground_truths: Optional[List[str]] = None
     ) -> Dict[str, float]:
         """
-        Evalúa un lote de preguntas y respuestas usando métricas RAGAS.
+        Evaluates a batch of questions and answers using RAGAS metrics.
         
         Args:
-            questions: Lista de preguntas
-            answers: Lista de respuestas generadas
-            contexts: Lista de listas de contextos usados para cada respuesta
-            ground_truths: Lista opcional de respuestas esperadas
+            questions: List of questions
+            answers: List of generated answers
+            contexts: List of context lists used for each response
+            ground_truths: Optional list of expected answers
         
         Returns:
-            Diccionario con las métricas calculadas
+            Dictionary with calculated metrics
         """
         if not self.enabled or not RAGAS_AVAILABLE:
             return {}
         
         if len(questions) != len(answers) or len(questions) != len(contexts):
-            raise ValueError("Las listas de questions, answers y contexts deben tener la misma longitud")
+            raise ValueError("The lists of questions, answers and contexts must have the same length")
         
         try:
-            # Configurar API key de OpenAI para RAGAS
-            # RAGAS internamente crea un cliente OpenAI, así que necesitamos
-            # asegurarnos de que la variable de entorno esté configurada
+            # Configure OpenAI API key for RAGAS
+            # RAGAS internally creates an OpenAI client, so we need to
+            # ensure the environment variable is configured
             from ..settings import settings
             
-            # Guardar el valor actual si existe
+            # Save the current value if it exists
             original_api_key = os.environ.get("OPENAI_API_KEY")
             
-            # Configurar la API key desde settings
+            # Configure the API key from settings
             if settings.openai_api_key:
                 os.environ["OPENAI_API_KEY"] = settings.openai_api_key
             
-            # Preparar dataset para Ragas
+            # Prepare dataset for Ragas
             data_dict = {
                 "question": questions,
                 "answer": answers,
                 "contexts": contexts
             }
             
-            # Agregar ground_truth si está disponible
+            # Add ground_truth if available
             if ground_truths:
                 if len(ground_truths) != len(questions):
-                    raise ValueError("ground_truths debe tener la misma longitud que questions")
+                    raise ValueError("ground_truths must have the same length as questions")
                 data_dict["ground_truth"] = ground_truths
             
             dataset = Dataset.from_dict(data_dict)
             
-            # Configurar LLM de LangChain para RAGAS en lugar de InstructorLLM por defecto
-            # Esto resuelve el problema de compatibilidad con agenerate_prompt
+            # Configure LangChain LLM for RAGAS instead of the default InstructorLLM
+            # This resolves the compatibility issue with agenerate_prompt
             ragas_llm = None
             if RAGAS_AVAILABLE and LANGCHAIN_OPENAI_AVAILABLE and ChatOpenAI is not None:
                 try:
                     from ..settings import settings
-                    # Crear el LLM de LangChain
+                    # Create the LangChain LLM
                     langchain_llm = ChatOpenAI(
                         model=settings.llm_model,
                         api_key=settings.openai_api_key,
                         temperature=0
                     )
-                    # Envolver el LLM con LangchainLLMWrapper si está disponible
+                    # Wrap the LLM with LangchainLLMWrapper if available
                     if RAGAS_LLM_WRAPPER_AVAILABLE and LangchainLLMWrapper is not None:
                         ragas_llm = LangchainLLMWrapper(langchain_llm)
                     else:
-                        # Si no hay wrapper, usar el LLM directamente (puede funcionar en algunas versiones)
+                        # If no wrapper, use the LLM directly (may work in some versions)
                         ragas_llm = langchain_llm
                 except Exception as llm_error:
                     ragas_llm = None
             
-            # Definir métricas a calcular
-            # Las métricas de RAGAS son objetos/clases, no funciones
-            # El LLM se configura a nivel de evaluate() o mediante configuración global
+            # Define metrics to calculate
+            # RAGAS metrics are objects/classes, not functions
+            # The LLM is configured at the evaluate() level or via global configuration
             metrics = [
-                faithfulness,      # Mide si la respuesta es fiel al contexto
-                answer_relevancy  # Mide si la respuesta es relevante para la pregunta
+                faithfulness,      # Measures if the answer is faithful to the context
+                answer_relevancy  # Measures if the answer is relevant to the question
             ]
             
-            # Métricas que SÍ requieren ground truth (reference):
-            # context_precision y context_recall requieren la columna 'reference'
+            # Metrics that DO require ground truth (reference):
+            # context_precision and context_recall require the 'reference' column
             if ground_truths:
-                # Agregar métricas que requieren ground truth
-                metrics.append(context_precision)  # Requiere 'reference'
-                metrics.append(context_recall)     # Requiere 'reference'
+                # Add metrics that require ground truth
+                metrics.append(context_precision)  # Requires 'reference'
+                metrics.append(context_recall)     # Requires 'reference'
             
-            # Calcular métricas de forma asíncrona para evitar BlockingError
+            # Calculate metrics asynchronously to avoid BlockingError
             result = None
             eval_error_occurred = False
             try:
-                # Configurar el LLM para RAGAS
-                # En algunas versiones de RAGAS, el LLM se puede pasar a evaluate()
-                # o configurar mediante variables de entorno
+                # Configure the LLM for RAGAS
+                # In some versions of RAGAS, the LLM can be passed to evaluate()
+                # or configured via environment variables
                 evaluate_kwargs = {
                     "dataset": dataset,
                     "metrics": metrics
                 }
                 
-                # Si tenemos un LLM configurado, intentar pasarlo a evaluate()
-                # RAGAS puede aceptar el LLM de diferentes formas según la versión
+                # If we have a configured LLM, try passing it to evaluate()
+                # RAGAS may accept the LLM in different ways depending on the version
                 if ragas_llm:
-                    # Intentar diferentes formas de pasar el LLM según la versión de RAGAS
-                    # Algunas versiones aceptan 'llm', otras 'generator_llm', otras lo configuran globalmente
+                    # Try different ways of passing the LLM according to the RAGAS version
+                    # Some versions accept 'llm', others 'generator_llm', others configure it globally
                     try:
-                        # Método 1: Intentar pasar como 'llm'
+                        # Method 1: Try passing as 'llm'
                         evaluate_kwargs["llm"] = ragas_llm
                     except (TypeError, KeyError):
                         try:
-                            # Método 2: Intentar pasar como 'generator_llm'
+                            # Method 2: Try passing as 'generator_llm'
                             evaluate_kwargs["generator_llm"] = ragas_llm
                         except (TypeError, KeyError):
-                            # Método 3: Configurar globalmente (si RAGAS lo soporta)
+                            # Method 3: Configure globally (if RAGAS supports it)
                             pass
                 
-                # Ejecutar RAGAS directamente
-                # Nota: Si hay BlockingError, se puede ejecutar con --allow-blocking o BG_JOB_ISOLATED_LOOPS=true
+                # Execute RAGAS directly
+                # Note: If there is a BlockingError, it can be executed with --allow-blocking or BG_JOB_ISOLATED_LOOPS=true
                 result = evaluate(**evaluate_kwargs)
             except Exception as eval_error:
-                # Capturar errores durante la evaluación (pueden ser errores internos de RAGAS)
+                # Capture errors during evaluation (may be internal RAGAS errors)
                 error_msg = str(eval_error)
                 eval_error_occurred = True
                 if "agenerate_prompt" in error_msg or "InstructorLLM" in error_msg:
-                    # Error de compatibilidad en RAGAS (posible problema de versión)
-                    # Aunque hay error, RAGAS a veces retorna un resultado parcial
-                    # Intentar continuar para ver si hay algo útil
+                    # Compatibility error in RAGAS (possible version issue)
+                    # Even with error, RAGAS sometimes returns a partial result
+                    # Try specifying to see if there is anything useful
                     pass
                 else:
-                    # Re-lanzar otros errores
+                    # Re-throw other errors
                     raise
             
-            # Si no hay resultado y hubo error, retornar vacío
+            # If no result and there was an error, return empty
             if result is None and eval_error_occurred:
                 return {}
             
-            # Convertir resultado a diccionario
-            # RAGAS puede retornar diferentes tipos de resultados
+            # Convert result to dictionary
+            # RAGAS can return different result types
             metrics_dict = {}
             
             try:
-                # Log del tipo de resultado para debugging
+                # Log the result type for debugging
                 
-                # Intentar acceder como diccionario/objeto Dataset
+                # Try to access as dictionary/Dataset object
                 if hasattr(result, 'to_pandas') and pd is not None:
-                    # Si es un Dataset, convertir a pandas y luego a dict
+                    # If it's a Dataset, convert to pandas and then to dict
                     df = result.to_pandas()
                     
-                    # Columnas que NO son métricas (datos de entrada)
+                    # Columns that are NOT metrics (input data)
                     non_metric_columns = ['question', 'answer', 'contexts', 'ground_truth', 'reference']
-                    # Obtener la media de cada columna de métricas (solo numéricas)
+                    # Get the mean of each metric column (numeric only)
                     for col in df.columns:
                         if col not in non_metric_columns:
                             try:
-                                # Intentar convertir a numérico y calcular media
+                                # Try to convert to numeric and calculate mean
                                 numeric_col = pd.to_numeric(df[col], errors='coerce')
-                                if not numeric_col.isna().all():  # Si hay al menos un valor numérico
+                                if not numeric_col.isna().all():  # If there is at least one numeric value
                                     mean_value = numeric_col.mean()
                                     if pd.notna(mean_value):
                                         metrics_dict[col] = float(mean_value)
                             except (ValueError, TypeError) as e:
-                                # Si no se puede convertir a numérico, ignorar esta columna
+                                # If it cannot be converted to numeric, ignore this column
                                 continue
                     
-                    # Si no encontramos métricas, intentar buscar columnas que contengan nombres de métricas conocidas
+                    # If no metrics found, try searching for columns containing known metric names
                     if not metrics_dict:
                         known_metrics = ['faithfulness', 'answer_relevancy', 'context_precision', 'context_recall']
                         for metric_name in known_metrics:
-                            # Buscar columnas que contengan el nombre de la métrica
+                            # Search for columns containing the metric name
                             matching_cols = [col for col in df.columns if metric_name.lower() in col.lower()]
                             for col in matching_cols:
                                 try:
@@ -295,9 +295,9 @@ class RAGASEvaluator:
                                 except Exception:
                                     continue
                 elif hasattr(result, '__iter__') and not isinstance(result, (str, bytes)):
-                    # Intentar iterar sobre las claves
+                    # Try to iterate over keys
                     try:
-                        # Si tiene método keys() o es un dict-like
+                        # If it has keys() method or is dict-like
                         if hasattr(result, 'keys'):
                             for metric_name in result.keys():
                                 value = result[metric_name]
@@ -306,7 +306,7 @@ class RAGASEvaluator:
                                 elif hasattr(value, 'mean'):
                                     metrics_dict[metric_name] = float(value.mean())
                                 elif hasattr(value, '__iter__') and not isinstance(value, (str, bytes)):
-                                    # Si es una lista/serie, calcular media
+                                    # If it's a list/series, calculate mean
                                     try:
                                         if np is not None:
                                             metrics_dict[metric_name] = float(np.mean(value))
@@ -315,7 +315,7 @@ class RAGASEvaluator:
                                     except Exception:
                                         metrics_dict[metric_name] = float(sum(value) / len(value)) if value else 0.0
                         else:
-                            # Intentar acceder directamente a las métricas conocidas
+                            # Try to access known metrics directly
                             for metric in metrics:
                                 metric_name = getattr(metric, '__name__', str(metric))
                                 if hasattr(result, metric_name):
@@ -325,25 +325,25 @@ class RAGASEvaluator:
                                     elif hasattr(value, 'mean'):
                                         metrics_dict[metric_name] = float(value.mean())
                     except Exception as e:
-                        # Si todo falla, intentar convertir a dict directamente
+                        # If all fails, try converting to dict directly
                         if hasattr(result, '__dict__'):
                             metrics_dict = {k: float(v) if isinstance(v, (int, float)) else 0.0 
                                           for k, v in result.__dict__.items() 
                                           if isinstance(v, (int, float))}
                 else:
-                    # Si no es iterable ni tiene to_pandas, intentar convertir a dict directamente
+                    # If not iterable and doesn't have to_pandas, try converting to dict directly
                     if hasattr(result, '__dict__'):
                         metrics_dict = {k: float(v) if isinstance(v, (int, float)) else 0.0 
                                       for k, v in result.__dict__.items() 
                                       if isinstance(v, (int, float))}
             except Exception as e:
-                # Si hay errores pero el resultado tiene algún valor, intentar extraerlo
+                # If there are errors but the result has some value, try to extract it
                 if hasattr(result, '__dict__'):
                     metrics_dict = {k: float(v) if isinstance(v, (int, float)) else 0.0 
                                   for k, v in result.__dict__.items() 
                                   if isinstance(v, (int, float))}
             
-            # Guardar en historial solo si hay métricas
+            # Save to history only if there are metrics
             if metrics_dict:
                 self.metrics_history.append({
                     "timestamp": datetime.now().isoformat(),
@@ -351,7 +351,7 @@ class RAGASEvaluator:
                     "metrics": metrics_dict
                 })
             else:
-                # No hay métricas disponibles
+                # No metrics available
                 pass
             
             return metrics_dict
@@ -359,19 +359,19 @@ class RAGASEvaluator:
         except Exception as e:
             return {}
         finally:
-            # Restaurar el valor original de OPENAI_API_KEY si existía
+            # Restore the original value of OPENAI_API_KEY if it existed
             if original_api_key is not None:
                 os.environ["OPENAI_API_KEY"] = original_api_key
             elif "OPENAI_API_KEY" in os.environ and not settings.openai_api_key:
-                # Si no había valor original y settings no tiene key, eliminar la variable
+                # If there was no original value and settings has no key, delete the variable
                 del os.environ["OPENAI_API_KEY"]
     
     def evaluate_captured_data(self) -> Dict[str, float]:
         """
-        Evalúa todos los datos capturados previamente.
+        Evaluates all previously captured data.
         
         Returns:
-            Diccionario con las métricas calculadas
+            Dictionary with calculated metrics
         """
         if not self.evaluation_data:
             return {}
@@ -379,8 +379,8 @@ class RAGASEvaluator:
         questions = [d.question for d in self.evaluation_data]
         answers = [d.answer for d in self.evaluation_data]
         contexts = [d.contexts for d in self.evaluation_data]
-        # Solo incluir ground_truths si TODOS los datos tienen ground_truth
-        # Si algunos tienen y otros no, RAGAS no puede evaluar correctamente
+        # Only include ground_truths if ALL data has ground_truth
+        # If some have and others don't, RAGAS cannot evaluate correctly
         ground_truths_list = [d.ground_truth for d in self.evaluation_data]
         ground_truths = ground_truths_list if all(gt is not None and gt.strip() for gt in ground_truths_list) else None
         
@@ -390,15 +390,15 @@ class RAGASEvaluator:
         return self.evaluate_batch(questions, answers, contexts, ground_truths)
     
     def clear_data(self):
-        """Limpia todos los datos capturados"""
+        """Clears all captured data"""
         self.evaluation_data.clear()
     
     def get_summary(self) -> Dict[str, Any]:
         """
-        Obtiene un resumen de las evaluaciones realizadas.
+        Gets a summary of the evaluations performed.
         
         Returns:
-            Diccionario con estadísticas y métricas promedio
+            Dictionary with statistics and average metrics
         """
         summary = {
             "total_evaluations": len(self.evaluation_data),
@@ -407,7 +407,7 @@ class RAGASEvaluator:
         }
         
         if self.metrics_history:
-            # Calcular promedios de todas las métricas históricas
+            # Calculate averages of all historical metrics
             all_metrics = {}
             for run in self.metrics_history:
                 for metric_name, value in run.get("metrics", {}).items():
@@ -423,19 +423,19 @@ class RAGASEvaluator:
         return summary
 
 
-# Instancia global del evaluador (opcional, puede ser deshabilitado)
+# Global evaluator instance (optional, can be disabled)
 _global_evaluator: Optional[RAGASEvaluator] = None
 
 
 def get_evaluator(enabled: bool = True) -> RAGASEvaluator:
     """
-    Obtiene la instancia global del evaluador.
+    Gets the global evaluator instance.
     
     Args:
-        enabled: Si debe estar habilitado (solo afecta la primera creación)
+        enabled: Whether it should be enabled (only affects first creation)
     
     Returns:
-        Instancia del evaluador
+        Evaluator instance
     """
     global _global_evaluator
     if _global_evaluator is None:
@@ -444,7 +444,7 @@ def get_evaluator(enabled: bool = True) -> RAGASEvaluator:
 
 
 def reset_evaluator():
-    """Reinicia el evaluador global (útil para tests)"""
+    """Resets the global evaluator (useful for tests)"""
     global _global_evaluator
     _global_evaluator = None
 

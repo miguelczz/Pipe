@@ -1,5 +1,5 @@
 """
-Repositorio para gestión de sesiones en base de datos
+Repository for session management in database
 """
 import json
 import uuid
@@ -12,8 +12,8 @@ from datetime import datetime
 
 class SessionRepository:
     """
-    Repositorio para gestionar sesiones en la base de datos.
-    Permite persistir el estado de las sesiones del agente.
+    Repository for managing sessions in the database.
+    Allows persisting the state of agent sessions.
     """
     
     def create_session(
@@ -24,16 +24,16 @@ class SessionRepository:
         initial_state: Optional[AgentState] = None
     ) -> Session:
         """
-        Crea una nueva sesión en la base de datos.
+        Creates a new session in the database.
         
         Args:
-            db: Sesión de base de datos
-            session_id: ID único de la sesión
-            user_id: ID del usuario (opcional)
-            initial_state: Estado inicial del agente (opcional)
+            db: Database session
+            session_id: Unique session ID
+            user_id: User ID (optional)
+            initial_state: Initial agent state (optional)
         
         Returns:
-            Instancia de Session creada
+            Created Session instance
         """
         context_json = None
         variables_json = None
@@ -64,14 +64,14 @@ class SessionRepository:
         session_id: str
     ) -> Optional[Session]:
         """
-        Obtiene una sesión por su session_id.
+        Gets a session by its session_id.
         
         Args:
-            db: Sesión de base de datos
-            session_id: ID de la sesión
+            db: Database session
+            session_id: Session ID
         
         Returns:
-            Instancia de Session o None
+            Session instance or None
         """
         return db.query(Session).filter(
             Session.session_id == session_id
@@ -84,15 +84,15 @@ class SessionRepository:
         state: AgentState
     ) -> Optional[Session]:
         """
-        Actualiza el estado de una sesión.
+        Updates the state of a session.
         
         Args:
-            db: Sesión de base de datos
-            session_id: ID de la sesión
-            state: Nuevo estado del agente
+            db: Database session
+            session_id: Session ID
+            state: New agent state
         
         Returns:
-            Instancia de Session actualizada o None
+            Updated Session instance or None
         """
         session = self.get_session(db, session_id)
         if not session:
@@ -112,13 +112,13 @@ class SessionRepository:
     
     def session_to_agent_state(self, session: Session) -> AgentState:
         """
-        Convierte un modelo Session a AgentState.
+        Converts a Session model to AgentState.
         
         Args:
-            session: Instancia de Session
+            session: Session instance
         
         Returns:
-            Instancia de AgentState
+            AgentState instance
         """
         context_window = []
         if session.context_json:
@@ -151,14 +151,14 @@ class SessionRepository:
         session_id: str
     ) -> bool:
         """
-        Elimina una sesión de la base de datos.
+        Deletes a session from the database.
         
         Args:
-            db: Sesión de base de datos
-            session_id: ID de la sesión
+            db: Database session
+            session_id: Session ID
         
         Returns:
-            True si se eliminó correctamente
+            True if deleted successfully
         """
         session = self.get_session(db, session_id)
         if session:
@@ -175,16 +175,16 @@ class SessionRepository:
         limit: int = 100
     ) -> List[Session]:
         """
-        Lista sesiones, opcionalmente filtradas por user_id.
+        Lists sessions, optionally filtered by user_id.
         
         Args:
-            db: Sesión de base de datos
-            user_id: Filtrar por user_id (opcional)
-            skip: Número de sesiones a saltar
-            limit: Número máximo de sesiones a retornar
+            db: Database session
+            user_id: Filter by user_id (optional)
+            skip: Number of sessions to skip
+            limit: Maximum number of sessions to return
         
         Returns:
-            Lista de sesiones
+            List of sessions
         """
         query = db.query(Session)
         if user_id:

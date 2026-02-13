@@ -1,6 +1,6 @@
 """
-Ejecutores de herramientas para el agente.
-Solo RAG (get_report se añadirá en Fase 4).
+Tool executors for the agent.
+Only RAG (get_report will be added in Phase 4).
 """
 from typing import Any, Dict, List
 from ..tools.rag_tool import RAGTool
@@ -14,19 +14,19 @@ llm = LLMClient()
 
 def execute_get_report(report_id: str, user_question: str = "") -> dict:
     """
-    Ejecuta la herramienta get_report y devuelve un resultado con la misma
-    estructura que RAG (answer) para que el sintetizador lo trate como contenido.
+    Executes the get_report tool and returns a result with the same
+    structure as RAG (answer) so the synthesizer treats it as content.
     """
     if not report_id or not str(report_id).strip():
-        return {"answer": "No se proporcionó ID de reporte.", "source": "report_tool"}
+        return {"answer": "No report ID was provided.", "source": "report_tool"}
     text = get_report_tool(str(report_id).strip(), user_question or None)
     return {"answer": text, "source": "report_tool"}
 
 
 def get_conversation_context(messages: List[AnyMessage], max_messages: int = 20, exclude_last: bool = False) -> str:
     """
-    Extrae el contexto de conversación de los mensajes.
-    Limita el tamaño total del contexto para evitar problemas de memoria.
+    Extracts the conversation context from messages.
+    Limits the total context size to avoid memory issues.
     """
     if not messages:
         return ""
@@ -64,9 +64,9 @@ def get_conversation_context(messages: List[AnyMessage], max_messages: int = 20,
     return result
 
 
-def execute_rag_tool(step: str, prompt: str, messages: List[AnyMessage], stream_callback=None) -> Dict[str, Any]:
+def execute_rag_tool(step: str, prompt: str, messages: List[AnyMessage], stream_callback=None, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
     """
-    Ejecuta la herramienta RAG.
+    Executes the RAG tool.
     """
     is_followup = False
     if messages:
@@ -74,32 +74,40 @@ def execute_rag_tool(step: str, prompt: str, messages: List[AnyMessage], stream_
             context_text = get_conversation_context(messages, max_messages=5)
             if context_text:
                 followup_detection_prompt = f"""
-Eres un analizador ESTRICTO que decide si una pregunta requiere buscar información en documentos (RAG) o si es un seguimiento directo de la conversación previa.
+You are a STRICT analyzer deciding if a question requires searching for information in documents (RAG) or if it is a direct follow-up to the previous conversation.
 
-REGLA CRÍTICA: Por defecto, usa "nueva" (RAG). Solo marca como "seguimiento" si la pregunta hace referencia EXPLÍCITA y DIRECTA a acciones, resultados o eventos específicos de la conversación previa.
+CRITICAL RULE: By default, use "new" (RAG). Only mark as "followup" if the question EXPLICITLY and DIRECTLY refers to specific actions, results, or events from the previous conversation.
 
-Conversación previa (últimos mensajes):
+Previous conversation (last messages):
 {context_text}
 
-Pregunta del usuario: "{prompt}"
+User Question: "{prompt}"
 
-INSTRUCCIONES: Marca "seguimiento" solo si pregunta sobre acciones/resultados específicos de la conversación. Marca "nueva" (RAG) para conceptos, definiciones, explicaciones.
+INSTRUCTIONS: Mark "followup" only if asking about specific actions/results from the conversation. Mark "new" (RAG) for concepts, definitions, explanations.
 
-Responde SOLO con una palabra: "seguimiento" o "nueva".
+Respond ONLY with one word: "followup" or "new".
 """
                 llm_response = llm.generate(
-                    followup_detection_prompt
+                    followup_detection_prompt,
+                    metadata={**(metadata or {}), "generation_name": "RAG Followup Detection"}
                 ).strip().lower()
                 is_followup = (
-                    llm_response.strip().startswith("seguimiento")
+                    llm_response.strip().startswith("followup")
                     and len(llm_response.strip()) < 15
-                    and "nueva" not in llm_response.lower()
+                    and "new" not in llm_response.lower()
                     and "rag" not in llm_response.lower()
-                    and "documento" not in llm_response.lower()
+                    and "document" not in llm_response.lower()
                 )
-                info_seeking_keywords = ["explica", "qué es", "cuales son", "dime sobre", "podrías explicar", "hablame de", "información sobre", "y las", "y los", "y el", "y la"]
+                # Keywords in English and Spanish to support both
+                info_seeking_keywords = [
+                    "explain", "what is", "what are", "tell me about", "could you explain", "information about", "and the",
+                    "explica", "qué es", "cuales son", "dime sobre", "podrías explicar", "hablame de", "información sobre", "y las", "y los", "y el", "y la"
+                ]
                 if any(keyword in prompt.lower() for keyword in info_seeking_keywords):
-                    ref_words = ["que hiciste", "que realizaste", "anterior", "previo", "antes", "resultado", "la consulta", "lo que", "que ejecutaste"]
+                    ref_words = [
+                        "you did", "you performed", "previous", "before", "result", "the query", "what you", "executed",
+                        "que hiciste", "que realizaste", "anterior", "previo", "antes", "resultado", "la consulta", "lo que", "que ejecutaste"
+                    ]
                     if not any(ref_word in prompt.lower() for ref_word in ref_words):
                         is_followup = False
         except Exception:
@@ -113,10 +121,10 @@ Responde SOLO con una palabra: "seguimiento" o "nueva".
             pass
 
     try:
-        result = rag_tool.query(prompt, conversation_context=conversation_context_for_rag)
+        result = rag_tool.query(prompt, conversation_context=conversation_context_for_rag, metadata=metadata)
     except Exception as e:
         result = {
-            "answer": f"Error al buscar información en los documentos: {str(e)}",
+            "answer": f"Error searching information in documents: {str(e)}",
             "hits": 0,
             "error": f"rag_execution_error: {str(e)}",
             "contexts": [],
@@ -130,17 +138,18 @@ Responde SOLO con una palabra: "seguimiento" o "nueva".
                 context_text = get_conversation_context(messages, max_messages=10)
                 if context_text:
                     followup_prompt = f"""
-Basándote en la siguiente conversación previa, responde la pregunta del usuario de forma DIRECTA y COMPACTA.
+Based on the following previous conversation, answer the user's question directly and compactly.
 
-Conversación previa:
+Previous conversation:
 {context_text}
 
-Pregunta del usuario: {prompt}
+User Question: {prompt}
 
-Respuesta (directa y compacta):
+Response (direct and compact):
 """
                     answer = llm.generate(
-                        followup_prompt
+                        followup_prompt,
+                        metadata={**(metadata or {}), "generation_name": "RAG Fallback Context Generation"}
                     ).strip()
                     return {
                         "answer": answer,
@@ -153,13 +162,13 @@ Respuesta (directa y compacta):
 
     if not isinstance(result, dict):
         result = {
-            "answer": "Error inesperado al procesar la consulta.",
+            "answer": "Unexpected error processing query.",
             "hits": 0,
             "error": "invalid_result_type",
             "contexts": []
         }
     elif "error" in result and "answer" not in result:
-        result["answer"] = result.get("answer", f"Error al procesar la consulta: {result.get('error', 'error desconocido')}")
+        result["answer"] = result.get("answer", f"Error processing query: {result.get('error', 'unknown error')}")
         if "contexts" not in result:
             result["contexts"] = []
 
@@ -167,5 +176,5 @@ Respuesta (directa y compacta):
 
 
 def determine_tool_from_step(step: str, prompt: str) -> str:
-    """Determina qué herramienta usar. Solo RAG está disponible."""
+    """Determines which tool to use. Only RAG is available."""
     return "rag"

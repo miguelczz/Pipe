@@ -15,7 +15,7 @@ import time
 
 
 # ---------------------------------------------------------
-# Inicialización global
+# Global initialization
 # ---------------------------------------------------------
 
 rag_tool = RAGTool()
@@ -23,13 +23,13 @@ llm = LLMClient()
 
 
 # ---------------------------------------------------------
-# Helpers para conversión de estado
+# State conversion helpers
 # ---------------------------------------------------------
 
 def messages_to_agent_state(messages: List[AnyMessage], report_id: Optional[str] = None, session_id: Optional[str] = None) -> AgentState:
     """
-    Convierte los mensajes del State del grafo a un AgentState para el router.
-    Incluye report_id cuando el chat está en contexto de un reporte.
+    Converts graph state messages into an AgentState for the router.
+    Includes report_id when the chat is in the context of a report.
     """
     context_window = []
     for msg in messages[-20:]:
@@ -49,7 +49,7 @@ def messages_to_agent_state(messages: List[AnyMessage], report_id: Optional[str]
 
 
 def get_user_prompt_from_messages(messages: List[AnyMessage]) -> str:
-    """Extrae el último mensaje del usuario de la lista de mensajes."""
+    """Extracts the last user message from the message list."""
     if not messages:
         return ""
     for msg in reversed(messages):
@@ -61,8 +61,8 @@ def get_user_prompt_from_messages(messages: List[AnyMessage]) -> str:
 
 def get_conversation_context(messages: List[AnyMessage], max_messages: int = 10) -> str:
     """
-    Extrae el contexto de conversación de los mensajes para usar en seguimientos.
-    Retorna una cadena formateada con los últimos mensajes.
+    Extracts conversation context from messages for use in follow-ups.
+    Returns a formatted string with the last messages.
     """
     if not messages:
         return ""
@@ -72,7 +72,7 @@ def get_conversation_context(messages: List[AnyMessage], max_messages: int = 10)
         role = getattr(msg, "role", None) or getattr(msg, "type", "user")
         content = getattr(msg, "content", str(msg))
         if role in ["user", "human", "assistant", "agent"]:
-            # Normalizar roles
+            # Normalize roles
             if role in ["human", "user"]:
                 role = "user"
             elif role in ["assistant", "agent"]:
@@ -84,74 +84,71 @@ def get_conversation_context(messages: List[AnyMessage], max_messages: int = 10)
 
 def _extract_tool_from_step(step: str, report_id: Optional[str] = None) -> str:
     """
-    Extrae la herramienta del plan_step. RAG o get_report si hay report_id y el paso lo sugiere.
+    Extracts tool from plan_step. RAG or get_report if report_id exists and step suggests it.
     """
     if not report_id:
         return "rag"
     step_lower = (step or "").lower()
-    if any(kw in step_lower for kw in ["reporte", "report", "captura", "análisis", "analisis", "veredicto", "este resultado", "esta captura"]):
+    if any(kw in step_lower for kw in ["report", "capture", "analysis", "verdict", "this result", "this capture"]):
         return "get_report"
     return "rag"
 
 
-@cache_result("conversation_context", ttl=1800)  # Cache por 30 minutos
+@cache_result("conversation_context", ttl=1800)  # Cache for 30 minutes
 def generate_from_conversation_context(context_text: str, user_prompt: str) -> str:
     """
-    Genera una respuesta basada en el contexto de conversación.
-    Esta función está cacheada para evitar regenerar respuestas idénticas.
+    Generates a response based on conversation context.
+    This function is cached to avoid regenerating identical responses.
     
     Args:
-        context_text: Texto del contexto de conversación
-        user_prompt: Pregunta del usuario
+        context_text: Conversation context text
+        user_prompt: User question
     
     Returns:
-        Respuesta generada
+        Generated response
     """
     followup_prompt = f"""
-Basándote en la siguiente conversación previa, responde la pregunta del usuario de forma DIRECTA, COMPACTA y enfocada en lo que realmente le interesa.
+Based on the following previous conversation, answer the user's question DIRECTLY, COMPACTLY, and focused on what they are actually interested in.
 
-IMPORTANTE:
-    pass
-- Sé CONCISO: ve directo al punto, sin rodeos ni explicaciones innecesarias
-- Responde SOLO lo que el usuario pregunta, sin información adicional no solicitada
-- Si la pregunta es sobre algo mencionado anteriormente, elabora SOLO sobre eso específicamente
-- Evita repeticiones y redundancias
-- Máximo 3-4 párrafos, preferiblemente menos
+IMPORTANT:
+- Be CONCISE: go straight to the point, without rambling or unnecessary explanations.
+- Answer ONLY what the user asks, without unsolicited additional information.
+- If the question is about something mentioned previously, elaborate ONLY on that specifically.
+- Avoid repetitions and redundancies.
+- Maximum 3-4 paragraphs, preferably less.
 
-Conversación previa:
-    pass
+Previous conversation:
 {context_text}
 
-Pregunta del usuario: {user_prompt}
+User Question: {user_prompt}
 
-Respuesta (directa y compacta):
-    pass
+Response (direct and compact):
 """
     return llm.generate(followup_prompt).strip()
 
 
 # ---------------------------------------------------------
-# Alias para compatibilidad - usar GraphState del módulo core
+# Alias for compatibility - use GraphState from core module
 # ---------------------------------------------------------
 
-# Usar GraphState que implementa el patrón State correctamente
+# Use GraphState that implements State pattern correctly
 State = GraphState
 
-# Helper para agregar pensamientos (usa el método del GraphState)
+# Helper to add thoughts (uses method from GraphState)
 def add_thought(thought_chain: List[Dict[str, Any]], node_name: str, action: str, details: str = "", status: str = "success") -> List[Dict[str, Any]]:
     """
-    Agrega un paso de pensamiento a la cadena.
-    Wrapper para compatibilidad con código existente.
+    Adds a thought step to the chain.
+    Wrapper for compatibility with existing code.
     
     Args:
-        thought_chain: Lista actual de pensamientos
-        node_name: Nombre del nodo que está ejecutando la acción
-        action: Acción que se está realizando
-        details: Detalles adicionales de la acción
-        status: Estado de la acción ("success", "error", "info")
+        thought_chain: Current thought list
+        node_name: Name of the node executing the action
+        action: Action being performed
+        details: Additional action details
+        status: Action status ("success", "error", "info")
     
     Returns:
-        Lista actualizada de pensamientos
+        Updated thought list
     """
     thought = {
         "node": node_name,
@@ -166,54 +163,53 @@ def add_thought(thought_chain: List[Dict[str, Any]], node_name: str, action: str
 
 
 # ---------------------------------------------------------
-# Nodos del grafo
+# Graph nodes
 # ---------------------------------------------------------
 
 def planner_node(state: GraphState) -> Dict[str, Any]:
     """
-    Analiza el mensaje del usuario y define el plan de ejecución.
+    Analyzes user message and defines the execution plan.
     
-    Este nodo SOLO accede a:
-        pass
-    - state.messages: para obtener el prompt del usuario y contexto
-    - state.plan_steps: para escribir el plan generado
+    This node ONLY accesses:
+    - state.messages: to get user prompt and context
+    - state.plan_steps: to write the generated plan
     
-    NO debe acceder ni modificar otros campos del state.
+    It must NOT access or modify other state fields.
     
-    Retorna un diccionario parcial con solo los campos modificados para que
-    LangGraph propague correctamente los valores con LastValue.
+    Returns a partial dictionary with only the modified fields so
+    LangGraph propagates values correctly with LastValue.
     """
-    # Extraer el prompt del usuario desde messages
+    # Extract user prompt from messages
     user_prompt = get_user_prompt_from_messages(state.messages)
     
     if not user_prompt:
-        # Si no hay prompt, crear un plan vacío
+        # If no prompt, create an empty plan
         return {"plan_steps": []}
     
-    # Convertir messages a AgentState para el router (incluir report_id si existe)
+    # Convert messages to AgentState for the router (include report_id if it exists)
     report_id = getattr(state, "report_id", None)
     session_id = getattr(state, "session_id", None)
     context = messages_to_agent_state(state.messages, report_id=report_id, session_id=session_id)
     router = PipeAgent()
 
-    # Pasar selected_text si está disponible en el estado (texto resaltado por el usuario en el frontend)
+    # Pass selected_text if available in state (text highlighted by user in frontend)
     selected_text = getattr(state, "selected_text", None)
     decision = router.decide(user_prompt, context, selected_text=selected_text)
     
-    # Verificar si la pregunta fue rechazada por estar fuera de tema
+    # Verify if question was rejected for being off-topic
     if decision.get("rejection_message"):
         rejection_msg = decision.get("rejection_message")
         
         thought_chain = add_thought(
             state.thought_chain or [],
             "Planner",
-            "Pregunta rechazada",
-            "Pregunta fuera de la temática de redes y telecomunicaciones",
+            "Question rejected",
+            "Question outside the scope of networks and telecommunications",
             "info"
         )
         
-        # Retornar un resultado que indique el rechazo
-        # Esto será procesado por el sintetizador para mostrar el mensaje de rechazo
+        # Return result indicating rejection
+        # This will be processed by synthesizer to show rejection message
         return {
             "plan_steps": [],
             "thought_chain": thought_chain,
@@ -222,16 +218,16 @@ def planner_node(state: GraphState) -> Dict[str, Any]:
     
     plan_steps = decision.get("plan_steps", [])
     
-    # Registrar pensamiento: plan generado (consolidado)
+    # Record thought: plan generated (consolidated)
     thought_chain = add_thought(
         state.thought_chain or [],
         "Planner",
-        "Plan generado",
-        f"{len(plan_steps)} paso(s): {', '.join(plan_steps[:2])}{'...' if len(plan_steps) > 2 else ''}",
+        "Plan generated",
+        f"{len(plan_steps)} step(s): {', '.join(plan_steps[:2])}{'...' if len(plan_steps) > 2 else ''}",
         "success"
     )
     
-    # Retornar solo el campo modificado como diccionario para propagación correcta
+    # Return only the modified field as a dictionary for correct propagation
     return {
         "plan_steps": plan_steps,
         "thought_chain": thought_chain
@@ -240,35 +236,34 @@ def planner_node(state: GraphState) -> Dict[str, Any]:
 
 def orchestrator_node(state: GraphState) -> Dict[str, Any]:
     """
-    Orquestador: Coordina y dirige el flujo entre los componentes especializados.
-    Evalúa el plan generado y decide qué componente necesita activar.
+    Orchestrator: Coordinates and directs the flow between specialized components.
+    Evaluates the generated plan and decides which component needs to activate.
     
-    Este nodo SOLO accede a:
-        pass
-    - state.plan_steps: para evaluar el plan generado
-    - state.messages: para obtener el contexto del usuario
-    - state.results: para verificar si hay resultados pendientes de procesar
-    - state.orchestration_decision: para escribir la decisión
-    - state.next_component: para escribir el siguiente componente a activar
+    This node ONLY accesses:
+    - state.plan_steps: to evaluate the generated plan
+    - state.messages: to get user context
+    - state.results: to verify if there are pending results to process
+    - state.orchestration_decision: to write the decision
+    - state.next_component: to write the next component to activate
     
-    NO debe acceder ni modificar otros campos del state.
+    It must NOT access or modify other state fields.
     
-    Retorna un diccionario parcial con solo los campos modificados para que
-    LangGraph propague correctamente los valores con LastValue.
+    Returns a partial dictionary with only the modified fields so
+    LangGraph propagates values correctly with LastValue.
     """
     plan_steps = state.plan_steps or []
     results = state.results or []
     thought_chain = state.thought_chain or []
     
-    # Verificar si hay un mensaje de rechazo (pregunta fuera de tema)
-    # Esto se propaga desde el planner cuando detecta una pregunta fuera de tema
+    # Verify if there is a rejection message (off-topic question)
+    # This propagates from planner when it detects an off-topic question
     rejection_message = getattr(state, 'rejection_message', None)
     if rejection_message:
         thought_chain = add_thought(
             thought_chain,
-            "Orquestador",
-            "Pregunta rechazada → Supervisor",
-            "Pregunta fuera de tema, pasando al Supervisor para validar",
+            "Orchestrator",
+            "Question rejected → Supervisor",
+            "Off-topic question, passing to Supervisor to validate",
             "info"
         )
         return {
@@ -277,13 +272,13 @@ def orchestrator_node(state: GraphState) -> Dict[str, Any]:
             "rejection_message": rejection_message
         }
     
-    # Si no hay plan, no hay nada que orquestar
+    # If no plan, nothing to orchestrate
     if not plan_steps:
         thought_chain = add_thought(
             thought_chain,
-            "Orquestador",
-            "Sin plan → Supervisor",
-            "No se generó plan de ejecución",
+            "Orchestrator",
+            "No plan → Supervisor",
+            "Execution plan was not generated",
             "info"
         )
         return {
@@ -291,13 +286,13 @@ def orchestrator_node(state: GraphState) -> Dict[str, Any]:
             "thought_chain": thought_chain
         }
     
-    # Si hay resultados pero no hay pasos pendientes, ir a Supervisor
+    # If there are results but no pending steps, go to Supervisor
     if results and not plan_steps:
         thought_chain = add_thought(
             thought_chain,
-            "Orquestador",
-            "Todos los pasos completados → Supervisor",
-            f"{len(results)} resultado(s) listo(s) para validar",
+            "Orchestrator",
+            "All steps completed → Supervisor",
+            f"{len(results)} result(s) ready to validate",
             "success"
         )
         return {
@@ -305,26 +300,26 @@ def orchestrator_node(state: GraphState) -> Dict[str, Any]:
             "thought_chain": thought_chain
         }
     
-    # Si hay pasos pendientes, necesitamos ejecutar herramientas
+    # If there are pending steps, we need to execute tools
     if plan_steps:
         thought_chain = add_thought(
             thought_chain,
-            "Orquestador",
-            "Hay pasos pendientes → Agente Ejecutor",
-            f"{len(plan_steps)} paso(s) pendiente(s)",
+            "Orchestrator",
+            "Steps pending → Executor Agent",
+            f"{len(plan_steps)} pending step(s)",
             "success"
         )
         return {
-            "next_component": "Agente_Ejecutor",
+            "next_component": "Executor_Agent",
             "thought_chain": thought_chain
         }
     
-    # Fallback: ir a Supervisor
+    # Fallback: go to Supervisor
     thought_chain = add_thought(
         thought_chain,
-        "Orquestador",
+        "Orchestrator",
         "Fallback → Supervisor",
-        "Usando fallback por defecto",
+        "Using default fallback",
         "info"
     )
     return {
@@ -333,54 +328,53 @@ def orchestrator_node(state: GraphState) -> Dict[str, Any]:
     }
 
 
-def ejecutor_agent_node(state: GraphState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
+def executor_agent_node(state: GraphState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
     """
-    Agente Ejecutor: Ejecuta la herramienta RAG según el plan.
-    Combina la selección de herramienta y su ejecución en un solo nodo.
+    Executor Agent: Executes the RAG tool according to the plan.
+    Combines tool selection and execution in a single node.
     
-    Este nodo SOLO accede a:
-        pass
-    - state.plan_steps: para leer y modificar (quitar el paso actual)
-    - state.messages: para obtener el prompt original del usuario (contexto)
-    - state.current_step: para escribir el paso actual (temporal)
-    - state.tool_name: para escribir la herramienta seleccionada (temporal)
-    - state.results: para acumular los resultados
+    This node ONLY accesses:
+    - state.plan_steps: to read and modify (remove actual step)
+    - state.messages: to get original user prompt (context)
+    - state.current_step: to write actual step (temporal)
+    - state.tool_name: to write selected tool (temporal)
+    - state.results: to accumulate results
     
-    NO debe acceder a final_output, supervised_output u otros campos.
+    It must NOT access final_output, supervised_output or other fields.
     
-    Retorna un diccionario parcial con solo los campos modificados para que
-    LangGraph propague correctamente los valores con LastValue.
+    Returns a partial dictionary with only the modified fields so
+    LangGraph propagates values correctly with LastValue.
     """
     thought_chain = state.thought_chain or []
 
-    # Obtener callback de streaming si existe
+    # Get streaming callback if exists
     stream_callback = None
     if config and "configurable" in config:
         stream_callback = config["configurable"].get("stream_callback")
     
-    # Extraer el paso actual del plan
+    # Extract actual step from plan
     plan_steps_copy = list(state.plan_steps or [])
     if not plan_steps_copy:
         thought_chain = add_thought(
             thought_chain,
-            "Agente_Ejecutor",
-            "No hay pasos para ejecutar",
-            "El plan está vacío",
+            "Executor_Agent",
+            "No steps to execute",
+            "The plan is empty",
             "error"
         )
         return {"thought_chain": thought_chain}
     
     current_step = plan_steps_copy.pop(0)
     
-    # Obtener el prompt del usuario para contexto
+    # Get user prompt for context
     user_prompt = get_user_prompt_from_messages(state.messages)
     
-    # Limitar tamaño del prompt para evitar problemas de memoria
+    # Limit prompt size to avoid memory issues
     MAX_PROMPT_LENGTH = 2000
     if len(user_prompt) > MAX_PROMPT_LENGTH:
         user_prompt = user_prompt[:MAX_PROMPT_LENGTH] + "..."
     
-    # Extraer herramienta del plan_step; si hay report_id, puede ser get_report
+    # Extract tool from plan_step; if report_id exists, it could be get_report
     report_id = getattr(state, "report_id", None)
     tool_name = _extract_tool_from_step(current_step, report_id)
 
@@ -389,36 +383,46 @@ def ejecutor_agent_node(state: GraphState, config: Optional[RunnableConfig] = No
             result = execute_get_report(report_id, user_prompt)
         elif tool_name == "rag":
             session_id = getattr(state, "session_id", None)
-            result = execute_rag_tool(current_step, user_prompt, state.messages, stream_callback=stream_callback)
+            result = execute_rag_tool(
+                current_step, 
+                user_prompt, 
+                state.messages, 
+                stream_callback=stream_callback,
+                metadata={
+                    "trace_id": getattr(state, "trace_id", None),
+                    "user_id": getattr(state, "user_id", None),
+                    "generation_name": "RAG Execution"
+                }
+            )
         else:
             result = {"error": "tool_not_found"}
     except Exception as e:
-        result = {"error": f"Error ejecutando {tool_name}: {str(e)}"}
+        result = {"error": f"Error executing {tool_name}: {str(e)}"}
     
-    # Guardar resultado en la lista acumulada
+    # Save result in accumulated list
     accumulated = state.results or []
     accumulated.append(result)
 
-    # Determinar estado de la ejecución y registrar pensamiento consolidado
+    # Determine execution status and record consolidated thought
     execution_status = "success"
     if isinstance(result, dict) and "error" in result:
         execution_status = "error"
-        execution_details = f"Error: {result.get('error', 'error desconocido')}"
+        execution_details = f"Error: {result.get('error', 'unknown error')}"
     else:
-        # Resumir el paso ejecutado
+        # Summarize executed step
         step_summary = current_step[:60] + "..." if len(current_step) > 60 else current_step
-        execution_details = f"Paso: {step_summary}"
+        execution_details = f"Step: {step_summary}"
     
-    # Registrar pensamiento: ejecución completada (consolidado)
+    # Record thought: execution completed (consolidated)
     thought_chain = add_thought(
         thought_chain,
-        "Agente_Ejecutor",
-        f"{tool_name.upper()} ejecutado",
+        "Executor_Agent",
+        f"{tool_name.upper()} executed",
         execution_details,
         execution_status
     )
 
-    # Guardar en el historial antes de limpiar (trazabilidad completa)
+    # Save to history before cleaning (full traceability)
     executed_tools_list = state.executed_tools or []
     executed_steps_list = state.executed_steps or []
     
@@ -427,51 +431,51 @@ def ejecutor_agent_node(state: GraphState, config: Optional[RunnableConfig] = No
     if current_step:
         executed_steps_list.append(current_step)
 
-    # Retornar solo los campos modificados como diccionario para propagación correcta
-    # Nota: No retornamos current_step y tool_name cuando se limpian (None) porque
-    # la información útil ya está en executed_steps y executed_tools
+    # Return only modified fields as dictionary for correct propagation
+    # Note: We don't return current_step and tool_name when cleaned (None) because
+    # useful info is already in executed_steps and executed_tools
     return {
         "plan_steps": plan_steps_copy,
         "results": accumulated,
-        "executed_tools": executed_tools_list,  # Historial de herramientas usadas
-        "executed_steps": executed_steps_list,   # Historial de pasos ejecutados
+        "executed_tools": executed_tools_list,  # History of tools used
+        "executed_steps": executed_steps_list,   # History of executed steps
         "thought_chain": thought_chain
     }
 
 
 async def supervisor_node(state: GraphState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
     """
-    Supervisor: Valida los resultados ANTES de sintetizar. Se ejecuta antes del Sintetizador.
+    Supervisor: Validates results BEFORE synthesizing. Runs before Synthesizer.
     
-    Responsabilidades:
-    1. Verificar si hay resultados válidos de las herramientas
-    2. Detectar si RAG no encontró información → generar fallback con conocimiento general
-    3. Capturar datos para evaluación Ragas (en background)
-    4. Aprobar o enriquecer los resultados para que el Sintetizador los procese
+    Responsibilities:
+    1. Verify if there are valid tool results
+    2. Detect if RAG did not find info → generate general knowledge fallback
+    3. Capture data for Ragas evaluation (background)
+    4. Approve or enrich results for Synthesizer to process
     
-    Este nodo accede a:
-    - state.results: para validar los resultados de herramientas
-    - state.messages: para obtener el contexto del usuario
-    - state.rejection_message: para detectar preguntas fuera de tema
-    - state.supervised_output: para escribir fallback si RAG falló (el Sintetizador lo usará)
-    - state.quality_score: para escribir la puntuación de calidad
+    This node accesses:
+    - state.results: to validate tool results
+    - state.messages: to get user context
+    - state.rejection_message: to detect off-topic questions
+    - state.supervised_output: to write fallback if RAG failed (Synthesizer will use it)
+    - state.quality_score: to write quality score
     
-    Retorna un diccionario parcial con solo los campos modificados.
+    Returns a partial dictionary with only modified fields.
     """
     user_prompt = get_user_prompt_from_messages(state.messages)
     thought_chain = state.thought_chain or []
     results = state.results or []
     
     # ---------------------------------------------------------
-    # 1. Si hay mensaje de rechazo, aprobar directamente (el Sintetizador lo formateará)
+    # 1. If there is a rejection message, approve directly (Synthesizer will format it)
     # ---------------------------------------------------------
     rejection_message = getattr(state, 'rejection_message', None)
     if rejection_message:
         thought_chain = add_thought(
             thought_chain,
             "Supervisor",
-            "Aprobado: mensaje de rechazo",
-            "Pregunta fuera de tema, el Sintetizador formateará el rechazo",
+            "Approved: rejection message",
+            "Off-topic question, Synthesizer will format the rejection",
             "info"
         )
         return {
@@ -480,14 +484,14 @@ async def supervisor_node(state: GraphState, config: Optional[RunnableConfig] = 
         }
     
     # ---------------------------------------------------------
-    # 2. Verificar si hay resultados válidos
+    # 2. Verify if there are valid results
     # ---------------------------------------------------------
     if not results:
         thought_chain = add_thought(
             thought_chain,
             "Supervisor",
-            "Sin resultados para validar",
-            "No se encontraron resultados de herramientas",
+            "No results to validate",
+            "Tool results were not found",
             "warning"
         )
         return {
@@ -496,24 +500,27 @@ async def supervisor_node(state: GraphState, config: Optional[RunnableConfig] = 
         }
     
     # ---------------------------------------------------------
-    # 3. FALLBACK: Detectar si RAG no encontró información
+    # 3. FALLBACK: Detect if RAG did not find information
     # ---------------------------------------------------------
     rag_missed_info = False
     
-    # 3a. Verificar resultados de herramientas por source
+    # 3a. Verify tool results by source
     for res in results:
         if isinstance(res, dict) and res.get("source") in ["no_hits", "empty_context", "no_documents", "qdrant_connection_error"]:
             rag_missed_info = True
             break
     
-    # 3b. Verificar texto de las respuestas RAG
+    # 3b. Verify RAG response text
     if not rag_missed_info:
         missing_info_keywords = [
+            "did not find information", "no info found", "no information found",
+            "not mentioned in the documents", "does not appear in the context",
+            "not in the documents", "outside this specialized scope",
+            "not related to networking", "information is not available",
+            "not found in technical documentation", "not in the guide",
             "no encontré información", "no tengo información", 
             "no se menciona en los documentos", "no aparece en el contexto",
-            "no dispongo de información", "no está en los documentos",
-            "fuera de este ámbito especializado", "fuera de este tema especializado",
-            "no está relacionada con redes o tecnologías de red"
+            "no está en los documentos"
         ]
         for res in results:
             if isinstance(res, dict) and "answer" in res:
@@ -524,113 +531,78 @@ async def supervisor_node(state: GraphState, config: Optional[RunnableConfig] = 
     
     if rag_missed_info:
         fallback_prompt = f"""
-El sistema RAG no encontró información en los documentos para la pregunta del usuario, pero el usuario requiere una respuesta de Pipe.
-Genera una respuesta basada en tu CONOCIMIENTO GENERAL como experto en redes WiFi y Band Steering.
+The RAG system did not find information in the documents for the user's question, but the user requires an answer from Pipe.
+Generate a response based on your GENERAL KNOWLEDGE as an expert in WiFi networks and Band Steering.
 
-Pregunta del usuario: "{user_prompt}"
+User Question: "{user_prompt}"
 
-INSTRUCCIONES CRÍTICAS:
-1. Comienza la respuesta EXACTAMENTE con esta frase: "⚠️ **Nota:** No encontré esta información específica en tus documentos técnicos, pero basado en estándares generales de redes WiFi:"
-2. Proporciona una respuesta técnica, precisa y útil sobre el tema.
-3. CONTEXTO OBLIGATORIO: Cualquier término como 'asociación' debe interpretarse EXCLUSIVAMENTE como 'asociación inalámbrica 802.11'. NO hables de ámbitos sociales o económicos.
-4. Si la pregunta solicita una lista, enuméralos claramente.
+CRITICAL INSTRUCTIONS:
+1. Start the response EXACTLY with this phrase: "⚠️ **Note:** I did not find this specific information in your technical documents, but based on general WiFi networking standards:"
+2. Provide a technical, precise, and helpful response on the topic.
+3. MANDATORY CONTEXT: Any term like 'association' must be interpreted EXCLUSIVELY as '802.11 wireless association'. DO NOT talk about social or economic realms.
+4. If the question requests a list, enumerate them clearly.
 
-Genera la respuesta técnica y profesional:
+Generate the technical and professional response:
 """
         try:
             fallback_output = await llm.agenerate(
-                fallback_prompt
+                fallback_prompt,
+                model_tier="cheap",
+                metadata={
+                    "trace_id": getattr(state, "trace_id", None),
+                    "user_id": getattr(state, "user_id", None),
+                    "generation_name": "Supervisor Fallback"
+                }
             )
             thought_chain = add_thought(
                 thought_chain,
                 "Supervisor",
-                "Fallback: Conocimiento General",
-                "Información no encontrada en docs → Usando conocimiento general",
+                "Fallback: General Knowledge",
+                "Information not found in docs → Using general knowledge",
                 "warning"
             )
-            # Guardar el fallback en supervised_output para que el Sintetizador lo use directamente
+            # Store fallback in supervised_output for Synthesizer to use directly
             return {
                 "supervised_output": fallback_output.strip(),
                 "quality_score": 0.9,
                 "thought_chain": thought_chain
             }
         except Exception as e:
-            # Si falla, dejar que el Sintetizador trabaje con los resultados crudos
+            # If fail, let Synthesizer work with raw results
             thought_chain = add_thought(
                 thought_chain,
                 "Supervisor",
-                "Fallback fallido",
-                f"Error al generar fallback: {str(e)}",
+                "Fallback failed",
+                f"Error generating fallback: {str(e)}",
                 "error"
             )
     
     # ---------------------------------------------------------
-    # 4. Resultados válidos: aprobar para el Sintetizador
+    # 4. Valid results: approve for Synthesizer
     # ---------------------------------------------------------
     thought_chain = add_thought(
         thought_chain,
         "Supervisor",
-        "Validación: aprobado",
-        f"{len(results)} resultado(s) válido(s) para sintetizar",
+        "Validation: approved",
+        f"{len(results)} valid result(s) to synthesize",
         "success"
     )
     
     # ---------------------------------------------------------
-    # 5. Capturar datos para evaluación Ragas (en background, no bloquea)
+    # 5. Capture data for Ragas evaluation (background, non-blocking)
     # ---------------------------------------------------------
-    # Nota: Se capturan los datos crudos. La respuesta final se generará en el Sintetizador.
-    # La evaluación de Ragas se ejecutará con los datos disponibles.
-    try:
-        from ..utils.ragas_evaluator import get_evaluator
-        from ..settings import settings
-        
-        if settings.ragas_enabled and user_prompt:
-            evaluator = get_evaluator(enabled=True)
-            if evaluator:
-                contexts = []
-                for result in results:
-                    if isinstance(result, dict) and "contexts" in result:
-                        result_contexts = result["contexts"]
-                        if isinstance(result_contexts, list):
-                            valid_contexts = [c for c in result_contexts if c and isinstance(c, str) and c.strip()]
-                            contexts.extend(valid_contexts)
-                
-                # Extraer respuesta cruda del RAG para la evaluación
-                rag_answer = ""
-                for res in results:
-                    if isinstance(res, dict) and "answer" in res:
-                        rag_answer = res["answer"]
-                        break
-                
-                if rag_answer:
-                    evaluator.capture_evaluation(
-                        question=user_prompt,
-                        answer=rag_answer,
-                        contexts=contexts if contexts else [],
-                        metadata={
-                            "tool_used": "rag",
-                            "quality_score": 0.0
-                        }
-                    )
-                    
-                    if contexts:
-                        try:
-                            from threading import Thread
-                            
-                            def evaluate_in_background():
-                                try:
-                                    evaluator.evaluate_captured_data()
-                                except Exception:
-                                    pass
-                            
-                            eval_thread = Thread(target=evaluate_in_background, daemon=True)
-                            eval_thread.start()
-                        except Exception:
-                            pass
-    except Exception:
-        pass
+    # DISABLED TO AVOID RATE LIMITS AND 400 ERRORS
+    # try:
+    #     from ..utils.ragas_evaluator import get_evaluator
+    #     from ..settings import settings
+    #     
+    #     if settings.ragas_enabled and user_prompt:
+    #         # ... (commented code)
+    #         pass
+    # except Exception:
+    #     pass
     
-    # OPTIMIZACIÓN: Limpiar estado para evitar acumulación de memoria
+    # OPTIMIZATION: Clean state to avoid memory accumulation
     if state.messages and len(state.messages) > 30:
         state.cleanup_old_messages(max_messages=30)
     
@@ -645,43 +617,43 @@ Genera la respuesta técnica y profesional:
 
 async def synthesizer_node(state: GraphState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
     """
-    Sintetizador: Genera la respuesta final legible para el usuario.
-    Se ejecuta DESPUÉS del Supervisor, que ya validó los resultados.
+    Synthesizer: Generates the final user-readable response.
+    Runs AFTER Supervisor, which has already validated the results.
     
-    Flujo: ... → Supervisor (valida datos) → Sintetizador (genera respuesta) → END
+    Flow: ... → Supervisor (validates data) → Synthesizer (generates response) → END
     
-    Este nodo accede a:
-    - state.results: para leer los resultados de las herramientas
-    - state.messages: para obtener el prompt original del usuario
-    - state.supervised_output: si el Supervisor generó un fallback, usarlo directamente
-    - state.rejection_message: para mensajes de rechazo
-    - state.final_output: para escribir la respuesta final
+    This node accesses:
+    - state.results: to read tool results
+    - state.messages: to get original user prompt
+    - state.supervised_output: if Supervisor generated a fallback, use it directly
+    - state.rejection_message: for rejection messages
+    - state.final_output: to write final response
     
-    Retorna un diccionario parcial con solo los campos modificados.
+    Returns a partial dictionary with only modified fields.
     """
     results = state.results or []
     thought_chain = state.thought_chain or []
     
-    # Obtener callback de streaming si existe
+    # Get streaming callback if exists
     stream_callback = None
     if config and "configurable" in config:
         stream_callback = config["configurable"].get("stream_callback")
     
     # ---------------------------------------------------------
-    # CASO 0: Si el Supervisor generó un fallback (supervised_output), usarlo directamente
-    # Esto ocurre cuando RAG no encontró información y el Supervisor generó
-    # una respuesta con conocimiento general.
+    # CASE 0: If Supervisor generated a fallback (supervised_output), use it directly
+    # This occurs when RAG did not find info and Supervisor generated
+    # a response with general knowledge.
     # ---------------------------------------------------------
     supervised_output = getattr(state, 'supervised_output', None)
     if supervised_output:
         thought_chain = add_thought(
             thought_chain,
-            "Sintetizador",
-            "Usando fallback del Supervisor",
-            "El Supervisor generó una respuesta con conocimiento general",
+            "Synthesizer",
+            "Using Supervisor fallback",
+            "Supervisor generated a response with general knowledge",
             "info"
         )
-        # Hacer streaming del fallback si hay callback
+        # Stream fallback if callback exists
         if stream_callback:
             try:
                 stream_callback(supervised_output)
@@ -693,15 +665,15 @@ async def synthesizer_node(state: GraphState, config: Optional[RunnableConfig] =
         }
     
     # ---------------------------------------------------------
-    # CASO 1: Mensaje de rechazo (pregunta fuera de tema)
+    # CASE 1: Rejection message (off-topic question)
     # ---------------------------------------------------------
     rejection_message = getattr(state, 'rejection_message', None)
     if rejection_message:
         thought_chain = add_thought(
             thought_chain,
-            "Sintetizador",
-            "Mensaje de rechazo",
-            "Pregunta fuera de la temática de redes",
+            "Synthesizer",
+            "Rejection message",
+            "Question outside the network topic",
             "info"
         )
         return {
@@ -710,23 +682,23 @@ async def synthesizer_node(state: GraphState, config: Optional[RunnableConfig] =
         }
     
     # ---------------------------------------------------------
-    # CASO 2: No hay resultados
+    # CASE 2: No results
     # ---------------------------------------------------------
     if not results:
         thought_chain = add_thought(
             thought_chain,
-            "Sintetizador",
-            "No hay resultados para sintetizar",
-            "No se encontraron resultados de herramientas",
+            "Synthesizer",
+            "No results to synthesize",
+            "Tool results were not found",
             "error"
         )
         return {
-            "final_output": "No se encontraron resultados para la consulta.",
+            "final_output": "No results found for the query.",
             "thought_chain": thought_chain
         }
 
     # ---------------------------------------------------------
-    # CASO 3: Resultados de herramientas - procesar respuesta con LLM
+    # CASE 3: Tool results - process response with LLM
     # ---------------------------------------------------------
     has_result = any(
         isinstance(r, dict) and 'answer' in r
@@ -734,117 +706,135 @@ async def synthesizer_node(state: GraphState, config: Optional[RunnableConfig] =
     )
 
     if has_result:
-        # Detectar si la fuente es un reporte o RAG
+        # Detect if source is a report or RAG
         is_report_source = any(
             isinstance(r, dict) and r.get('source') == 'report_tool'
             for r in results
         )
         
-        # Extraer solo el 'answer' de cada resultado
+        # Extract only 'answer' from each result
         answers = []
         for r in results:
             if isinstance(r, dict) and 'answer' in r:
                 answers.append(r['answer'])
         
         if answers:
-            # Combinar respuestas si hay múltiples
+            # Combine answers if multiple
             combined_raw = "\n\n".join(answers).strip()
             
-            # Obtener el prompt original del usuario para contexto
+            # Get original user prompt for context
             user_prompt = get_user_prompt_from_messages(state.messages)
             
-            # Inicializar valores por defecto
+            # Initial default values
             max_tokens_synthesis = 600
+            synthesis_tier = "standard" # Default to Gemini for reports/quality
             
             if is_report_source:
-                # ── MODO REPORTE: respuesta basada en datos específicos del análisis ──
+                # ── REPORT MODE: response based on specific analysis data ──
+                # For reports, we keep standard (Gemini) for precision
+                synthesis_tier = "standard"
                 synthesis_prompt = (
-                    f"Pregunta del usuario: {user_prompt}\n\n"
-                    "El usuario está viendo un REPORTE DE ANÁLISIS ESPECÍFICO. A continuación están los datos REALES de su reporte:\n\n"
-                    f"--- DATOS DEL REPORTE ---\n{combined_raw}\n--- FIN DATOS ---\n\n"
-                    "INSTRUCCIONES CRÍTICAS:\n"
-                    "- Responde EXCLUSIVAMENTE con los datos del reporte proporcionado arriba. Estos son datos REALES de un análisis que el usuario hizo.\n"
-                    "- CITA VALORES EXACTOS: MACs, BSSIDs, bandas, tasas de éxito, conteos de BTM, estándares soportados, etc. No redondees ni generalices.\n"
-                    "- Si el usuario pregunta sobre algo que está en los datos, responde con los valores específicos. Por ejemplo:\n"
-                    "  * '¿Qué estándares KVR soporta?' → Menciona exactamente cuáles son True/False del reporte.\n"
-                    "  * '¿Por qué pasó/falló?' → Usa los compliance checks y el veredicto del reporte.\n"
-                    "  * '¿Cuántas transiciones hubo?' → Cita el número exacto y los detalles de cada una.\n"
-                    "- NO des explicaciones teóricas genéricas. El usuario quiere saber sobre SU análisis, no sobre la teoría.\n"
-                    "- Si la pregunta toca algo que NO está en los datos del reporte, di que esa información no está disponible en este análisis.\n"
-                    "- FORMATO:\n"
-                    "  * Usa **negrita** para valores clave (MACs, nombres de estándares, veredictos).\n"
-                    "  * Usa listas con viñetas para datos múltiples.\n"
-                    "  * Sé directo y conciso, sin introducciones innecesarias.\n\n"
-                    "Responde basándote ÚNICAMENTE en los datos del reporte:"
+                    f"User Question: {user_prompt}\n\n"
+                    "The user is viewing a SPECIFIC ANALYSIS REPORT. Below are the REAL data from their report:\n\n"
+                    f"--- REPORT DATA ---\n{combined_raw}\n--- END DATA ---\n\n"
+                    "CRITICAL INSTRUCTIONS:\n"
+                    "- Answer EXCLUSIVELY with the data from the report provided above. These are REAL data from an analysis the user performed.\n"
+                    "- CITE EXACT VALUES: MACs, BSSIDs, bands, success rates, BTM counts, supported standards, etc. Do not round or generalize.\n"
+                    "- If the user asks about something in the data, answer with the specific values. For example:\n"
+                    "  * 'What KVR standards does it support?' → Mention exactly which ones are True/False from the report.\n"
+                    "  * 'Why did it pass/fail?' → Use the compliance checks and report verdict.\n"
+                    "  * 'How many transitions were there?' → Cite the exact number and details for each.\n"
+                    "- DO NOT give generic theoretical explanations. The user wants to know about THEIR analysis, not about theory.\n"
+                    "- If the question touches on something NOT in the report data, state that such information is not available in this analysis.\n"
+                    "- FORMAT:\n"
+                    "  * Use **bold** for key values (MACs, standard names, verdicts).\n"
+                    "  * Use bulleted lists for multiple data points.\n"
+                    "  * Be direct and concise, without unnecessary introductions.\n\n"
+                    "Respond based ONLY on the report data:"
                 )
                 max_tokens_synthesis = 800
             else:
-                # ── MODO RAG: respuesta basada en documentación general ──
-                # Analizar complejidad
-                complexity = "moderada"
-                length_guidance = "Respuesta EQUILIBRADA: 100-200 palabras con explicación clara."
+                # ── RAG MODE: response based on general documentation ──
+                # Analyze complexity using routing tier (cheap/fast)
+                complexity = "moderate"
+                length_guidance = "BALANCED response: 100-200 words with clear explanation."
                 
                 complexity_check_prompt = f"""
-Analiza la siguiente pregunta y determina su complejidad:
+Analyze the following question and determine its complexity:
 
-Pregunta: "{user_prompt}"
+Question: "{user_prompt}"
 
-Determina si es:
-1. "simple" - Pregunta directa que requiere una respuesta breve (ej: "¿Qué es X?", "¿Cuál es Y?")
-2. "moderada" - Pregunta que requiere una explicación con algunos detalles
-3. "compleja" - Pregunta que requiere explicación detallada o una lista completa de elementos
+Determine if it is:
+1. "simple" - Direct question requiring a brief answer (e.g., "What is X?", "Which is Y?")
+2. "moderate" - Question requiring an explanation with some details
+3. "complex" - Question requiring a detailed explanation or a complete list of items
 
-Responde SOLO con una palabra: "simple", "moderada" o "compleja".
+Respond ONLY with one word: "simple", "moderate", or "complex".
 """
                 try:
                     complexity_response = await llm.agenerate(
-                        complexity_check_prompt
+                        complexity_check_prompt,
+                        model_tier="routing",
+                        metadata={
+                            "trace_id": getattr(state, "trace_id", None),
+                            "user_id": getattr(state, "user_id", None),
+                            "generation_name": "Complexity Check"
+                        }
                     )
                     complexity = complexity_response.strip().lower()
                     
                     if "simple" in complexity:
-                        length_guidance = "Respuesta BREVE: 2-4 oraciones (50-100 palabras). Ve directo al punto."
-                        max_tokens_synthesis = 300  # Aumentado de 200
-                    elif "compleja" in complexity:
-                        length_guidance = "Respuesta COMPLETA: 300-600 palabras con explicación estructurada. Incluye TODOS los elementos si es una lista."
-                        max_tokens_synthesis = 2000  # Aumentado de 1200 para evitar cortes
+                        length_guidance = "BRIEF response: 2-4 sentences (50-100 words). Get straight to the point."
+                        max_tokens_synthesis = 300
+                        synthesis_tier = "cheap" # Use Groq
+                    elif "complex" in complexity:
+                        length_guidance = "COMPLETE response: 300-600 words with structured explanation. Include ALL elements if it's a list."
+                        max_tokens_synthesis = 2000
+                        synthesis_tier = "standard" # Use Gemini only for complex
                     else:
-                        length_guidance = "Respuesta EQUILIBRADA: 100-200 palabras con explicación clara."
-                        max_tokens_synthesis = 800  # Aumentado de 500
+                        length_guidance = "BALANCED response: 100-200 words with clear explanation."
+                        max_tokens_synthesis = 800
+                        synthesis_tier = "cheap" # Use Groq also for moderate to save quota
                 except Exception:
                     pass
                 
                 synthesis_prompt = (
-                    f"Pregunta del usuario: {user_prompt}\n\n"
-                    "Basándote en la siguiente respuesta del sistema RAG, genera una respuesta clara, natural y CONCISA.\n\n"
-                    f"Respuesta del RAG:\n{combined_raw}\n\n"
-                    "INSTRUCCIONES:\n"
-                    "- FIDELIDAD TOTAL: Usa SOLO la información de la respuesta RAG. NO inventes, NO agregues conocimiento general.\n"
-                    f"- LONGITUD ADAPTATIVA: {length_guidance}\n"
-                    "- LENGUAJE NATURAL: Responde como un experto de manera clara y comprensible.\n"
-                    "- FORMATO:\n"
-                    "  * Usa **negrita** para conceptos clave y valores importantes.\n"
-                    "  * Listas limpias: viñeta en la MISMA LÍNEA que el texto.\n"
-                    "  * NO uses backticks ni bloques de código para valores individuales.\n"
-                    "- ESTRUCTURA: Organiza la información de forma lógica.\n"
-                    "- NO copies párrafos completos, parafrasea de manera natural.\n\n"
-                    "Genera una respuesta clara y con formato limpio:"
+                    f"User Question: {user_prompt}\n\n"
+                    "Based on the following RAG system response, generate a clear, natural, and CONCISE response.\n\n"
+                    f"RAG Response:\n{combined_raw}\n\n"
+                    "INSTRUCTIONS:\n"
+                    "- TOTAL FIDELITY: Use ONLY information from the RAG response. DO NOT invent, DO NOT add general knowledge.\n"
+                    f"- ADAPTIVE LENGTH: {length_guidance}\n"
+                    "- NATURAL LANGUAGE: Respond as an expert in a clear and understandable manner.\n"
+                    "- FORMAT:\n"
+                    "  * Use **bold** for key concepts and important values.\n"
+                    "  * Clean lists: bullet on the SAME LINE as text.\n"
+                    "  * DO NOT use backticks or code blocks for individual values.\n"
+                    "- STRUCTURE: Organize information logically.\n"
+                    "- DO NOT copy full paragraphs, paraphrase naturally.\n\n"
+                    "Generate a clear response with clean formatting:"
                 )
             
-            source_label = "reporte" if is_report_source else "RAG"
+            source_label = "report" if is_report_source else "RAG"
             try:
                 synthesis_response = await llm.agenerate(
                     synthesis_prompt,
                     stream_callback=stream_callback,
-                    max_tokens=max_tokens_synthesis
+                    max_tokens=max_tokens_synthesis,
+                    model_tier=synthesis_tier, # Use optimized tier
+                    metadata={
+                        "trace_id": getattr(state, "trace_id", None),
+                        "user_id": getattr(state, "user_id", None),
+                        "generation_name": "Final Synthesis"
+                    }
                 )
                 final_answer = synthesis_response.strip()
                 
                 thought_chain = add_thought(
                     thought_chain,
-                    "Sintetizador",
-                    f"Síntesis: {source_label}",
-                    f"Respuesta procesada ({len(answers)} resultado(s))",
+                    "Synthesizer",
+                    f"Synthesis: {source_label}",
+                    f"Response processed ({len(answers)} result(s))",
                     "success"
                 )
                 return {
@@ -852,13 +842,13 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
                     "thought_chain": thought_chain
                 }
             except Exception as e:
-                # Fallback: usar respuesta original completa
+                # Fallback: use full original response
                 final_answer = combined_raw
                 thought_chain = add_thought(
                     thought_chain,
-                    "Sintetizador",
-                    f"Síntesis: {source_label} (fallback)",
-                    f"Error al procesar, usando respuesta original ({len(answers)} resultado(s))",
+                    "Synthesizer",
+                    f"Synthesis: {source_label} (fallback)",
+                    f"Error processing, using original response ({len(answers)} result(s))",
                     "warning"
                 )
                 return {
@@ -867,14 +857,14 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
                 }
     
     # ---------------------------------------------------------
-    # CASO 4: Fallback - si no se detectó RAG
+    # CASE 4: Fallback - if RAG was not detected
     # ---------------------------------------------------------
     processed_results = [str(r) for r in results]
     thought_chain = add_thought(
         thought_chain,
-        "Sintetizador",
-        "Síntesis: fallback",
-        "Concatenando resultados (herramientas no detectadas)",
+        "Synthesizer",
+        "Synthesis: fallback",
+        "Concatenating results (tools not detected)",
         "info"
     )
     return {
@@ -884,120 +874,122 @@ Responde SOLO con una palabra: "simple", "moderada" o "compleja".
 
 
 # ---------------------------------------------------------
-# Construcción del grafo
+# Graph construction
 # ---------------------------------------------------------
 
 graph = StateGraph(GraphState)
 
-# Arquitectura
+# Architecture
 graph.add_node("Planner", planner_node)
-graph.add_node("Orquestador", orchestrator_node)
-graph.add_node("Agente_Ejecutor", ejecutor_agent_node)
-graph.add_node("Sintetizador", synthesizer_node)
+graph.add_node("Orchestrator", orchestrator_node)
+graph.add_node("Executor_Agent", executor_agent_node)
+graph.add_node("Synthesizer", synthesizer_node)
 graph.add_node("Supervisor", supervisor_node)
 
-# Flujo de ejecución: Start → Planner → Orquestador → [Agente Ejecutor → ...] → Supervisor → Sintetizador → End
+# Execution flow: Start → Planner → Orchestrator → [Executor Agent → ...] → Supervisor → Synthesizer → End
 graph.add_edge(START, "Planner")
-graph.add_edge("Planner", "Orquestador")
+graph.add_edge("Planner", "Orchestrator")
 
-# El Orquestador decide a qué componente ir
+# The Orchestrator decides which component to go to
 def route_from_orchestrator(state: GraphState) -> str:
     """
-    Decide desde el Orquestador a qué componente dirigirse.
+    Decides from the Orchestrator which component to go to.
     
-    Esta función SOLO accede a:
-    - state.next_component: para saber a qué componente ir
-    - state.plan_steps: para verificar si hay pasos pendientes
-    - state.results: para verificar si hay resultados
+    This function ONLY accesses:
+    - state.next_component: to know which component to go to
+    - state.plan_steps: to verify if there are pending steps
+    - state.results: to verify if there are results
     
-    NO debe acceder a otros campos del state.
-    
+    It must NOT access other state fields.
     """
     next_component = state.next_component
     plan_steps = state.plan_steps or []
     
-    # Si el orquestador decidió ir a un componente específico, usar esa decisión
+    # If orchestrator decided on a specific component, use that decision
     if next_component:
+        # Map old names to new ones if necessary
+        if next_component in ["Agente_Ejecutor", "ejecutor_agent_node"]:
+            return "Executor_Agent"
         return next_component
     
-    # Fallback: decidir basándose en el estado
+    # Fallback: decide based on state
     if plan_steps:
-        return "Agente_Ejecutor"
+        return "Executor_Agent"
     else:
         return "Supervisor"
 
-# Arista condicional desde Orquestador
-# Nota: El Supervisor se ejecuta ANTES del Sintetizador para validar resultados
+# Conditional edge from Orchestrator
+# Note: Supervisor runs BEFORE Synthesizer to validate results
 graph.add_conditional_edges(
-    "Orquestador",
+    "Orchestrator",
     route_from_orchestrator,
     {
-        "Agente_Ejecutor": "Agente_Ejecutor",
+        "Executor_Agent": "Executor_Agent",
         "Supervisor": "Supervisor"
     }
 )
 
-# Desde Agente Ejecutor: volver al Orquestador si hay más pasos, o ir a Supervisor
+# From Executor Agent: back to Orchestrator if more steps, or go to Supervisor
 def route_from_executor(state: GraphState) -> str:
     """
-    Decide desde el Agente Ejecutor a dónde ir.
+    Decides from the Executor Agent where to go.
     
-    Esta función SOLO accede a:
-    - state.plan_steps: para verificar si hay pasos pendientes
+    This function ONLY accesses:
+    - state.plan_steps: to verify if there are pending steps
     
-    NO debe acceder a otros campos del state.
+    It must NOT access other state fields.
     """
     plan_steps = state.plan_steps or []
     
-    # Si hay más pasos, volver al Orquestador para decidir el siguiente paso
+    # If more steps, go back to Orchestrator to decide next step
     if plan_steps:
-        return "Orquestador"
-    # Si no hay más pasos, ir a Supervisor (que validará antes de sintetizar)
+        return "Orchestrator"
+    # If no more steps, go to Supervisor (which will validate before synthesizing)
     return "Supervisor"
 
 graph.add_conditional_edges(
-    "Agente_Ejecutor",
+    "Executor_Agent",
     route_from_executor,
     {
-        "Orquestador": "Orquestador",
+        "Orchestrator": "Orchestrator",
         "Supervisor": "Supervisor"
     }
 )
 
-# Desde Supervisor: siempre ir a Sintetizador (para generar respuesta final)
-graph.add_edge("Supervisor", "Sintetizador")
+# From Supervisor: always go to Synthesizer (to generate final response)
+graph.add_edge("Supervisor", "Synthesizer")
 
-# Desde Sintetizador: siempre terminar
-graph.add_edge("Sintetizador", END)
+# From Synthesizer: always end
+graph.add_edge("Synthesizer", END)
 
-# Compilar el grafo base
-# Nota: Exportamos el grafo directamente para compatibilidad con LangGraph Studio
-# Los callbacks se pueden agregar usando las funciones helper o manualmente
+# Compile base graph
+# Note: We export graph directly for compatibility with LangGraph Studio
+# Callbacks can be added using helper functions or manually
 graph = graph.compile()
 
 
 # ---------------------------------------------------------
-# Funciones helper para callbacks opcionales
+# Helper functions for optional callbacks
 # ---------------------------------------------------------
 
 def get_graph_with_callbacks(callbacks: Optional[List[Any]] = None):
     """
-    Obtiene el grafo compilado con callbacks opcionales.
+    Gets the compiled graph with optional callbacks.
     
     Args:
-        callbacks: Lista opcional de callbacks de LangChain/LangGraph
+        callbacks: Optional list of LangChain/LangGraph callbacks
     
     Returns:
-        Grafo compilado con callbacks aplicados
+        Compiled graph with callbacks applied
     """
-    # Si no hay callbacks, retornar el grafo base
+    # If no callbacks, return base graph
     if not callbacks:
         return graph
     
-    # Recompilar el grafo con callbacks
-    # Nota: En LangGraph, los callbacks se pasan durante la invocación,
-    # no durante la compilación. Por lo tanto, retornamos el grafo base
-    # y los callbacks se pasarán en ainvoke/invoke
+    # Recompile graph with callbacks
+    # Note: In LangGraph, callbacks are passed during invocation,
+    # not during compilation. Therefore, we return the base graph
+    # and callbacks will be passed in ainvoke/invoke
     return graph
 
 
@@ -1006,14 +998,14 @@ def invoke_with_ragas_callbacks(
     enable_ragas: bool = True
 ) -> Dict[str, Any]:
     """
-    Ejecuta el grafo con callbacks de Ragas habilitados.
+    Executes the graph with Ragas callbacks enabled.
     
     Args:
-        state: Estado inicial del grafo
-        enable_ragas: Si debe habilitar callbacks de Ragas
+        state: Initial graph state
+        enable_ragas: Whether to enable Ragas callbacks
     
     Returns:
-        Resultado de la ejecución del grafo
+        Graph execution result
     """
     from ..utils.ragas_callback import get_ragas_callback
     
@@ -1023,7 +1015,7 @@ def invoke_with_ragas_callbacks(
         if ragas_callback:
             callbacks.append(ragas_callback)
     
-    # Ejecutar con callbacks
+    # Execute with callbacks
     if callbacks:
         return graph.invoke(state, config={"callbacks": callbacks})
     else:
@@ -1035,14 +1027,14 @@ async def ainvoke_with_ragas_callbacks(
     enable_ragas: bool = True
 ) -> Dict[str, Any]:
     """
-    Ejecuta el grafo de forma asíncrona con callbacks de Ragas habilitados.
+    Asynchronously executes the graph with Ragas callbacks enabled.
     
     Args:
-        state: Estado inicial del grafo
-        enable_ragas: Si debe habilitar callbacks de Ragas
+        state: Initial graph state
+        enable_ragas: Whether to enable Ragas callbacks
     
     Returns:
-        Resultado de la ejecución del grafo
+        Graph execution result
     """
     from ..utils.ragas_callback import get_ragas_callback
     
@@ -1052,21 +1044,20 @@ async def ainvoke_with_ragas_callbacks(
         if ragas_callback:
             callbacks.append(ragas_callback)
     
-    # Ejecutar con callbacks
+    # Execute with callbacks
     if callbacks:
         return await graph.ainvoke(state, config={"callbacks": callbacks})
     else:
         return await graph.ainvoke(state)
 
 
-# Función helper para obtener config con callbacks de Ragas
+# Helper function to get config with Ragas callbacks
 def get_config_with_ragas_callbacks(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
-    Obtiene un config con callbacks de Ragas agregados automáticamente.
-    Útil para usar con LangGraph Studio cuando se ejecuta el grafo directamente.
+    Gets a config with Ragas callbacks automatically added.
+    Useful for use with LangGraph Studio when running the graph directly.
     
-    Ejemplo de uso en LangGraph Studio:
-        pass
+    Example usage in LangGraph Studio:
     ```python
     from src.agent.agent_graph import get_config_with_ragas_callbacks
     config = get_config_with_ragas_callbacks()
@@ -1074,10 +1065,10 @@ def get_config_with_ragas_callbacks(config: Optional[Dict[str, Any]] = None) -> 
     ```
     
     Args:
-        config: Config opcional existente
+        config: Optional existing config
     
     Returns:
-        Config con callbacks de Ragas agregados (si están habilitados en settings)
+        Config with Ragas callbacks added (if enabled in settings)
     """
     from ..utils.ragas_callback import get_ragas_callback
     from ..settings import settings
